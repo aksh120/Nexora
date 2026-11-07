@@ -109,3 +109,4 @@
   2. Eliminates background CPU cycles, network bandwidth, and TLS handshakes associated with telemetry daemons.
   3. Pre-compiled ad blocking accelerates page load times by up to 40% and reduces RAM usage by eliminating ad scripts.
 - **Consequences**: NEXORA makes outbound network connections exclusively for user-initiated website navigations.
+

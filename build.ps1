@@ -37,3 +37,4 @@ if ($Run) {
     Write-Host "Launching $exe..." -ForegroundColor Green
     & $exe
 }
+

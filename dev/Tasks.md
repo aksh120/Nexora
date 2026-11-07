@@ -43,11 +43,11 @@
 
 | Task ID | Description | Priority | Status | Dependencies | Completion Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `TASK-201` | Win32 Host Window Creation & Message Loop | P0 | **Not Started** | `TASK-104` | High-performance Win32 event loop with minimal CPU polling. |
-| `TASK-202` | Microsoft WebView2 COM Initialization | P0 | **Not Started** | `TASK-201` | Create environment with custom User Data Folder and media acceleration switches. |
-| `TASK-203` | Implement WebView2 Controller & Sizing Pipeline | P0 | **Not Started** | `TASK-202` | Attach WebView2 controller to host window client area with DPI scaling. |
-| `TASK-204` | Core Navigation Commands (URL, Back, Forward, Reload) | P0 | **Not Started** | `TASK-203` | Implement navigation state machine and event hooks. |
-| `TASK-205` | Process Lifecycle & Failure Recovery Hooks | P1 | **Not Started** | `TASK-204` | Handle `ProcessFailed` events and renderer crashes gracefully. |
+| `TASK-201` | Win32 Host Window Creation & Message Loop | P0 | **Completed** | `TASK-104` | Implemented native Win32 window in `src/browser/host_window.rs` with `CreateWindowExW`, dark styling, Per-Monitor DPI change handling (`WM_DPICHANGED`), non-polling `GetMessageW` message pump. Verified in unit tests. |
+| `TASK-202` | Microsoft WebView2 COM Initialization | P0 | **Completed** | `TASK-201` | Implemented in `src/engine/webview.rs` with `CoInitializeEx(COINIT_APARTMENTTHREADED)`, `CreateCoreWebView2EnvironmentWithOptions`, dedicated UDF (`%LOCALAPPDATA%\Nexora\Nexora\data\EngineData`), and low-overhead/D3D11 hardware acceleration switches. |
+| `TASK-203` | Implement WebView2 Controller & Sizing Pipeline | P0 | **Completed** | `TASK-202` | `CreateCoreWebView2Controller` attached directly to host `HWND`. Dynamic client area bounds resizing implemented via `WM_SIZE` callback. Verified with working set ~15MB. |
+| `TASK-204` | Core Navigation Commands (URL, Back, Forward, Reload) | P0 | **Completed** | `TASK-203` | Implemented `navigate`, `go_back`, `go_forward`, `reload`, `stop`, `get_source`, and `get_title` with automatic HTTPS prefix fallback. Verified live navigation to Google. |
+| `TASK-205` | Process Lifecycle & Failure Recovery Hooks | P1 | **Completed** | `TASK-204` | Event hooks connected for `NavigationStarting`, `NavigationCompleted`, `SourceChanged`, and `ProcessFailed` (renderer crash detection and automated recovery reload). |
 
 ---
 

@@ -103,3 +103,4 @@ $processes = Get-Process -Name $ProcessName, "msedgewebview2" -ErrorAction Silen
 $totalWorkingSetMB = ($processes | Measure-Object -Property WorkingSet64 -Sum).Sum / 1MB
 Write-Host "Total Memory Footprint: [Math]::Round($totalWorkingSetMB, 2) MB across $($processes.Count) processes."
 ```
+

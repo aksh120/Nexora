@@ -182,3 +182,4 @@ User Action (Navigate) ---> Omnibox Parsing ---> WebResourceRequested (Filter Ch
 ```
 
 All persistent operations on the SQLite database use explicit transactions wrapped in the WAL journal, ensuring that sudden system power outages or hard terminations do not corrupt bookmarks or session history.
+

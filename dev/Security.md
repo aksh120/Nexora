@@ -101,3 +101,4 @@ In NEXORA, security and user privacy are foundational requirements that are neve
 
 - **Kepler GPU Driver Legacy**: The NVIDIA GeForce GT 730 driver branch (R470 / 474.xx) is in legacy security maintenance. While DXVA2 video acceleration remains functional, NEXORA monitors for driver stability and provides instant software rendering fallback if driver anomalies occur.
 - **Physical Machine Access**: A compromised local user account with physical access can read files in `%APPDATA%`. Users requiring multi-user separation must rely on Windows user account isolation.
+

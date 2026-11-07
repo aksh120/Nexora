@@ -25,3 +25,9 @@ EngineData/
 
 # Environment
 .env
+
+
+
+# Added by cargo
+
+/target

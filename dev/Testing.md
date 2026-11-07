@@ -71,3 +71,4 @@ Testing in NEXORA is organized into rigorous automated and manual validation sui
 ### 6. Defect & Failure Log
 
 *(No defects recorded. Suite ready for Phase 1 execution.)*
+

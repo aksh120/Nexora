@@ -174,3 +174,4 @@ NEXORA utilizes a **dual-layer process architecture**:
   - Checks for the presence of the Microsoft WebView2 Evergreen Runtime. If missing (rare on modern Win10/Win11), bootstraps the official Microsoft silent installer.
   - Deploys `Nexora.exe`, default assets, and registers clean Windows shell associations for HTTP/HTTPS/HTML.
   - Zero bundled bloatware, toolbars, or silent background update services.
+
