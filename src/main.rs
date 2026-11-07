@@ -47,17 +47,14 @@ fn main() {
     log::info!("  Ad Blocker:            {}", app.config.ad_block_enabled);
     log::info!("  Tracker Protection:    {}", app.config.tracker_protection_enabled);
 
-    // 2. Initialize Persistent Storage (SQLite via native winsqlite3.dll)
+    // 2. Initialize Persistent Storage (SQLite with automated integrity verification & backup)
     let db_path = app.paths.data_dir.join("nexora.db");
-    let db = match SqliteConnection::open(&db_path) {
-        Ok(conn) => {
-            if let Err(err) = conn.migrate() {
-                log::error!("Database migration failed: {}", err);
-            }
-            Arc::new(conn)
-        }
+    let backup_path = app.paths.data_dir.join("nexora.db.bak");
+
+    let db = match crate::storage::DatabaseBackupManager::open_or_recover(&db_path, &backup_path) {
+        Ok(conn) => conn,
         Err(err) => {
-            log::error!("Failed to open database at {:?}: {}. Falling back to in-memory.", db_path, err);
+            log::error!("Failed to open or auto-recover database at {:?}: {}. Falling back to in-memory.", db_path, err);
             let in_mem = SqliteConnection::open_in_memory().expect("In-memory SQLite failed");
             let _ = in_mem.migrate();
             Arc::new(in_mem)
@@ -67,6 +64,13 @@ fn main() {
     let history_mgr = Arc::new(HistoryManager::new(db.clone()));
     let bookmark_mgr = Arc::new(BookmarkManager::new(db.clone()));
     let session_mgr = Arc::new(SessionManager::new(db.clone()));
+    let recovery_mgr = Arc::new(crate::storage::CrashRecoveryManager::new(&app.paths.data_dir));
+    let had_crash = recovery_mgr.detect_abnormal_shutdown();
+    if had_crash {
+        log::warn!("Abnormal shutdown detected! Initiating session crash recovery...");
+    }
+    let _ = recovery_mgr.mark_session_active();
+
     let _permissions_mgr = Arc::new(crate::privacy::PermissionsManager::new(db.clone()));
     let adblock_engine = Arc::new(crate::privacy::AdBlockEngine::new(
         app.config.ad_block_enabled,
@@ -116,9 +120,41 @@ fn main() {
     let theme = ThemePalette::from_mode(theme_mode);
     log::info!("Active Theme: {:?} (dark: {})", app.config.theme, theme.is_dark);
 
-    // 5. Initialize Multi-Tab State Machine via Lazy Session Restoration Pipeline
+    // 5. Initialize Multi-Tab State Machine via Lazy Session Restoration / Crash Recovery Pipeline
     let tab_manager = Rc::new(RefCell::new(TabManager::new()));
-    let initial_url = if let Ok(saved_session) = session_mgr.load_session() {
+    let initial_url = if had_crash {
+        if let Ok(Some(checkpoint)) = recovery_mgr.load_checkpoint() {
+            log::info!("Auto-recovering {} tabs from crash checkpoint...", checkpoint.tabs.len());
+            let saved = crate::storage::SavedSession {
+                tabs: checkpoint.tabs.into_iter().enumerate().map(|(pos, t)| crate::storage::SavedTab {
+                    id: t.id,
+                    position: pos as i32,
+                    url: t.url,
+                    title: t.title,
+                    is_active: Some(t.id) == checkpoint.active_tab_id,
+                    is_suspended: t.is_suspended,
+                }).collect(),
+                active_tab_id: checkpoint.active_tab_id,
+            };
+            let plan = crate::performance::LazyRestorePipeline::restore_session(
+                &saved,
+                &app.config.homepage,
+                &mut tab_manager.borrow_mut(),
+            );
+            plan.active_url
+        } else if let Ok(saved_session) = session_mgr.load_session() {
+            let plan = crate::performance::LazyRestorePipeline::restore_session(
+                &saved_session,
+                &app.config.homepage,
+                &mut tab_manager.borrow_mut(),
+            );
+            plan.active_url
+        } else {
+            let initial_tab_id = tab_manager.borrow_mut().create_tab(&app.config.homepage, Some("Nexora Home"));
+            log::info!("Created initial browser tab #{}", initial_tab_id);
+            app.config.homepage.clone()
+        }
+    } else if let Ok(saved_session) = session_mgr.load_session() {
         if !saved_session.tabs.is_empty() {
             log::info!("Executing Lazy Session Restoration Pipeline for {} tabs...", saved_session.tabs.len());
             let plan = crate::performance::LazyRestorePipeline::restore_session(
@@ -150,7 +186,10 @@ fn main() {
         app.config.smart_suspension,
         app.config.suspension_timeout_minutes,
     ) {
-        Ok(window) => Rc::new(window),
+        Ok(window) => {
+            window.set_recovery_manager(recovery_mgr.clone(), session_mgr.clone());
+            Rc::new(window)
+        }
         Err(err) => {
             log::error!("Failed to create Win32 host window: {}", err);
             return;

@@ -116,3 +116,4 @@ mod tests {
         assert!(!ZeroTelemetryAuditor::is_telemetry_endpoint("https://www.youtube.com/watch?v=123"));
     }
 }
+

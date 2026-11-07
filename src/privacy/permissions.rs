@@ -271,3 +271,4 @@ mod tests {
         assert_eq!(geo_reverted, PermissionState::Prompt);
     }
 }
+

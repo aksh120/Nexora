@@ -40,6 +40,8 @@ pub struct WindowContext {
     pub default_search_engine: String,
     pub is_closing: Arc<AtomicBool>,
     pub suspension_engine: SmartSuspensionEngine,
+    pub recovery_manager: Option<Arc<crate::storage::CrashRecoveryManager>>,
+    pub session_manager: Option<Arc<crate::storage::SessionManager>>,
 }
 
 pub struct HostWindow {
@@ -126,6 +128,8 @@ impl HostWindow {
                 default_search_engine: default_search.to_string(),
                 is_closing: is_closing.clone(),
                 suspension_engine,
+                recovery_manager: None,
+                session_manager: None,
             });
 
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(context) as isize);
@@ -136,6 +140,20 @@ impl HostWindow {
             log::info!("Native Win32 Host Window created (HWND: {:?}, size: {}x{})", hwnd.0, width, height);
 
             Ok(Self { hwnd, is_closing })
+        }
+    }
+
+    pub fn set_recovery_manager(
+        &self,
+        recovery: Arc<crate::storage::CrashRecoveryManager>,
+        session: Arc<crate::storage::SessionManager>,
+    ) {
+        unsafe {
+            let ptr = GetWindowLongPtrW(self.hwnd, GWLP_USERDATA) as *mut WindowContext;
+            if !ptr.is_null() {
+                (*ptr).recovery_manager = Some(recovery);
+                (*ptr).session_manager = Some(session);
+            }
         }
     }
 
@@ -457,6 +475,14 @@ impl HostWindow {
                         log::info!("SmartSuspension: Suspended {} idle tabs via background sweep", suspended.len());
                         let _ = InvalidateRect(hwnd, None, false);
                     }
+
+                    // Periodic session checkpointing (TASK-801)
+                    if let Some(ref recovery) = (*ptr).recovery_manager {
+                        let _ = recovery.save_checkpoint(tabs.tabs(), tabs.active_tab_id());
+                    }
+                    if let Some(ref session_mgr) = (*ptr).session_manager {
+                        let _ = session_mgr.save_session(tabs.tabs(), tabs.active_tab_id());
+                    }
                 }
                 LRESULT(0)
             }
@@ -464,6 +490,16 @@ impl HostWindow {
                 let _ = KillTimer(hwnd, IDT_SUSPENSION_TIMER);
                 if !ptr.is_null() {
                     (*ptr).is_closing.store(true, Ordering::SeqCst);
+
+                    // Final atomic checkpoint and clean exit marker (TASK-801)
+                    let tabs = (*ptr).tab_manager.borrow();
+                    if let Some(ref recovery) = (*ptr).recovery_manager {
+                        let _ = recovery.save_checkpoint(tabs.tabs(), tabs.active_tab_id());
+                        let _ = recovery.mark_clean_exit();
+                    }
+                    if let Some(ref session_mgr) = (*ptr).session_manager {
+                        let _ = session_mgr.save_session(tabs.tabs(), tabs.active_tab_id());
+                    }
                 }
                 let _ = windows::Win32::UI::WindowsAndMessaging::DestroyWindow(hwnd);
                 LRESULT(0)

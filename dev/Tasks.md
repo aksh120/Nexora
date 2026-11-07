@@ -113,9 +113,9 @@
 
 | Task ID | Description | Priority | Status | Dependencies | Completion Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `TASK-801` | Session Crash Checkpointing & Auto-Recovery | P0 | **Not Started** | `TASK-401` | Periodic tab state persistence for instant crash session restore. |
-| `TASK-802` | SQLite Database Integrity & Recovery Routine | P1 | **Not Started** | `TASK-401` | Database corruption detection, automated WAL cleanup, and backup restore. |
-| `TASK-803` | Renderer Process Abort & Silent Reload Handler | P1 | **Not Started** | `TASK-205` | Auto-respawn crashed webview tabs without dropping user navigation state. |
+| `TASK-801` | Session Crash Checkpointing & Auto-Recovery | P0 | **Completed** | `TASK-401` | Implemented `CrashRecoveryManager` in `src/storage/recovery.rs`. Maintains atomic session checkpoints (`session_checkpoint.json`) via temp-rename and tracks abnormal shutdowns via `clean_exit.marker`. Automatically recovers open tabs and foreground focus following unexpected termination or power loss. |
+| `TASK-802` | SQLite Database Integrity & Recovery Routine | P1 | **Completed** | `TASK-401` | Implemented `DatabaseBackupManager` in `src/storage/backup.rs`. Enforces `PRAGMA integrity_check` on connection, performs automated WAL compaction (`PRAGMA wal_checkpoint(TRUNCATE)`), maintains atomic `.bak` snapshots, and auto-quarantines corrupted headers while restoring valid backups. |
+| `TASK-803` | Renderer Process Abort & Silent Reload Handler | P1 | **Completed** | `TASK-205` | Implemented `CrashRecoveryController` in `src/engine/crash_handler.rs`. Attached to WebView2 `ProcessFailed` event; immediately performs silent reloads for transient renderer aborts and falls back to a responsive native crash card upon exceeding 3 failures in a 10s window to protect system stability. |
 
 ---
 

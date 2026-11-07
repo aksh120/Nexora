@@ -279,13 +279,44 @@ impl WebViewEngine {
             let _ = self.webview.add_SourceChanged(&source_handler, &mut source_token);
         }
 
-        // ProcessFailed (Crash Recovery Hook - TASK-205)
-        let process_failed_handler = ProcessFailedEventHandler::create(Box::new(|_sender, args| {
+        // ProcessFailed (Crash Recovery Hook - TASK-803)
+        let crash_controller = std::sync::Arc::new(std::sync::Mutex::new(crate::engine::CrashRecoveryController::default()));
+        let crash_ctrl_clone = crash_controller.clone();
+
+        let process_failed_handler = ProcessFailedEventHandler::create(Box::new(move |sender, args| {
             if let Some(args) = args {
                 unsafe {
                     let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
                     let _ = args.ProcessFailedKind(&mut kind);
-                    log::error!("[WebView2 Alert] Process Failed (Kind: {:?}). Initiating recovery reload...", kind);
+
+                    let mut uri_str = String::from("about:blank");
+                    if let Some(ref s) = sender {
+                        let mut uri = PWSTR::null();
+                        if s.Source(&mut uri).is_ok() {
+                            uri_str = string_from_pcwstr(&PCWSTR(uri.0));
+                        }
+                    }
+
+                    let reason = format!("{:?}", kind);
+                    let action = if let Ok(mut ctrl) = crash_ctrl_clone.lock() {
+                        ctrl.handle_failure(&uri_str, &reason)
+                    } else {
+                        crate::engine::CrashRecoveryAction::SilentReload(uri_str.clone())
+                    };
+
+                    if let Some(s) = sender {
+                        match action {
+                            crate::engine::CrashRecoveryAction::SilentReload(url) => {
+                                log::info!("[CrashRecovery] Auto-respawning crashed renderer for {}", url);
+                                let _ = s.Reload();
+                            }
+                            crate::engine::CrashRecoveryAction::ShowCrashCard(html) => {
+                                log::warn!("[CrashRecovery] Crash limit reached, presenting fallback card");
+                                let wide_html = pwstr_from_str(&html);
+                                let _ = s.NavigateToString(PCWSTR(wide_html.0));
+                            }
+                        }
+                    }
                 }
             }
             Ok(())

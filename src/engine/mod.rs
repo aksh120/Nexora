@@ -1,4 +1,6 @@
 // Embedded WebView2 Engine Integration
 pub mod webview;
-pub use webview::WebViewEngine;
+pub mod crash_handler;
 
+pub use webview::WebViewEngine;
+pub use crash_handler::{CrashRecoveryAction, CrashRecoveryController};
