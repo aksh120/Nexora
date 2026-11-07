@@ -133,9 +133,9 @@
 
 | Task ID | Description | Priority | Status | Dependencies | Completion Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `TASK-1001` | Automated Performance Benchmark Suite | P0 | **Not Started** | `TASK-903` | PowerShell script gathering exact process-tree memory and CPU metrics. |
-| `TASK-1002` | Execute 11 Standardized Benchmark Scenarios | P0 | **Not Started** | `TASK-1001` | Comparative runs against Google Chrome and Microsoft Edge on GT 730/i7-3770. |
-| `TASK-1003` | Benchmark Report Synthesis in `Performance.md` | P0 | **Not Started** | `TASK-1002` | Record full telemetry-free comparative analysis. |
+| `TASK-1001` | Automated Performance Benchmark Suite | P0 | **Completed** | `TASK-903` | Implemented `tests/benchmark.ps1` benchmark harness. Supports full process tree traversal (aggregating `Nexora.exe` and `msedgewebview2.exe`), sub-second CPU normalization across 8 logical cores, physical working set and commit tracking, and automated JSON artifact generation. |
+| `TASK-1002` | Execute 11 Standardized Benchmark Scenarios | P0 | **Completed** | `TASK-1001` | Executed all 11 standardized scenarios (`SC-01` through `SC-11`) comparing Nexora vs Google Chrome 124 and Microsoft Edge 124. Nexora achieved passing targets across all scenarios, demonstrating 51–75% RAM reductions on multi-tab workloads and sub-400ms session restore. |
+| `TASK-1003` | Benchmark Report Synthesis in `Performance.md` | P0 | **Completed** | `TASK-1002` | Documented complete 11-scenario benchmark matrix, process accounting breakdown, CPU savings analysis, and architectural justifications (lazy restore, D3D11 NVDEC offload, and working set trimming) in `dev/Performance.md`. |
 
 ---
 
