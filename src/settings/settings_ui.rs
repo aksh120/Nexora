@@ -532,6 +532,20 @@ impl SettingsUi {
                     </div>
                     <div class="setting-row">
                         <div class="setting-info">
+                            <h4>Bookmarks Manager</h4>
+                            <p>Organize, search, and manage your saved web bookmarks</p>
+                        </div>
+                        <button class="btn" onclick="navigate('nexora://bookmarks')">Open Bookmarks</button>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info">
+                            <h4>Browsing History</h4>
+                            <p>View, search, or purge your local chronological browsing timeline</p>
+                        </div>
+                        <button class="btn" onclick="navigate('nexora://history')">Open History</button>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info">
                             <h4>Interface Theme</h4>
                             <p>Match Windows system default appearance or force dark/light mode</p>
                         </div>
@@ -693,6 +707,13 @@ impl SettingsUi {
                         </div>
                         <button class="btn" id="btn-clear-cache" onclick="clearCache()">Clear Cache</button>
                     </div>
+                    <div class="setting-row">
+                        <div class="setting-info">
+                            <h4>Clear Browsing History</h4>
+                            <p>Erase all visited URL records and timeline metadata from SQLite database</p>
+                        </div>
+                        <button class="btn btn-danger" id="btn-clear-history" onclick="clearHistory()">Clear History</button>
+                    </div>
                 </div>
             </div>
 
@@ -747,6 +768,32 @@ impl SettingsUi {
             toastTimeout = setTimeout(() => {{
                 toast.classList.remove('show');
             }}, 2200);
+        }}
+
+        function navigate(url) {{
+            if (window.chrome && window.chrome.webview) {{
+                window.chrome.webview.postMessage(JSON.stringify({{
+                    action: "navigate",
+                    url: url
+                }}));
+            }} else {{
+                window.location.href = url;
+            }}
+        }}
+
+        function clearHistory() {{
+            if (confirm("Are you sure you want to clear your complete browsing history?")) {{
+                if (window.chrome && window.chrome.webview) {{
+                    window.chrome.webview.postMessage(JSON.stringify({{
+                        action: "clear_history"
+                    }}));
+                }}
+                showToast("✓ Browsing history cleared");
+                const btn = document.getElementById('btn-clear-history');
+                if (btn) {{
+                    btn.textContent = "✓ History Cleared";
+                }}
+            }}
         }}
 
         function switchTab(tabId, clickedElement) {{
@@ -883,6 +930,8 @@ mod tests {
         assert!(html.contains("Video &amp; Streaming Optimization") || html.contains("Video"));
         assert!(html.contains("Storage &amp; Cache Boundaries") || html.contains("Storage"));
         assert!(html.contains("About Nexora Browser"));
+        assert!(html.contains("Bookmarks Manager"));
+        assert!(html.contains("Browsing History"));
         assert!(html.contains("https://www.google.com"));
         assert!(html.contains("Zero-Telemetry"));
     }

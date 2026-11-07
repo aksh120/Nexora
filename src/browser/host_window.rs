@@ -12,7 +12,8 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::MARGINS;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyState, ReleaseCapture, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT, VK_CONTROL,
+    GetKeyState, ReleaseCapture, SetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
+    VK_CONTROL, VK_ESCAPE, VK_F11, VK_F5, VK_LEFT, VK_MENU, VK_RIGHT, VK_SHIFT, VK_TAB,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DispatchMessageW,
@@ -28,6 +29,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 pub const WM_MOUSELEAVE: u32 = 0x02A3;
+pub const EM_SETSEL: u32 = 0x00B1;
 
 pub const IDM_NEW_TAB: usize = 2001;
 pub const IDM_BOOKMARKS: usize = 2002;
@@ -60,6 +62,7 @@ pub struct WindowContext {
     pub recovery_manager: Option<Arc<crate::storage::CrashRecoveryManager>>,
     pub session_manager: Option<Arc<crate::storage::SessionManager>>,
     pub omnibox_brush: HBRUSH,
+    pub fullscreen: crate::media::FullscreenController,
 }
 
 pub struct HostWindow {
@@ -159,6 +162,7 @@ impl HostWindow {
                 recovery_manager: None,
                 session_manager: None,
                 omnibox_brush,
+                fullscreen: crate::media::FullscreenController::new(),
             });
 
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(context) as isize);
@@ -369,10 +373,13 @@ impl HostWindow {
                 let mut ps = PAINTSTRUCT::default();
                 let hdc = BeginPaint(hwnd, &mut ps);
                 if !ptr.is_null() {
-                    if let Some(ref chrome) = (*ptr).chrome {
-                        let tabs = (*ptr).tab_manager.borrow();
-                        let is_maximized = IsZoomed(hwnd).as_bool();
-                        chrome.render(hdc, &(*ptr).layout, tabs.tabs(), tabs.active_tab_id(), is_maximized);
+                    let is_fs = (*ptr).fullscreen.is_fullscreen();
+                    if !is_fs {
+                        if let Some(ref chrome) = (*ptr).chrome {
+                            let tabs = (*ptr).tab_manager.borrow();
+                            let is_maximized = IsZoomed(hwnd).as_bool();
+                            chrome.render(hdc, &(*ptr).layout, tabs.tabs(), tabs.active_tab_id(), is_maximized);
+                        }
                     }
                 }
                 let _ = EndPaint(hwnd, &ps);
@@ -739,8 +746,105 @@ impl HostWindow {
             WM_KEYDOWN => {
                 if !ptr.is_null() {
                     let ctrl_pressed = (GetKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0;
+                    let shift_pressed = (GetKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000) != 0;
+                    let alt_pressed = (GetKeyState(VK_MENU.0 as i32) as u16 & 0x8000) != 0;
+                    let vk = wparam.0 as u16;
+
+                    // 1. F11 Fullscreen Toggle
+                    if vk == VK_F11.0 {
+                        let is_fs = (*ptr).fullscreen.is_fullscreen();
+                        if is_fs {
+                            let (_, _, w, h) = (*ptr).fullscreen.exit_fullscreen(hwnd);
+                            (*ptr).layout = BrowserLayout::new(w, h);
+                            if let Some(ref webview) = (*ptr).webview {
+                                let (wx, wy, ww, wh) = (*ptr).layout.webview_rect();
+                                let _ = webview.set_bounds(wx, wy, ww, wh);
+                            }
+                        } else {
+                            let (_, _, w, h) = (*ptr).fullscreen.enter_fullscreen(hwnd);
+                            if let Some(ref webview) = (*ptr).webview {
+                                let _ = webview.set_bounds(0, 0, w, h);
+                            }
+                        }
+                        let _ = InvalidateRect(hwnd, None, false);
+                        return LRESULT(0);
+                    }
+
+                    // 2. Escape: Exit Fullscreen
+                    if vk == VK_ESCAPE.0 && (*ptr).fullscreen.is_fullscreen() {
+                        let (_, _, w, h) = (*ptr).fullscreen.exit_fullscreen(hwnd);
+                        (*ptr).layout = BrowserLayout::new(w, h);
+                        if let Some(ref webview) = (*ptr).webview {
+                            let (wx, wy, ww, wh) = (*ptr).layout.webview_rect();
+                            let _ = webview.set_bounds(wx, wy, ww, wh);
+                        }
+                        let _ = InvalidateRect(hwnd, None, false);
+                        return LRESULT(0);
+                    }
+
+                    // 3. F5 Reload
+                    if vk == VK_F5.0 {
+                        if let Some(ref webview) = (*ptr).webview {
+                            let _ = webview.reload();
+                        }
+                        return LRESULT(0);
+                    }
+
+                    // 4. Alt shortcuts (Back, Forward, Focus Omnibox)
+                    if alt_pressed {
+                        if vk == VK_LEFT.0 {
+                            if let Some(ref webview) = (*ptr).webview {
+                                let _ = webview.go_back();
+                            }
+                            return LRESULT(0);
+                        }
+                        if vk == VK_RIGHT.0 {
+                            if let Some(ref webview) = (*ptr).webview {
+                                let _ = webview.go_forward();
+                            }
+                            return LRESULT(0);
+                        }
+                        if vk == b'D' as u16 || vk == b'd' as u16 {
+                            if let Some(ref chrome) = (*ptr).chrome {
+                                let _ = SetFocus(chrome.hwnd_omnibox);
+                                let _ = SendMessageW(chrome.hwnd_omnibox, EM_SETSEL, WPARAM(0), LPARAM(-1));
+                            }
+                            return LRESULT(0);
+                        }
+                    }
+
+                    // 5. Ctrl shortcuts
                     if ctrl_pressed {
-                        match wparam.0 as u8 as char {
+                        if vk == VK_TAB.0 {
+                            let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            let active_id = tabs.active_tab_id().unwrap_or(0);
+                            let all_ids: Vec<usize> = tabs.tabs().iter().map(|t| t.id).collect();
+                            if !all_ids.is_empty() {
+                                let cur_idx = all_ids.iter().position(|&id| id == active_id).unwrap_or(0);
+                                let next_idx = if shift_pressed {
+                                    if cur_idx == 0 { all_ids.len() - 1 } else { cur_idx - 1 }
+                                } else {
+                                    (cur_idx + 1) % all_ids.len()
+                                };
+                                let target_id = all_ids[next_idx];
+                                if tabs.switch_tab(target_id) {
+                                    if let Some(active) = tabs.get_active_tab() {
+                                        let url = active.url.clone();
+                                        drop(tabs);
+                                        if let Some(ref webview) = (*ptr).webview {
+                                            let _ = webview.navigate(&url);
+                                        }
+                                        if let Some(ref chrome) = (*ptr).chrome {
+                                            chrome.set_omnibox_text(&url);
+                                        }
+                                        let _ = InvalidateRect(hwnd, None, false);
+                                    }
+                                }
+                            }
+                            return LRESULT(0);
+                        }
+
+                        match vk as u8 as char {
                             'H' | 'h' => {
                                 if let Some(ref webview) = (*ptr).webview {
                                     let _ = webview.navigate("nexora://history");
@@ -801,6 +905,71 @@ impl HostWindow {
                                     }
                                 }
                                 return LRESULT(0);
+                            }
+                            'T' | 't' => {
+                                let homepage = (*ptr).homepage.clone();
+                                let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                let _ = tabs.create_tab(&homepage, Some("New Tab"));
+                                drop(tabs);
+                                if let Some(ref webview) = (*ptr).webview {
+                                    let _ = webview.navigate(&homepage);
+                                }
+                                if let Some(ref chrome) = (*ptr).chrome {
+                                    chrome.set_omnibox_text(&homepage);
+                                    let count = (*ptr).tab_manager.borrow().tab_count();
+                                    chrome.layout_controls(&(*ptr).layout, count);
+                                    let _ = SetFocus(chrome.hwnd_omnibox);
+                                    let _ = SendMessageW(chrome.hwnd_omnibox, EM_SETSEL, WPARAM(0), LPARAM(-1));
+                                }
+                                let _ = InvalidateRect(hwnd, None, false);
+                                return LRESULT(0);
+                            }
+                            'W' | 'w' => {
+                                let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                if let Some(active_id) = tabs.active_tab_id() {
+                                    let new_active = tabs.close_tab(active_id);
+                                    let maybe_url = new_active.and_then(|new_id| tabs.get_tab(new_id).map(|t| t.url.clone()));
+                                    drop(tabs);
+
+                                    if let Some(url) = maybe_url {
+                                        if let Some(ref webview) = (*ptr).webview {
+                                            let _ = webview.navigate(&url);
+                                        }
+                                        if let Some(ref chrome) = (*ptr).chrome {
+                                            chrome.set_omnibox_text(&url);
+                                        }
+                                    } else {
+                                        let _ = SendMessageW(hwnd, WM_CLOSE, WPARAM(0), LPARAM(0));
+                                    }
+
+                                    if let Some(ref chrome) = (*ptr).chrome {
+                                        let count = (*ptr).tab_manager.borrow().tab_count();
+                                        chrome.layout_controls(&(*ptr).layout, count);
+                                    }
+                                    let _ = InvalidateRect(hwnd, None, false);
+                                }
+                                return LRESULT(0);
+                            }
+                            'R' | 'r' => {
+                                if let Some(ref webview) = (*ptr).webview {
+                                    let _ = webview.reload();
+                                }
+                                return LRESULT(0);
+                            }
+                            'L' | 'l' => {
+                                if let Some(ref chrome) = (*ptr).chrome {
+                                    let _ = SetFocus(chrome.hwnd_omnibox);
+                                    let _ = SendMessageW(chrome.hwnd_omnibox, EM_SETSEL, WPARAM(0), LPARAM(-1));
+                                }
+                                return LRESULT(0);
+                            }
+                            'P' | 'p' => {
+                                if shift_pressed {
+                                    if let Some(ref webview) = (*ptr).webview {
+                                        let _ = webview.trigger_pip();
+                                    }
+                                    return LRESULT(0);
+                                }
                             }
                             _ => {}
                         }

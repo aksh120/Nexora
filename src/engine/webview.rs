@@ -110,7 +110,7 @@ impl WebViewEngine {
         };
 
         // 4. Hook Core Events
-        engine.setup_event_handlers()?;
+        engine.setup_event_handlers(hwnd)?;
 
         // 5. Navigate to initial URL
         engine.navigate(initial_url)?;
@@ -280,7 +280,7 @@ impl WebViewEngine {
         self.execute_script(script)
     }
 
-    fn setup_event_handlers(&self) -> Result<()> {
+    fn setup_event_handlers(&self, hwnd: HWND) -> Result<()> {
         // NavigationStarting
         let starting_handler = NavigationStartingEventHandler::create(Box::new(|_sender, args| {
             if let Some(args) = args {
@@ -407,12 +407,33 @@ impl WebViewEngine {
         }
 
         // ContainsFullScreenElementChanged (HTML5 Fullscreen Hook - TASK-505)
-        let fs_handler = ContainsFullScreenElementChangedEventHandler::create(Box::new(|sender, _args| {
+        let hwnd_parent = hwnd;
+        let ctl_for_fs = self.controller.clone();
+        let fs_handler = ContainsFullScreenElementChangedEventHandler::create(Box::new(move |sender, _args| {
             if let Some(sender) = sender {
                 unsafe {
                     let mut is_fs = BOOL(0);
                     if sender.ContainsFullScreenElement(&mut is_fs).is_ok() {
-                        log::info!("[Media Engine] HTML5 Fullscreen changed: {}", is_fs.as_bool());
+                        let entering_fs = is_fs.as_bool();
+                        log::info!("[Media Engine] HTML5 Fullscreen changed: {}", entering_fs);
+                        let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                            hwnd_parent,
+                            windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                        ) as *mut crate::browser::host_window::WindowContext;
+                        if !ptr.is_null() {
+                            if entering_fs {
+                                let (_, _, w, h) = (*ptr).fullscreen.enter_fullscreen(hwnd_parent);
+                                let rect = RECT { left: 0, top: 0, right: w, bottom: h };
+                                let _ = ctl_for_fs.SetBounds(rect);
+                            } else {
+                                let (_, _, w, h) = (*ptr).fullscreen.exit_fullscreen(hwnd_parent);
+                                (*ptr).layout = crate::ui::layout::BrowserLayout::new(w, h);
+                                let (wx, wy, ww, wh) = (*ptr).layout.webview_rect();
+                                let rect = RECT { left: wx, top: wy, right: wx + ww, bottom: wy + wh };
+                                let _ = ctl_for_fs.SetBounds(rect);
+                            }
+                            let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
+                        }
                     }
                 }
             }
@@ -421,6 +442,36 @@ impl WebViewEngine {
         let mut fs_token = EventRegistrationToken::default();
         unsafe {
             let _ = self.webview.add_ContainsFullScreenElementChanged(&fs_handler, &mut fs_token);
+        }
+
+        // AcceleratorKeyPressed (Forward F11, Escape, F5, Ctrl+shortcuts to host window)
+        let accel_handler = AcceleratorKeyPressedEventHandler::create(Box::new(move |_sender, args| {
+            if let Some(args) = args {
+                unsafe {
+                    let mut kind = COREWEBVIEW2_KEY_EVENT_KIND::default();
+                    let _ = args.KeyEventKind(&mut kind);
+                    if kind == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN || kind == COREWEBVIEW2_KEY_EVENT_KIND_SYSTEM_KEY_DOWN {
+                        let mut vk: u32 = 0;
+                        if args.VirtualKey(&mut vk).is_ok() {
+                            // F11 (0x7A), Escape (0x1B), F5 (0x74)
+                            if vk == 0x7A || vk == 0x1B || vk == 0x74 {
+                                let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+                                    hwnd_parent,
+                                    windows::Win32::UI::WindowsAndMessaging::WM_KEYDOWN,
+                                    windows::Win32::Foundation::WPARAM(vk as usize),
+                                    windows::Win32::Foundation::LPARAM(0),
+                                );
+                                let _ = args.SetHandled(BOOL(1));
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }));
+        let mut accel_token = EventRegistrationToken::default();
+        unsafe {
+            let _ = self.controller.add_AcceleratorKeyPressed(&accel_handler, &mut accel_token);
         }
 
         // IsDocumentPlayingAudioChanged (Active Media Detection - TASK-504)

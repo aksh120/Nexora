@@ -35,8 +35,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 #### User Interface & Experience
 - **Minimalist Cyber Aesthetic**: Dark-mode visual identity with electric cyan accents (`#00E5FF`) and high-DPI vector SVG rendering.
+- **Custom Frameless Title Bar**: Native Win32 frameless caption with window dragging, double-click maximize, and integrated custom caption controls.
+- **Vector Line Navigation Icons**: High-precision GDI vector line art for Back, Forward, Reload, Home, Bookmark Star, and Menu.
 - **Unified Omnibox**: Address and search bar supporting DuckDuckGo, Google, Bing, and Brave search engine fallbacks.
 - **Internal Browser Pages**:
+  - `nexora://bookmarks`: Visual bookmark manager with real-time search, inline creation, and 1-click launch.
+  - `nexora://history`: Chronological browsing history with visit counts, timestamps, search, and clearing.
   - `nexora://settings`: Categorized configuration interface (General, Performance, Privacy, Video, Storage, About).
   - `nexora://diagnostics`: Real-time system diagnostics displaying live host RAM, system memory pressure, tab states, adblock metrics, and D3D11 GPU status.
 - **Crash Recovery & Backup**: Atomic session checkpoints (`session_checkpoint.json`) and automated SQLite database integrity checks and backups.
