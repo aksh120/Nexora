@@ -1,3 +1,8 @@
 // Omnibox and Navigation Logic
-pub mod omnibox;
+#![allow(unused_imports)]
 
+pub mod omnibox;
+pub mod search;
+
+pub use omnibox::{NavigationTarget, Omnibox, OmniboxSuggestion, SecurityBadge, SuggestionType};
+pub use search::SearchEngine;

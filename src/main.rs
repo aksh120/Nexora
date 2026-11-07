@@ -15,10 +15,13 @@ mod storage;
 mod tabs;
 mod ui;
 
+use std::cell::RefCell;
 use std::rc::Rc;
 use crate::app::Application;
 use crate::browser::HostWindow;
 use crate::engine::WebViewEngine;
+use crate::tabs::TabManager;
+use crate::ui::theme::{ThemeMode, ThemePalette};
 
 fn main() {
     // 1. Initialize core application lifecycle, logging, and directories
@@ -42,16 +45,45 @@ fn main() {
     log::info!("  Ad Blocker:            {}", app.config.ad_block_enabled);
     log::info!("  Tracker Protection:    {}", app.config.tracker_protection_enabled);
 
-    // 2. Create the native Win32 Host Window
-    let host_window = match HostWindow::new("Nexora", 1280, 800) {
-        Ok(window) => window,
+    // 2. Resolve Theme
+    let theme_mode = match app.config.theme {
+        crate::app::config::ThemeMode::Light => ThemeMode::Light,
+        crate::app::config::ThemeMode::Dark => ThemeMode::Dark,
+        crate::app::config::ThemeMode::System => ThemeMode::System,
+    };
+    let theme = ThemePalette::from_mode(theme_mode);
+    log::info!("Active Theme: {:?} (dark: {})", app.config.theme, theme.is_dark);
+
+    // 3. Initialize Multi-Tab State Machine
+    let tab_manager = Rc::new(RefCell::new(TabManager::new()));
+    let initial_tab_id = tab_manager.borrow_mut().create_tab(&app.config.homepage, Some("Nexora Home"));
+    log::info!("Created initial browser tab #{}", initial_tab_id);
+
+    // 4. Create the native Win32 Host Window
+    let host_window = match HostWindow::new(
+        "Nexora",
+        1280,
+        800,
+        theme,
+        &app.config.homepage,
+        &app.config.default_search_engine,
+        tab_manager.clone(),
+    ) {
+        Ok(window) => Rc::new(window),
         Err(err) => {
             log::error!("Failed to create Win32 host window: {}", err);
             return;
         }
     };
 
-    // 3. Initialize WebView2 Engine attached to the Host Window
+    // 5. Initialize Native Chrome (Tab bar, Navigation buttons, Omnibox)
+    if let Err(err) = host_window.init_chrome() {
+        log::error!("Failed to initialize browser chrome: {}", err);
+        return;
+    }
+    host_window.update_omnibox_url(&app.config.homepage);
+
+    // 6. Initialize WebView2 Engine attached to the Host Window
     let webview = match WebViewEngine::new(
         host_window.hwnd(),
         &app.paths.engine_data_dir,
@@ -64,20 +96,14 @@ fn main() {
         }
     };
 
-    // 4. Configure initial bounds and resize handler
-    let (left, top, width, height) = host_window.get_client_bounds();
-    let _ = webview.set_bounds(left, top, width, height);
+    // 7. Associate WebView2 with HostWindow
+    host_window.set_webview(webview);
 
-    let webview_clone = webview.clone();
-    host_window.set_resize_callback(move |x, y, w, h| {
-        let _ = webview_clone.set_bounds(x, y, w, h);
-    });
-
-    // 5. Display the Host Window
+    // 8. Display the Host Window
     host_window.show();
     log::info!("Nexora main window shown. Entering message loop.");
 
-    // 6. Enter the native Win32 message loop
+    // 9. Enter the native Win32 message loop
     host_window.run_message_loop();
 
     log::info!("Nexora Browser exited cleanly.");

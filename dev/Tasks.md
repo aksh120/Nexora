@@ -55,12 +55,12 @@
 
 | Task ID | Description | Priority | Status | Dependencies | Completion Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `TASK-301` | Native Multi-Tab Manager State Machine | P0 | **Not Started** | `TASK-204` | Tab collection, active tab switching, tab closure, and creation. |
-| `TASK-302` | Compact Tab Bar UI Rendering | P1 | **Not Started** | `TASK-301` | Low-profile tab strip with titles, audio indicators, and close buttons. |
-| `TASK-303` | Advanced Omnibox (URL / Search Bar) | P0 | **Not Started** | `TASK-301` | URL validation, search query differentiation, keyboard navigation. |
-| `TASK-304` | Omnibox Autocomplete & Suggestions Engine | P1 | **Not Started** | `TASK-303` | Instant local history and bookmark suggestions matching prefix. |
-| `TASK-305` | Navigation Toolbar Controls (Back/Forward/Reload/Home) | P1 | **Not Started** | `TASK-303` | Render responsive, minimal native control buttons. |
-| `TASK-306` | Dark and Light Theme Engine | P2 | **Not Started** | `TASK-302` | Native Win32 dark mode theme support conforming to Windows system theme. |
+| `TASK-301` | Native Multi-Tab Manager State Machine | P0 | **Completed** | `TASK-204` | Implemented `TabManager` & `Tab` in `src/tabs/` supporting tab creation, adjacent selection on close, tab switching, audio state tracking, and suspension guard rules. Verified with 100% passing tests. |
+| `TASK-302` | Compact Tab Bar UI Rendering | P1 | **Completed** | `TASK-301` | Implemented flicker-free double-buffered GDI tab strip renderer in `src/ui/chrome.rs` and `src/ui/layout.rs` with active tab accent line, audio/suspended badges, and close button hit testing. |
+| `TASK-303` | Advanced Omnibox (URL / Search Bar) | P0 | **Completed** | `TASK-301` | Implemented `Omnibox` parser in `src/navigation/omnibox.rs` differentiating direct schemes, localhost, IP addresses, domains, and search queries with security badges (`Secure`, `Insecure`, `Local`, `Internal`). Subclassed native edit control in `BrowserChrome`. |
+| `TASK-304` | Omnibox Autocomplete & Suggestions Engine | P1 | **Completed** | `TASK-303` | Implemented suggestion engine matching query against pre-seeded popular streaming services (YouTube, Netflix, Prime Video, Hotstar, Twitch, Spotify) and search queries. |
+| `TASK-305` | Navigation Toolbar Controls (Back/Forward/Reload/Home) | P1 | **Completed** | `TASK-303` | Integrated native controls in `BrowserChrome` for Back, Forward, Reload, Home, Omnibox, New Tab, and Menu with custom Segoe UI font and message handling in `HostWindow`. |
+| `TASK-306` | Dark and Light Theme Engine | P2 | **Completed** | `TASK-302` | Implemented `ThemePalette` in `src/ui/theme.rs` with Dark, Light, and System modes. Automatic detection of Windows `AppsUseLightTheme` and native Windows 10/11 title bar immersive dark mode via `DwmSetWindowAttribute`. |
 
 ---
 

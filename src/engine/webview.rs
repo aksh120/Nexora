@@ -296,8 +296,18 @@ mod tests {
 
     #[test]
     fn test_webview_engine_initialization() {
-        let window = HostWindow::new("Nexora Engine Test Window", 800, 600)
-            .expect("HostWindow creation failed in test");
+        let tab_mgr = std::rc::Rc::new(std::cell::RefCell::new(crate::tabs::TabManager::new()));
+        let theme = crate::ui::theme::ThemePalette::dark();
+        let window = HostWindow::new(
+            "Nexora Engine Test Window",
+            800,
+            600,
+            theme,
+            "https://www.google.com",
+            "Google",
+            tab_mgr,
+        )
+        .expect("HostWindow creation failed in test");
 
         let temp_dir = std::env::temp_dir().join(format!("nexora_test_udf_{}", std::process::id()));
         let engine = WebViewEngine::new(window.hwnd(), &temp_dir, "https://www.google.com");
