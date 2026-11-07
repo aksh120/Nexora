@@ -9,9 +9,9 @@
 
 | Status | Count |
 | :--- | :--- |
-| **Completed** | 1 |
-| **In Progress** | 1 |
-| **Not Started** | 43 |
+| **Completed** | 4 |
+| **In Progress** | 0 |
+| **Not Started** | 41 |
 | **Blocked** | 0 |
 | **Total** | 45 |
 
@@ -22,9 +22,9 @@
 | Task ID | Description | Priority | Status | Dependencies | Completion Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `TASK-001` | System & Target Hardware Profiling (i7-3770, GT 730, Win 11) | P0 | **Completed** | None | Detected Intel Core i7-3770 (4C/8T), NVIDIA GT 730, Windows 11 Pro 64-bit (22631). WebView2 runtime 157.0.4341.42 pre-installed. |
-| `TASK-002` | Browser Engine & DRM Feasibility Investigation | P0 | **In Progress** | `TASK-001` | Evaluated WebView2 vs CEF vs Wry. WebView2 selected for native PlayReady/Widevine DRM, D3D11/DXVA2 acceleration, and OS runtime sharing. |
-| `TASK-003` | Prototype Benchmarking & Toolchain Verification | P0 | **Not Started** | `TASK-002` | Verify Rust compilation on Windows with MSVC/GNU toolchains and COM bindings. |
-| `TASK-004` | Complete `/dev` Specification Documentation | P0 | **In Progress** | `TASK-002` | Drafting `Plan.md`, `Phases.md`, `Tasks.md`, `Architecture.md`, `Performance.md`, `Security.md`, `Testing.md`, `Decisions.md`. |
+| `TASK-002` | Browser Engine & DRM Feasibility Investigation | P0 | **Completed** | `TASK-001` | Evaluated WebView2 vs CEF vs Wry vs Servo. WebView2 selected for legitimate PlayReady/Widevine DRM, D3D11/DXVA2 acceleration, and OS runtime deduplication. |
+| `TASK-003` | Prototype Benchmarking & Toolchain Verification | P0 | **Completed** | `TASK-002` | Installed Rust 1.99.1 (`stable-x86_64-pc-windows-gnu`); verified standalone compilation and native linking. |
+| `TASK-004` | Complete `/dev` Specification Documentation | P0 | **Completed** | `TASK-002` | Authored and committed complete `/dev` suite: `Plan.md`, `Phases.md`, `Tasks.md`, `Architecture.md`, `Performance.md`, `Security.md`, `Testing.md`, `Decisions.md`. |
 
 ---
 
