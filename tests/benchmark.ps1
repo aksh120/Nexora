@@ -180,14 +180,12 @@ function Get-BrowserProcesses {
             }
             # Also capture WebView2 subprocesses spawned by Nexora
             $nexoraPids = $nexoraProcs | ForEach-Object { $_.Id }
-            $wv2Procs = Get-Process -Name "msedgewebview2" -ErrorAction SilentlyContinue | Where-Object {
-                try {
-                    $parent = (Get-CimInstance Win32_Process -Filter "ProcessId = $($_.Id)").ParentProcessId
-                    $nexoraPids -contains $parent -or $nexoraProcs.Count -gt 0
-                } catch {
-                    $true
-                }
-            }
+            $wv2Procs = Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" -ErrorAction SilentlyContinue | Where-Object {
+                $_.CommandLine -like "*Nexora*" -or $nexoraPids -contains $_.ParentProcessId
+            } | ForEach-Object {
+                Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue
+            } | Where-Object { $_ -ne $null }
+
             return @($nexoraProcs) + @($wv2Procs)
         }
         "Chrome" {
@@ -430,3 +428,4 @@ if ($OutputPath) {
     $results | ConvertTo-Json -Depth 4 | Set-Content -Path $OutputPath -Encoding UTF8
     Write-Host "Benchmark JSON report written to: $OutputPath" -ForegroundColor Green
 }
+
