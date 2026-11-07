@@ -1,7 +1,7 @@
 use crate::app::config::{NexoraConfig, ThemeMode};
 use crate::ui::branding::BrandIdentity;
 
-/// Minimalist, high-performance Settings Page Renderer
+/// Professional, high-performance Settings Page Renderer
 pub struct SettingsUi;
 
 impl SettingsUi {
@@ -30,42 +30,41 @@ impl SettingsUi {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nexora Settings</title>
+    <title>Settings - Nexora</title>
     <style>
         :root {{
-            --bg-base: #0B0E14;
-            --bg-sidebar: #10141D;
-            --bg-card: #151923;
-            --bg-card-hover: #191E2B;
-            --bg-input: #0B0E14;
-            --border: #202738;
-            --border-focus: #00E5FF;
-            --text-primary: #F8FAFC;
-            --text-secondary: #94A3B8;
-            --text-muted: #64748B;
-            --accent: #00E5FF;
-            --accent-glow: rgba(0, 229, 255, 0.15);
-            --danger: #EF4444;
-            --danger-bg: rgba(239, 68, 68, 0.1);
-            --success: #10B981;
-            --success-bg: rgba(16, 185, 129, 0.1);
-            --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --bg-base: #1E1E1E;
+            --bg-sidebar: #181818;
+            --bg-card: #252525;
+            --bg-card-hover: #2A2A2A;
+            --bg-input: #1F1F1F;
+            --border: #333333;
+            --border-subtle: #2C2C2C;
+            --border-focus: #0078D4;
+            --text-primary: #E8EAED;
+            --text-secondary: #9AA0A6;
+            --text-muted: #70757A;
+            --accent: #0078D4;
+            --accent-hover: #106EBE;
+            --danger: #D13438;
+            --danger-hover: #A80000;
+            --success: #107C41;
+            --font-stack: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
         }}
 
         @media (prefers-color-scheme: light) {{
             :root {{
-                --bg-base: #F8FAFC;
-                --bg-sidebar: #F1F5F9;
+                --bg-base: #F3F3F3;
+                --bg-sidebar: #EBEBEB;
                 --bg-card: #FFFFFF;
-                --bg-card-hover: #F8FAFC;
+                --bg-card-hover: #F9F9F9;
                 --bg-input: #FFFFFF;
-                --border: #E2E8F0;
-                --border-focus: #00B8D4;
-                --text-primary: #0F172A;
-                --text-secondary: #475569;
-                --text-muted: #94A3B8;
-                --accent: #00B8D4;
-                --accent-glow: rgba(0, 184, 212, 0.15);
+                --border: #E0E0E0;
+                --border-subtle: #EEEEEE;
+                --border-focus: #0078D4;
+                --text-primary: #202124;
+                --text-secondary: #5F6368;
+                --text-muted: #80868B;
             }}
         }}
 
@@ -86,45 +85,41 @@ impl SettingsUi {
             -webkit-font-smoothing: antialiased;
         }}
 
-        /* Sidebar Navigation */
+        /* Sidebar */
         .sidebar {{
-            width: 250px;
+            width: 240px;
             background-color: var(--bg-sidebar);
             border-right: 1px solid var(--border);
-            padding: 24px 16px;
+            padding: 24px 12px;
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 2px;
             flex-shrink: 0;
         }}
 
         .sidebar-header {{
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            padding: 0 8px 20px 8px;
-            border-bottom: 1px solid var(--border);
+            gap: 10px;
+            padding: 0 12px 20px 12px;
+            border-bottom: 1px solid var(--border-subtle);
             margin-bottom: 12px;
         }}
 
-        .brand-title {{
+        .sidebar-header h1 {{
             font-size: 15px;
-            font-weight: 700;
-            letter-spacing: 0.8px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
             color: var(--text-primary);
-            display: flex;
-            align-items: center;
-            gap: 8px;
         }}
 
-        .brand-badge {{
-            font-size: 10.5px;
-            font-weight: 600;
-            padding: 2px 7px;
-            border-radius: 6px;
-            background: var(--accent-glow);
-            color: var(--accent);
-            border: 1px solid rgba(0, 229, 255, 0.3);
+        .sidebar-header .version-tag {{
+            font-size: 11px;
+            padding: 2px 6px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 4px;
+            color: var(--text-secondary);
+            font-family: monospace;
         }}
 
         .nav-item {{
@@ -132,13 +127,23 @@ impl SettingsUi {
             align-items: center;
             gap: 12px;
             padding: 10px 14px;
-            border-radius: 8px;
+            border-radius: 6px;
             cursor: pointer;
             font-size: 13.5px;
-            font-weight: 500;
+            font-weight: 400;
             color: var(--text-secondary);
-            transition: all 0.15s ease;
-            position: relative;
+            transition: background 0.1s ease, color 0.1s ease;
+        }}
+
+        .nav-item:hover {{
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-primary);
+        }}
+
+        .nav-item.active {{
+            background: rgba(0, 120, 212, 0.12);
+            color: var(--accent);
+            font-weight: 600;
         }}
 
         .nav-item svg {{
@@ -149,59 +154,53 @@ impl SettingsUi {
             stroke-width: 2;
             stroke-linecap: round;
             stroke-linejoin: round;
-            transition: stroke 0.15s ease;
             flex-shrink: 0;
         }}
 
-        .nav-item:hover {{
-            background: rgba(255, 255, 255, 0.04);
-            color: var(--text-primary);
-        }}
-
-        .nav-item.active {{
-            background: var(--accent-glow);
-            color: var(--accent);
-            font-weight: 600;
-        }}
-
-        .nav-item.active::before {{
-            content: "";
-            position: absolute;
-            left: 0;
-            top: 6px;
-            bottom: 6px;
-            width: 3px;
-            background-color: var(--accent);
-            border-radius: 0 3px 3px 0;
-        }}
-
         /* Main Content */
-        .content-container {{
+        .content-area {{
             flex: 1;
             display: flex;
             flex-direction: column;
+            height: 100vh;
             overflow: hidden;
-            background-color: var(--bg-base);
         }}
 
         .content-header {{
-            padding: 20px 48px;
-            border-bottom: 1px solid var(--border);
+            height: 60px;
+            padding: 0 36px;
             display: flex;
             align-items: center;
             justify-content: space-between;
+            border-bottom: 1px solid var(--border-subtle);
             background: var(--bg-base);
-            z-index: 10;
+            flex-shrink: 0;
         }}
 
-        .search-box {{
+        .search-container {{
             position: relative;
             width: 320px;
         }}
 
-        .search-box svg {{
+        .search-container input {{
+            width: 100%;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 7px 12px 7px 34px;
+            color: var(--text-primary);
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.15s ease;
+        }}
+
+        .search-container input:focus {{
+            border-color: var(--border-focus);
+        }}
+
+        .search-container svg {{
             position: absolute;
-            left: 12px;
+            left: 10px;
             top: 50%;
             transform: translateY(-50%);
             width: 15px;
@@ -211,76 +210,50 @@ impl SettingsUi {
             stroke-width: 2;
         }}
 
-        .search-box input {{
-            width: 100%;
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            padding: 8px 12px 8px 36px;
-            border-radius: 8px;
-            color: var(--text-primary);
-            font-size: 13px;
-            outline: none;
-            transition: border-color 0.15s, box-shadow 0.15s;
-        }}
-
-        .search-box input:focus {{
-            border-color: var(--border-focus);
-            box-shadow: 0 0 0 1px var(--accent-glow);
-        }}
-
-        .content-body {{
+        .content-scroll {{
             flex: 1;
-            padding: 32px 48px;
+            padding: 32px 36px 60px 36px;
             overflow-y: auto;
         }}
 
         .section {{
             display: none;
-            max-width: 760px;
-            animation: fadeIn 0.15s ease-in-out;
+            max-width: 720px;
         }}
 
         .section.active {{
             display: block;
         }}
 
-        @keyframes fadeIn {{
-            from {{ opacity: 0; transform: translateY(4px); }}
-            to {{ opacity: 1; transform: translateY(0); }}
-        }}
-
-        .section-header {{
-            margin-bottom: 20px;
-        }}
-
-        .section-header h2 {{
-            font-size: 20px;
+        .section-title {{
+            font-size: 18px;
             font-weight: 600;
             color: var(--text-primary);
             margin-bottom: 4px;
         }}
 
-        .section-header p {{
+        .section-desc {{
             font-size: 13px;
             color: var(--text-secondary);
+            margin-bottom: 20px;
         }}
 
-        /* Grouped Card Lists */
-        .setting-card {{
+        /* Card Container */
+        .settings-card {{
             background: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            overflow: hidden;
+            border-radius: 8px;
             margin-bottom: 24px;
+            overflow: hidden;
         }}
 
         .setting-row {{
-            padding: 16px 20px;
+            padding: 14px 18px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            border-bottom: 1px solid var(--border);
-            transition: background 0.15s ease;
+            border-bottom: 1px solid var(--border-subtle);
+            transition: background 0.1s ease;
         }}
 
         .setting-row:last-child {{
@@ -291,20 +264,20 @@ impl SettingsUi {
             background: var(--bg-card-hover);
         }}
 
-        .setting-info {{
-            padding-right: 24px;
+        .setting-meta {{
+            padding-right: 20px;
         }}
 
-        .setting-info h4 {{
+        .setting-meta h4 {{
             font-size: 13.5px;
             font-weight: 500;
             color: var(--text-primary);
-            margin-bottom: 3px;
+            margin-bottom: 2px;
         }}
 
-        .setting-info p {{
+        .setting-meta p {{
             font-size: 12px;
-            color: var(--text-muted);
+            color: var(--text-secondary);
             line-height: 1.4;
         }}
 
@@ -313,33 +286,32 @@ impl SettingsUi {
             background: var(--bg-input);
             border: 1px solid var(--border);
             color: var(--text-primary);
-            padding: 8px 12px;
-            border-radius: 7px;
+            padding: 6px 10px;
+            border-radius: 5px;
             font-size: 13px;
             outline: none;
-            transition: border-color 0.15s, box-shadow 0.15s;
-        }}
-
-        select {{
-            padding-right: 30px;
-            cursor: pointer;
-            appearance: none;
-            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%2394A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>');
-            background-repeat: no-repeat;
-            background-position: right 10px center;
+            font-family: inherit;
         }}
 
         input[type="text"]:focus, input[type="number"]:focus, select:focus {{
             border-color: var(--border-focus);
-            box-shadow: 0 0 0 1px var(--accent-glow);
         }}
 
-        /* Native-style Fluent Switch */
+        select {{
+            cursor: pointer;
+            padding-right: 26px;
+            appearance: none;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="%239AA0A6" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>');
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+        }}
+
+        /* Windows 11 Fluent Toggle Switch */
         .switch {{
             position: relative;
             display: inline-block;
-            width: 42px;
-            height: 22px;
+            width: 38px;
+            height: 20px;
             flex-shrink: 0;
         }}
 
@@ -353,117 +325,121 @@ impl SettingsUi {
             position: absolute;
             cursor: pointer;
             top: 0; left: 0; right: 0; bottom: 0;
-            background-color: var(--border);
-            transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            border-radius: 22px;
+            background-color: #383838;
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            transition: 0.15s ease;
         }}
 
         .slider:before {{
             position: absolute;
             content: "";
-            height: 16px;
-            width: 16px;
+            height: 12px;
+            width: 12px;
             left: 3px;
             bottom: 3px;
-            background-color: #CBD5E1;
-            transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            background-color: #C8C8C8;
             border-radius: 50%;
+            transition: 0.15s ease;
         }}
 
         input:checked + .slider {{
             background-color: var(--accent);
+            border-color: var(--accent);
         }}
 
         input:checked + .slider:before {{
-            transform: translateX(20px);
-            background-color: #0B0E14;
+            transform: translateX(18px);
+            background-color: #FFFFFF;
         }}
 
-        /* Badges & Buttons */
-        .badge-status {{
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-size: 11.5px;
-            font-weight: 600;
-            background: var(--success-bg);
-            color: var(--success);
-            border: 1px solid rgba(16, 185, 129, 0.25);
-        }}
-
+        /* Standard Buttons */
         .btn {{
-            background: rgba(255, 255, 255, 0.05);
+            background: #2D2D2D;
             border: 1px solid var(--border);
             color: var(--text-primary);
-            padding: 7px 14px;
-            border-radius: 7px;
-            cursor: pointer;
+            padding: 6px 14px;
+            border-radius: 5px;
             font-size: 12.5px;
             font-weight: 500;
-            transition: all 0.15s ease;
+            cursor: pointer;
+            outline: none;
+            transition: background 0.1s ease, border-color 0.1s ease;
         }}
 
         .btn:hover {{
-            background: rgba(255, 255, 255, 0.1);
-            border-color: var(--border-focus);
-            color: var(--accent);
+            background: #383838;
+            border-color: #444444;
+        }}
+
+        .btn-primary {{
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #FFFFFF;
+        }}
+
+        .btn-primary:hover {{
+            background: var(--accent-hover);
         }}
 
         .btn-danger {{
-            background: var(--danger-bg);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            color: #F87171;
+            background: rgba(209, 52, 56, 0.15);
+            border: 1px solid rgba(209, 52, 56, 0.4);
+            color: #FF8F94;
         }}
 
         .btn-danger:hover {{
-            background: rgba(239, 68, 68, 0.2);
-            border-color: var(--danger);
-            color: #FFA4A4;
+            background: var(--danger);
+            color: #FFFFFF;
         }}
 
-        /* Floating Toast */
-        #save-toast {{
+        .status-badge {{
+            font-size: 11.5px;
+            font-weight: 500;
+            padding: 3px 8px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }}
+
+        .status-badge.active {{
+            background: rgba(16, 124, 65, 0.15);
+            color: #6CCB5F;
+            border-color: rgba(16, 124, 65, 0.3);
+        }}
+
+        /* Toast */
+        #toast {{
             position: fixed;
             bottom: 24px;
-            right: 32px;
-            background: #181F2E;
-            border: 1px solid var(--accent);
-            color: var(--text-primary);
-            padding: 10px 18px;
-            border-radius: 8px;
+            right: 24px;
+            background: #2B2B2B;
+            border: 1px solid var(--border);
+            color: #FFFFFF;
+            padding: 10px 16px;
+            border-radius: 6px;
             font-size: 13px;
-            font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 12px var(--accent-glow);
-            opacity: 0;
-            transform: translateY(12px);
-            transition: opacity 0.2s, transform 0.2s;
-            pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            display: none;
             z-index: 1000;
-        }}
-
-        #save-toast.show {{
-            opacity: 1;
-            transform: translateY(0);
         }}
     </style>
 </head>
 <body>
-    <!-- Sidebar Navigation -->
+    <!-- Sidebar -->
     <div class="sidebar">
         <div class="sidebar-header">
-            <div class="brand-title">
-                NEXORA
-                <span class="brand-badge">v{version}</span>
-            </div>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0078D4" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            <h1>Settings</h1>
+            <span class="version-tag">v{version}</span>
         </div>
 
         <div class="nav-item active" onclick="switchTab('general', this)">
-            <svg viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01M10 8h.01"/></svg>
             General
         </div>
         <div class="nav-item" onclick="switchTab('performance', this)">
@@ -471,88 +447,87 @@ impl SettingsUi {
             Performance
         </div>
         <div class="nav-item" onclick="switchTab('privacy', this)">
-            <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+            <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             Privacy & Security
         </div>
         <div class="nav-item" onclick="switchTab('video', this)">
-            <svg viewBox="0 0 24 24"><rect width="20" height="15" x="2" y="5" rx="2"/><polygon points="10 9 15 12 10 15 10 9"/></svg>
-            Video & Streaming
+            <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Video & Media
         </div>
         <div class="nav-item" onclick="switchTab('storage', this)">
             <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
             Storage & Cache
         </div>
         <div class="nav-item" onclick="switchTab('about', this)">
-            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-            About
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            About Nexora
         </div>
     </div>
 
-    <!-- Main Content Container -->
-    <div class="content-container">
+    <!-- Content Area -->
+    <div class="content-area">
         <div class="content-header">
-            <div class="search-box">
+            <div class="search-container">
                 <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                <input type="text" id="settings-search" placeholder="Search settings..." oninput="filterSettings(this.value)" />
+                <input type="text" id="settings-search" placeholder="Search settings" oninput="filterSettings(this.value)" />
             </div>
             <div style="font-size: 12px; color: var(--text-muted);">
                 Changes are saved automatically
             </div>
         </div>
 
-        <div class="content-body">
+        <div class="content-scroll">
             <!-- 1. GENERAL -->
             <div id="general" class="section active">
-                <div class="section-header">
-                    <h2>General Settings</h2>
-                    <p>Customize startup behavior, default search engines, and visual themes</p>
-                </div>
-                <div class="setting-card">
+                <h2 class="section-title">General Settings</h2>
+                <p class="section-desc">Manage startup behavior, search engine preferences, and shortcuts</p>
+
+                <div class="settings-card">
                     <div class="setting-row">
-                        <div class="setting-info">
-                            <h4>Homepage URL</h4>
-                            <p>Webpage loaded automatically when launching a new tab or window</p>
+                        <div class="setting-meta">
+                            <h4>Homepage</h4>
+                            <p>Web address loaded when opening new tabs or windows</p>
                         </div>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <input type="text" id="homepage" value="{homepage_escaped}" style="width: 260px;" onchange="saveSetting('homepage', this.value)" />
-                            <button class="btn" onclick="saveSetting('homepage', document.getElementById('homepage').value)">Save</button>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="homepage" value="{homepage_escaped}" style="width: 250px;" onchange="saveSetting('homepage', this.value)" />
+                            <button class="btn btn-primary" onclick="saveSetting('homepage', document.getElementById('homepage').value)">Save</button>
                         </div>
                     </div>
                     <div class="setting-row">
-                        <div class="setting-info">
+                        <div class="setting-meta">
                             <h4>Default Search Engine</h4>
-                            <p>Search provider queried for address bar keywords and search queries</p>
+                            <p>Search provider queried for address bar terms</p>
                         </div>
                         <select id="search_engine" onchange="saveSetting('default_search_engine', this.value)">
                             <option value="Google" {google_selected}>Google</option>
-                            <option value="DuckDuckGo" {ddg_selected}>DuckDuckGo (Zero-Tracking)</option>
+                            <option value="DuckDuckGo" {ddg_selected}>DuckDuckGo</option>
                             <option value="Bing" {bing_selected}>Microsoft Bing</option>
                             <option value="Brave" {brave_selected}>Brave Search</option>
                         </select>
                     </div>
                     <div class="setting-row">
-                        <div class="setting-info">
+                        <div class="setting-meta">
                             <h4>Bookmarks Manager</h4>
-                            <p>Organize, search, and manage your saved web bookmarks</p>
+                            <p>Manage, organize, and edit saved bookmark links</p>
                         </div>
                         <button class="btn" onclick="navigate('nexora://bookmarks')">Open Bookmarks</button>
                     </div>
                     <div class="setting-row">
-                        <div class="setting-info">
+                        <div class="setting-meta">
                             <h4>Browsing History</h4>
-                            <p>View, search, or purge your local chronological browsing timeline</p>
+                            <p>View, search, or delete your chronological browsing records</p>
                         </div>
                         <button class="btn" onclick="navigate('nexora://history')">Open History</button>
                     </div>
                     <div class="setting-row">
-                        <div class="setting-info">
-                            <h4>Interface Theme</h4>
-                            <p>Match Windows system default appearance or force dark/light mode</p>
+                        <div class="setting-meta">
+                            <h4>Theme Appearance</h4>
+                            <p>Match your Windows system settings or choose a preferred appearance</p>
                         </div>
                         <select id="theme" onchange="saveSetting('theme', this.value)">
                             <option value="system" {theme_sys_selected}>System Default</option>
-                            <option value="dark" {theme_dark_selected}>Dark Mode</option>
-                            <option value="light" {theme_light_selected}>Light Mode</option>
+                            <option value="dark" {theme_dark_selected}>Dark</option>
+                            <option value="light" {theme_light_selected}>Light</option>
                         </select>
                     </div>
                 </div>
@@ -560,15 +535,14 @@ impl SettingsUi {
 
             <!-- 2. PERFORMANCE -->
             <div id="performance" class="section">
-                <div class="section-header">
-                    <h2>Performance &amp; Smart Suspension</h2>
-                    <p>Tune background tab suspension, idle timeouts, and hardware video decoding</p>
-                </div>
-                <div class="setting-card">
+                <h2 class="section-title">Performance &amp; Smart Suspension</h2>
+                <p class="section-desc">Tune background tab memory reclamation, hardware acceleration, and process scheduling</p>
+
+                <div class="settings-card">
                     <div class="setting-row">
-                        <div class="setting-info">
+                        <div class="setting-meta">
                             <h4>Hardware Video Acceleration</h4>
-                            <p>Direct3D 11 &amp; DXVA2 GPU hardware decoding offload for H.264/VP9</p>
+                            <p>Offload video decoding to GPU via Direct3D 11 and DXVA2</p>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="hw_accel" {hw_accel_checked} onchange="saveSetting('hardware_acceleration', this.checked)" />
@@ -576,9 +550,9 @@ impl SettingsUi {
                         </label>
                     </div>
                     <div class="setting-row">
-                        <div class="setting-info">
+                        <div class="setting-meta">
                             <h4>Smart Tab Suspension</h4>
-                            <p>Automatically suspend idle background tabs to conserve host RAM</p>
+                            <p>Automatically suspend idle background tabs to conserve system memory</p>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="smart_susp" {smart_susp_checked} onchange="saveSetting('smart_suspension', this.checked)" />
@@ -586,12 +560,12 @@ impl SettingsUi {
                         </label>
                     </div>
                     <div class="setting-row">
-                        <div class="setting-info">
+                        <div class="setting-meta">
                             <h4>Inactivity Suspension Timeout</h4>
-                            <p>Minutes of inactivity before non-media background tabs are suspended</p>
+                            <p>Minutes before an inactive non-media background tab is suspended</p>
                         </div>
                         <div style="display: flex; align-items: center; gap: 8px;">
-                            <input type="number" id="susp_timeout" value="{susp_timeout}" min="1" max="120" style="width: 80px;" onchange="saveSetting('suspension_timeout_minutes', parseInt(this.value))" />
+                            <input type="number" id="susp_timeout" value="{susp_timeout}" min="1" max="120" style="width: 75px;" onchange="saveSetting('suspension_timeout_minutes', parseInt(this.value))" />
                             <span style="font-size: 13px; color: var(--text-secondary);">minutes</span>
                         </div>
                     </div>
@@ -600,15 +574,14 @@ impl SettingsUi {
 
             <!-- 3. PRIVACY -->
             <div id="privacy" class="section">
-                <div class="section-header">
-                    <h2>Privacy &amp; Security</h2>
-                    <p>Enforce native network filtering, tracker blocking, and zero telemetry</p>
-                </div>
-                <div class="setting-card">
+                <h2 class="section-title">Privacy &amp; Security</h2>
+                <p class="section-desc">Manage network request filtering, tracker blocking, and site permissions</p>
+
+                <div class="settings-card">
                     <div class="setting-row">
-                        <div class="setting-info">
-                            <h4>Built-in High-Speed Ad Blocker</h4>
-                            <p>Native Rust request-level filtering blocking ad servers before network fetch</p>
+                        <div class="setting-meta">
+                            <h4>Built-in Ad Blocker</h4>
+                            <p>Native Rust request-level network filter blocking ad servers</p>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="ad_block" {adblock_checked} onchange="saveSetting('ad_block_enabled', this.checked)" />
@@ -616,9 +589,9 @@ impl SettingsUi {
                         </label>
                     </div>
                     <div class="setting-row">
-                        <div class="setting-info">
+                        <div class="setting-meta">
                             <h4>Tracker &amp; Fingerprinting Protection</h4>
-                            <p>Block third-party tracking beacons, cross-site telemetry, and cryptominers</p>
+                            <p>Block third-party analytics, tracking beacons, and cryptominers</p>
                         </div>
                         <label class="switch">
                             <input type="checkbox" id="tracker_block" {tracker_checked} onchange="saveSetting('tracker_protection_enabled', this.checked)" />
@@ -626,89 +599,87 @@ impl SettingsUi {
                         </label>
                     </div>
                     <div class="setting-row">
-                        <div class="setting-info">
+                        <div class="setting-meta">
                             <h4>Zero-Telemetry Status</h4>
-                            <p>Strict network isolation: Zero external analytics or diagnostic pings</p>
+                            <p>Complete network isolation: 0 analytics pings, 0 telemetry beacons</p>
                         </div>
-                        <div class="badge-status">✓ Enforced (0 pings)</div>
+                        <span class="status-badge active">Enforced</span>
                     </div>
                 </div>
             </div>
 
-            <!-- 4. VIDEO -->
+            <!-- 4. VIDEO & STREAMING -->
             <div id="video" class="section">
-                <div class="section-header">
-                    <h2>Video &amp; Streaming Optimization</h2>
-                    <p>Monitor GPU hardware offload and commercial DRM authorization status</p>
-                </div>
-                <div class="setting-card">
+                <h2 class="section-title">Video &amp; Streaming Optimization</h2>
+                <p class="section-desc">GPU hardware decoder pipeline and verified media DRM authorization</p>
+
+                <div class="settings-card">
                     <div class="setting-row">
-                        <div class="setting-info">
+                        <div class="setting-meta">
                             <h4>GPU Video Decoder Pipeline</h4>
                             <p>Direct3D 11 NVDEC offload on NVIDIA GeForce GT 730 / Intel HD Graphics</p>
                         </div>
-                        <div class="badge-status">✓ D3D11 Active</div>
+                        <span class="status-badge active">D3D11 Active</span>
                     </div>
                     <div class="setting-row">
-                        <div class="setting-info">
-                            <h4>Authorized DRM Pipelines</h4>
-                            <p>Widevine CDM &amp; PlayReady EME for 1080p Netflix, Hotstar &amp; Prime Video</p>
+                        <div class="setting-meta">
+                            <h4>DRM Playback Pipelines</h4>
+                            <p>Widevine CDM and PlayReady EME for 1080p streaming services</p>
                         </div>
-                        <div class="badge-status">✓ Certified EME</div>
+                        <span class="status-badge active">Certified EME</span>
                     </div>
                     <div class="setting-row">
-                        <div class="setting-info">
+                        <div class="setting-meta">
                             <h4>Active Media Priority Scheduler</h4>
-                            <p>Automatically elevates process priority during active video streaming</p>
+                            <p>Elevates process priority during active audio and video playback</p>
                         </div>
-                        <div class="badge-status">✓ Above-Normal Priority</div>
+                        <span class="status-badge active">Above Normal</span>
                     </div>
                 </div>
             </div>
 
-            <!-- 5. STORAGE -->
+            <!-- 5. STORAGE & CACHE -->
             <div id="storage" class="section">
-                <div class="section-header">
-                    <h2>Storage &amp; Cache Boundaries</h2>
-                    <p>Manage disk cache limits and SQLite database compaction</p>
-                </div>
-                <div class="setting-card">
+                <h2 class="section-title">Storage &amp; Cache Boundaries</h2>
+                <p class="section-desc">Manage local disk storage boundaries, database maintenance, and history purging</p>
+
+                <div class="settings-card">
                     <div class="setting-row">
-                        <div class="setting-info">
+                        <div class="setting-meta">
                             <h4>Disk Cache Boundary</h4>
-                            <p>Maximum disk cache allowed before automatic LRU sweep (MB)</p>
+                            <p>Maximum disk cache allowed before automatic LRU cleanup (MB)</p>
                         </div>
                         <div style="display: flex; align-items: center; gap: 8px;">
-                            <input type="number" id="disk_cache" value="{disk_cache}" min="64" max="2048" style="width: 90px;" onchange="saveSetting('disk_cache_limit_mb', parseInt(this.value))" />
+                            <input type="number" id="disk_cache" value="{disk_cache}" min="64" max="2048" style="width: 80px;" onchange="saveSetting('disk_cache_limit_mb', parseInt(this.value))" />
                             <span style="font-size: 13px; color: var(--text-secondary);">MB</span>
                         </div>
                     </div>
                     <div class="setting-row">
-                        <div class="setting-info">
+                        <div class="setting-meta">
                             <h4>Media Cache Boundary</h4>
                             <p>Maximum video stream chunk buffer storage on disk (MB)</p>
                         </div>
                         <div style="display: flex; align-items: center; gap: 8px;">
-                            <input type="number" id="media_cache" value="{media_cache}" min="32" max="1024" style="width: 90px;" onchange="saveSetting('media_cache_limit_mb', parseInt(this.value))" />
+                            <input type="number" id="media_cache" value="{media_cache}" min="32" max="1024" style="width: 80px;" onchange="saveSetting('media_cache_limit_mb', parseInt(this.value))" />
                             <span style="font-size: 13px; color: var(--text-secondary);">MB</span>
                         </div>
                     </div>
                     <div class="setting-row">
-                        <div class="setting-info">
+                        <div class="setting-meta">
                             <h4>Database Journal Compaction</h4>
                             <p>Truncate and compact SQLite write-ahead logging journal (WAL)</p>
                         </div>
                         <button class="btn" id="btn-compact-wal" onclick="compactWal()">Compact SQLite WAL</button>
                     </div>
                     <div class="setting-row">
-                        <div class="setting-info">
+                        <div class="setting-meta">
                             <h4>Clear Browser Cache</h4>
-                            <p>Purge temporary webview disk and media cache immediately</p>
+                            <p>Purge temporary engine disk and media cache immediately</p>
                         </div>
                         <button class="btn" id="btn-clear-cache" onclick="clearCache()">Clear Cache</button>
                     </div>
                     <div class="setting-row">
-                        <div class="setting-info">
+                        <div class="setting-meta">
                             <h4>Clear Browsing History</h4>
                             <p>Erase all visited URL records and timeline metadata from SQLite database</p>
                         </div>
@@ -719,27 +690,26 @@ impl SettingsUi {
 
             <!-- 6. ABOUT -->
             <div id="about" class="section">
-                <div class="section-header">
-                    <h2>About Nexora Browser</h2>
-                    <p>System version details, open-source core, and factory resets</p>
-                </div>
-                <div class="setting-card">
+                <h2 class="section-title">About Nexora Browser</h2>
+                <p class="section-desc">Version details, core architecture, and factory reset</p>
+
+                <div class="settings-card">
                     <div class="setting-row">
-                        <div class="setting-info">
+                        <div class="setting-meta">
                             <h4>Nexora Core Build</h4>
                             <p>Ultra-lightweight, streaming-first desktop browser for Windows</p>
                         </div>
-                        <div style="font-size: 13px; font-weight: 600; color: var(--accent);">v{version} (x86_64-pc-windows-gnu)</div>
+                        <span class="status-badge">v{version} (x86_64-pc-windows-gnu)</span>
                     </div>
                     <div class="setting-row">
-                        <div class="setting-info">
+                        <div class="setting-meta">
                             <h4>Rendering Engine</h4>
-                            <p>Microsoft WebView2 Evergreen Runtime</p>
+                            <p>Microsoft WebView2 Evergreen Runtime (Chromium Core)</p>
                         </div>
-                        <div style="font-size: 13px; font-weight: 500; color: var(--text-secondary);">Chromium Core</div>
+                        <span class="status-badge">System Evergreen</span>
                     </div>
                     <div class="setting-row">
-                        <div class="setting-info">
+                        <div class="setting-meta">
                             <h4>Core Philosophy</h4>
                             <p>Maximum performance. Minimum overhead. Complete browsing freedom.</p>
                         </div>
@@ -750,24 +720,16 @@ impl SettingsUi {
         </div>
     </div>
 
-    <!-- Floating Save Toast -->
-    <div id="save-toast">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-        <span id="toast-message">Settings saved successfully</span>
-    </div>
+    <div id="toast"></div>
 
     <script>
-        let toastTimeout = null;
-
-        function showToast(msg) {{
-            const toast = document.getElementById('save-toast');
-            const toastText = document.getElementById('toast-message');
-            toastText.textContent = msg;
-            toast.classList.add('show');
-            if (toastTimeout) clearTimeout(toastTimeout);
-            toastTimeout = setTimeout(() => {{
-                toast.classList.remove('show');
-            }}, 2200);
+        function showToast(message) {{
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.style.display = 'block';
+            setTimeout(() => {{
+                toast.style.display = 'none';
+            }}, 2000);
         }}
 
         function navigate(url) {{
@@ -788,10 +750,10 @@ impl SettingsUi {
                         action: "clear_history"
                     }}));
                 }}
-                showToast("✓ Browsing history cleared");
+                showToast("Browsing history cleared");
                 const btn = document.getElementById('btn-clear-history');
                 if (btn) {{
-                    btn.textContent = "✓ History Cleared";
+                    btn.textContent = "Cleared";
                 }}
             }}
         }}
@@ -817,7 +779,7 @@ impl SettingsUi {
                     value: value
                 }}));
             }}
-            showToast("✓ Setting saved automatically");
+            showToast("Setting saved automatically");
         }}
 
         function compactWal() {{
@@ -830,10 +792,10 @@ impl SettingsUi {
                 }}));
             }}
             setTimeout(() => {{
-                btn.textContent = "✓ Compacted (0 bytes pending)";
+                btn.textContent = "Compacted";
                 btn.disabled = false;
-                showToast("✓ SQLite WAL Compacted successfully");
-            }}, 400);
+                showToast("SQLite WAL compacted successfully");
+            }}, 300);
         }}
 
         function clearCache() {{
@@ -846,10 +808,10 @@ impl SettingsUi {
                 }}));
             }}
             setTimeout(() => {{
-                btn.textContent = "✓ Cache Purged";
+                btn.textContent = "Purged";
                 btn.disabled = false;
-                showToast("✓ Temporary cache purged");
-            }}, 400);
+                showToast("Temporary cache purged");
+            }}, 300);
         }}
 
         function resetDefaults() {{
@@ -859,7 +821,7 @@ impl SettingsUi {
                         action: "reset_defaults"
                     }}));
                 }}
-                showToast("✓ Resetting to defaults...");
+                showToast("Resetting to defaults...");
                 setTimeout(() => {{
                     location.reload();
                 }}, 500);
@@ -873,7 +835,6 @@ impl SettingsUi {
                 rows.forEach(r => r.style.display = 'flex');
                 return;
             }}
-            // If searching, show all sections so matches are visible
             document.querySelectorAll('.section').forEach(s => s.classList.add('active'));
             rows.forEach(r => {{
                 const text = r.textContent.toLowerCase();

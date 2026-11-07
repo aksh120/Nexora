@@ -89,27 +89,27 @@ impl CrashRecoveryController {
     <title>Tab Recovered - Nexora</title>
     <style>
         :root {{
-            --bg-color: #0f1217;
-            --card-bg: #1a1f29;
-            --text-main: #f0f3f6;
-            --text-dim: #8b949e;
-            --accent: #ef4444;
-            --accent-hover: #dc2626;
-            --btn-bg: #2563eb;
-            --btn-hover: #1d4ed8;
-            --border: #2a3443;
+            --bg-color: #1E1E1E;
+            --card-bg: #252525;
+            --text-main: #E8EAED;
+            --text-dim: #9AA0A6;
+            --accent: #D13438;
+            --accent-hover: #A80000;
+            --btn-bg: #0078D4;
+            --btn-hover: #106EBE;
+            --border: #333333;
         }}
         @media (prefers-color-scheme: light) {{
             :root {{
-                --bg-color: #f6f8fa;
-                --card-bg: #ffffff;
-                --text-main: #1f2328;
-                --text-dim: #656d76;
-                --accent: #cf222e;
-                --accent-hover: #a40e26;
-                --btn-bg: #0969da;
-                --btn-hover: #0853b0;
-                --border: #d0d7de;
+                --bg-color: #F3F3F3;
+                --card-bg: #FFFFFF;
+                --text-main: #202124;
+                --text-dim: #5F6368;
+                --accent: #D13438;
+                --accent-hover: #A80000;
+                --btn-bg: #0078D4;
+                --btn-hover: #106EBE;
+                --border: #E0E0E0;
             }}
         }}
         body {{
@@ -119,70 +119,84 @@ impl CrashRecoveryController {
             display: flex;
             align-items: center;
             justify-content: center;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
             background-color: var(--bg-color);
             color: var(--text-main);
             user-select: none;
+            -webkit-font-smoothing: antialiased;
         }}
         .card {{
             background-color: var(--card-bg);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 36px 44px;
-            max-width: 500px;
+            border-radius: 8px;
+            padding: 32px 40px;
+            max-width: 480px;
             text-align: center;
-            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.25);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
         }}
-        .icon {{
-            font-size: 42px;
-            margin-bottom: 16px;
+        .icon-wrap {{
+            width: 44px;
+            height: 44px;
+            margin: 0 auto 16px auto;
+            border-radius: 50%;
+            background: rgba(209, 52, 56, 0.12);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent);
         }}
         h2 {{
-            margin: 0 0 10px 0;
-            font-size: 20px;
+            margin: 0 0 8px 0;
+            font-size: 17px;
             font-weight: 600;
         }}
         .meta {{
             color: var(--text-dim);
-            font-size: 13px;
+            font-size: 12.5px;
             word-break: break-all;
             margin-bottom: 20px;
         }}
         .reason-badge {{
             display: inline-block;
-            background: rgba(239, 68, 68, 0.12);
-            color: var(--accent);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            border-radius: 16px;
-            padding: 4px 12px;
-            font-size: 12px;
+            background: rgba(209, 52, 56, 0.12);
+            color: #FF8F94;
+            border: 1px solid rgba(209, 52, 56, 0.3);
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 11.5px;
             font-weight: 500;
-            margin-bottom: 24px;
+            margin-bottom: 16px;
         }}
         .reload-btn {{
             background-color: var(--btn-bg);
             color: #ffffff;
             border: none;
-            border-radius: 8px;
-            padding: 10px 24px;
-            font-size: 14px;
-            font-weight: 600;
+            border-radius: 5px;
+            padding: 8px 20px;
+            font-size: 13px;
+            font-weight: 500;
             cursor: pointer;
-            transition: background-color 0.15s ease;
+            transition: background-color 0.1s ease;
         }}
         .reload-btn:hover {{
             background-color: var(--btn-hover);
         }}
         .hint {{
-            margin-top: 16px;
+            margin-top: 14px;
             color: var(--text-dim);
-            font-size: 12px;
+            font-size: 11.5px;
         }}
     </style>
 </head>
 <body>
     <div class="card">
-        <div class="icon">⚠️</div>
+        <div class="icon-wrap">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+        </div>
         <h2>Tab Crashed Repeatedly</h2>
         <div class="reason-badge">Reason: {reason_escaped}</div>
         <div class="meta">{url_escaped}</div>

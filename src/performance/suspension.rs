@@ -125,23 +125,23 @@ impl SmartSuspensionEngine {
     <title>Suspended: {title_escaped}</title>
     <style>
         :root {{
-            --bg-color: #12151a;
-            --card-bg: #1c212a;
-            --text-main: #f0f3f6;
-            --text-dim: #8b949e;
-            --accent: #3b82f6;
-            --accent-hover: #2563eb;
-            --border: #2a3342;
+            --bg-color: #1E1E1E;
+            --card-bg: #252525;
+            --text-main: #E8EAED;
+            --text-dim: #9AA0A6;
+            --accent: #0078D4;
+            --accent-hover: #106EBE;
+            --border: #333333;
         }}
         @media (prefers-color-scheme: light) {{
             :root {{
-                --bg-color: #f6f8fa;
-                --card-bg: #ffffff;
-                --text-main: #1f2328;
-                --text-dim: #656d76;
-                --accent: #0969da;
-                --accent-hover: #0853b0;
-                --border: #d0d7de;
+                --bg-color: #F3F3F3;
+                --card-bg: #FFFFFF;
+                --text-main: #202124;
+                --text-dim: #5F6368;
+                --accent: #0078D4;
+                --accent-hover: #106EBE;
+                --border: #E0E0E0;
             }}
         }}
         body {{
@@ -151,84 +151,88 @@ impl SmartSuspensionEngine {
             display: flex;
             align-items: center;
             justify-content: center;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
             background-color: var(--bg-color);
             color: var(--text-main);
             user-select: none;
             cursor: pointer;
+            -webkit-font-smoothing: antialiased;
         }}
         .card {{
             background-color: var(--card-bg);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 36px 44px;
-            max-width: 480px;
+            border-radius: 8px;
+            padding: 32px 40px;
+            max-width: 460px;
             text-align: center;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
         }}
-        .card:hover {{
-            transform: translateY(-2px);
-            box-shadow: 0 14px 40px rgba(0, 0, 0, 0.28);
-        }}
-        .icon {{
-            font-size: 40px;
-            margin-bottom: 16px;
-            display: inline-block;
+        .icon-wrap {{
+            width: 44px;
+            height: 44px;
+            margin: 0 auto 16px auto;
+            border-radius: 50%;
+            background: rgba(0, 120, 212, 0.12);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent);
         }}
         h2 {{
-            margin: 0 0 10px 0;
-            font-size: 20px;
+            margin: 0 0 8px 0;
+            font-size: 17px;
             font-weight: 600;
         }}
         .meta-url {{
             color: var(--text-dim);
-            font-size: 13px;
+            font-size: 12.5px;
             word-break: break-all;
-            margin-bottom: 24px;
+            margin-bottom: 20px;
         }}
         .badge {{
             display: inline-block;
-            background: rgba(59, 130, 246, 0.12);
-            color: var(--accent);
-            border: 1px solid rgba(59, 130, 246, 0.3);
-            border-radius: 20px;
-            padding: 4px 12px;
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-dim);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 2px 8px;
             font-size: 11px;
-            font-weight: 600;
-            margin-bottom: 20px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            font-weight: 500;
+            margin-bottom: 16px;
         }}
         .wake-btn {{
             background-color: var(--accent);
             color: #ffffff;
             border: none;
-            border-radius: 8px;
-            padding: 10px 24px;
-            font-size: 14px;
-            font-weight: 600;
+            border-radius: 5px;
+            padding: 8px 20px;
+            font-size: 13px;
+            font-weight: 500;
             cursor: pointer;
-            transition: background-color 0.15s ease;
+            transition: background-color 0.1s ease;
         }}
         .wake-btn:hover {{
             background-color: var(--accent-hover);
         }}
         .hint {{
-            margin-top: 16px;
+            margin-top: 14px;
             color: var(--text-dim);
-            font-size: 12px;
+            font-size: 11.5px;
         }}
     </style>
 </head>
 <body onclick="wakeTab()">
     <div class="card" onclick="event.stopPropagation(); wakeTab();">
-        <div class="icon">💤</div>
+        <div class="icon-wrap">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+            </svg>
+        </div>
         <div class="badge">Tab Suspended by Nexora</div>
         <h2>{title_escaped}</h2>
         <div class="meta-url">{url_escaped}</div>
         <button class="wake-btn" onclick="wakeTab()">Wake Tab</button>
-        <div class="hint">Suspended to conserve CPU & memory. Click anywhere to restore.</div>
+        <div class="hint">Suspended to conserve CPU &amp; RAM. Click anywhere to restore.</div>
     </div>
     <script>
         function wakeTab() {{

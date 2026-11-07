@@ -5,15 +5,16 @@ pub struct BookmarksUi;
 impl BookmarksUi {
     pub fn render_html(bookmarks: &[BookmarkEntry]) -> String {
         let mut bookmark_cards = String::new();
+        let total_count = bookmarks.len();
 
         if bookmarks.is_empty() {
             bookmark_cards.push_str(r###"
                 <div class="empty-state">
-                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="#70757A" stroke-width="1.75">
                         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                     </svg>
                     <h3>No Bookmarks Saved Yet</h3>
-                    <p>Click the Star icon on the toolbar or use the form above to bookmark your favorite sites.</p>
+                    <p>Click the Star icon on the address bar or use the Add button above to bookmark your favorite sites.</p>
                 </div>
             "###);
         } else {
@@ -25,28 +26,23 @@ impl BookmarksUi {
 
                 bookmark_cards.push_str(&format!(
                     r###"
-                    <div class="bookmark-card" data-id="{id}" data-search="{search_term}">
-                        <div class="bm-icon">
-                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#00E5FF" stroke-width="2">
+                    <div class="bookmark-row" data-id="{id}" data-search="{search_term}">
+                        <div class="icon-col">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9AA0A6" stroke-width="2">
                                 <circle cx="12" cy="12" r="10"/>
                                 <line x1="2" y1="12" x2="22" y2="12"/>
                                 <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
                             </svg>
                         </div>
-                        <div class="bm-info">
-                            <div class="bm-title" title="{escaped_title}">{escaped_title}</div>
-                            <div class="bm-url" title="{escaped_url}">{escaped_domain}</div>
+                        <div class="info-col">
+                            <div class="title-text" onclick="openBookmark('{escaped_url}')" title="{escaped_title}">{escaped_title}</div>
+                            <div class="url-text">{escaped_domain}</div>
                         </div>
-                        <div class="bm-actions">
-                            <button class="btn-open" onclick="openBookmark('{escaped_url}')" title="Open in active tab">
-                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                                    <polyline points="15 3 21 3 21 9"/>
-                                    <line x1="10" y1="14" x2="21" y2="3"/>
-                                </svg>
+                        <div class="actions-col">
+                            <button class="btn-action" onclick="openBookmark('{escaped_url}')" title="Open in active tab">
                                 Open
                             </button>
-                            <button class="btn-delete" onclick="deleteBookmark({id})" title="Delete bookmark">
+                            <button class="btn-icon" onclick="deleteBookmark({id})" title="Delete bookmark">
                                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                                     <polyline points="3 6 5 6 21 6"/>
                                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -73,509 +69,463 @@ impl BookmarksUi {
     <title>Bookmarks - Nexora</title>
     <style>
         :root {{
-            --bg-base: #0B0E14;
-            --bg-sidebar: #10141D;
-            --bg-card: #151923;
-            --bg-card-hover: #1A202C;
-            --bg-input: #121620;
-            --border-subtle: #232936;
-            --border-focus: #00E5FF;
-            --text-main: #F0F4F8;
-            --text-sub: #8B9BB0;
-            --text-dim: #546478;
-            --accent-cyan: #00E5FF;
-            --accent-glow: rgba(0, 229, 255, 0.15);
-            --danger-red: #FF4D4D;
+            --bg-base: #1E1E1E;
+            --bg-header: #181818;
+            --bg-card: #252525;
+            --bg-hover: #2C2C2C;
+            --border: #333333;
+            --border-subtle: #292929;
+            --border-focus: #0078D4;
+            --text-primary: #E8EAED;
+            --text-secondary: #9AA0A6;
+            --text-muted: #70757A;
+            --accent: #0078D4;
+            --accent-hover: #106EBE;
+            --danger: #D13438;
+            --font-stack: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+        }}
+
+        @media (prefers-color-scheme: light) {{
+            :root {{
+                --bg-base: #F3F3F3;
+                --bg-header: #EBEBEB;
+                --bg-card: #FFFFFF;
+                --bg-hover: #F9F9F9;
+                --border: #E0E0E0;
+                --border-subtle: #EEEEEE;
+                --border-focus: #0078D4;
+                --text-primary: #202124;
+                --text-secondary: #5F6368;
+                --text-muted: #80868B;
+            }}
         }}
 
         * {{
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: 'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system, sans-serif;
-            -webkit-font-smoothing: antialiased;
         }}
 
         body {{
+            font-family: var(--font-stack);
             background-color: var(--bg-base);
-            color: var(--text-main);
+            color: var(--text-primary);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
+            -webkit-font-smoothing: antialiased;
         }}
 
-        .header {{
-            background-color: var(--bg-sidebar);
-            border-bottom: 1px solid var(--border-subtle);
-            padding: 24px 36px;
+        .top-bar {{
+            background: var(--bg-header);
+            border-bottom: 1px solid var(--border);
+            padding: 14px 32px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 20px;
             position: sticky;
             top: 0;
             z-index: 100;
         }}
 
-        .brand {{
+        .brand-section {{
             display: flex;
             align-items: center;
             gap: 12px;
         }}
 
-        .brand-icon {{
-            width: 32px;
-            height: 32px;
-            background: linear-gradient(135deg, #00E5FF 0%, #0077FE 100%);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #000;
-        }}
-
-        .brand h1 {{
-            font-size: 1.3rem;
+        .brand-section h1 {{
+            font-size: 16px;
             font-weight: 600;
-            letter-spacing: -0.3px;
+            color: var(--text-primary);
         }}
 
-        .badge-count {{
-            font-size: 0.75rem;
-            color: var(--text-dim);
-            background: var(--bg-card);
-            border: 1px solid var(--border-subtle);
-            padding: 3px 10px;
-            border-radius: 12px;
-            font-weight: 500;
+        .count-pill {{
+            font-size: 11px;
+            padding: 2px 7px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 4px;
+            color: var(--text-secondary);
         }}
 
-        .controls {{
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex: 1;
-            max-width: 600px;
-        }}
-
-        .search-wrapper {{
+        .search-box {{
             position: relative;
-            flex: 1;
+            width: 360px;
         }}
 
-        .search-icon {{
+        .search-box input {{
+            width: 100%;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 7px 12px 7px 34px;
+            color: var(--text-primary);
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.15s ease;
+        }}
+
+        .search-box input:focus {{
+            border-color: var(--border-focus);
+        }}
+
+        .search-box svg {{
             position: absolute;
-            left: 12px;
+            left: 10px;
             top: 50%;
             transform: translateY(-50%);
-            stroke: var(--text-dim);
-            pointer-events: none;
+            stroke: var(--text-muted);
         }}
 
-        .search-input {{
-            width: 100%;
-            background: var(--bg-input);
-            border: 1px solid var(--border-subtle);
-            border-radius: 8px;
-            padding: 9px 12px 9px 36px;
-            color: var(--text-main);
-            font-size: 0.85rem;
-            outline: none;
-            transition: all 0.2s ease;
-        }}
-
-        .search-input:focus {{
-            border-color: var(--border-focus);
-            box-shadow: 0 0 0 1px var(--border-focus), 0 0 12px var(--accent-glow);
-        }}
-
-        .btn-add {{
+        .header-actions {{
             display: flex;
             align-items: center;
             gap: 8px;
-            background: linear-gradient(135deg, #00E5FF 0%, #0077FE 100%);
-            color: #0B0E14;
-            border: none;
-            border-radius: 8px;
-            padding: 9px 16px;
-            font-size: 0.85rem;
-            font-weight: 600;
+        }}
+
+        .btn {{
+            background: #2D2D2D;
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 6px 14px;
+            border-radius: 5px;
+            font-size: 12.5px;
+            font-weight: 500;
             cursor: pointer;
-            transition: all 0.2s;
-            white-space: nowrap;
+            transition: background 0.1s ease;
         }}
 
-        .btn-add:hover {{
-            opacity: 0.95;
-            box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
-            transform: translateY(-1px);
+        .btn:hover {{
+            background: #383838;
         }}
 
-        /* Add Bookmark Bar */
-        .add-bar {{
-            display: none;
-            background: var(--bg-sidebar);
-            border-bottom: 1px solid var(--border-subtle);
-            padding: 16px 36px;
-            gap: 12px;
-            align-items: center;
-            animation: fadeIn 0.2s ease;
+        .btn-primary {{
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #FFFFFF;
         }}
 
-        .add-bar.active {{
-            display: flex;
+        .btn-primary:hover {{
+            background: var(--accent-hover);
         }}
 
-        .add-input {{
+        .content-container {{
             flex: 1;
-            background: var(--bg-input);
-            border: 1px solid var(--border-subtle);
-            border-radius: 6px;
-            padding: 8px 12px;
-            color: var(--text-main);
-            font-size: 0.85rem;
-            outline: none;
-        }}
-
-        .add-input:focus {{
-            border-color: var(--border-focus);
-        }}
-
-        .btn-save {{
-            background: var(--accent-cyan);
-            color: #000;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            font-weight: 600;
-            font-size: 0.85rem;
-            cursor: pointer;
-        }}
-
-        .btn-cancel {{
-            background: transparent;
-            color: var(--text-sub);
-            border: 1px solid var(--border-subtle);
-            padding: 8px 14px;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            cursor: pointer;
-        }}
-
-        .content {{
-            flex: 1;
-            padding: 32px 36px;
-            max-width: 1400px;
+            padding: 28px 32px 60px 32px;
+            max-width: 900px;
             width: 100%;
             margin: 0 auto;
         }}
 
-        .bookmarks-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-            gap: 16px;
-        }}
-
-        .bookmark-card {{
+        /* Inline Add Card */
+        .add-card {{
             background: var(--bg-card);
-            border: 1px solid var(--border-subtle);
-            border-radius: 10px;
-            padding: 16px;
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            transition: all 0.2s ease;
-        }}
-
-        .bookmark-card:hover {{
-            background: var(--bg-card-hover);
-            border-color: #333D50;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-        }}
-
-        .bm-icon {{
-            width: 40px;
-            height: 40px;
+            border: 1px solid var(--border);
             border-radius: 8px;
-            background: rgba(0, 229, 255, 0.08);
-            border: 1px solid rgba(0, 229, 255, 0.2);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            display: none;
         }}
 
-        .bm-info {{
+        .add-card.active {{
+            display: block;
+        }}
+
+        .add-card h3 {{
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: var(--text-primary);
+        }}
+
+        .form-row {{
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+        }}
+
+        .form-row input {{
+            flex: 1;
+            background: var(--bg-base);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            padding: 7px 10px;
+            color: var(--text-primary);
+            font-size: 13px;
+            outline: none;
+        }}
+
+        .form-row input:focus {{
+            border-color: var(--border-focus);
+        }}
+
+        .bookmarks-list {{
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }}
+
+        .bookmark-row {{
+            display: flex;
+            align-items: center;
+            padding: 11px 18px;
+            border-bottom: 1px solid var(--border-subtle);
+            transition: background 0.1s ease;
+            gap: 14px;
+        }}
+
+        .bookmark-row:last-child {{
+            border-bottom: none;
+        }}
+
+        .bookmark-row:hover {{
+            background: var(--bg-hover);
+        }}
+
+        .icon-col {{
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+        }}
+
+        .info-col {{
             flex: 1;
             min-width: 0;
         }}
 
-        .bm-title {{
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: var(--text-main);
+        .title-text {{
+            font-size: 13.5px;
+            font-weight: 500;
+            color: var(--text-primary);
+            cursor: pointer;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            margin-bottom: 3px;
+            transition: color 0.1s ease;
         }}
 
-        .bm-url {{
-            font-size: 0.75rem;
-            color: var(--text-dim);
+        .title-text:hover {{
+            color: var(--accent);
+            text-decoration: underline;
+        }}
+
+        .url-text {{
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 1px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }}
 
-        .bm-actions {{
+        .actions-col {{
             display: flex;
             align-items: center;
             gap: 6px;
+            flex-shrink: 0;
         }}
 
-        .btn-open {{
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--border-subtle);
-            color: var(--text-sub);
-            padding: 6px 10px;
-            border-radius: 6px;
-            font-size: 0.75rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-        }}
-
-        .btn-open:hover {{
-            background: var(--accent-cyan);
-            border-color: var(--accent-cyan);
-            color: #000;
-        }}
-
-        .btn-delete {{
+        .btn-action {{
             background: transparent;
-            border: 1px solid transparent;
-            color: var(--text-dim);
-            padding: 6px;
-            border-radius: 6px;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background 0.1s ease, color 0.1s ease;
+        }}
+
+        .btn-action:hover {{
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-primary);
+        }}
+
+        .btn-icon {{
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 5px;
+            border-radius: 4px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.2s;
+            transition: color 0.1s ease;
         }}
 
-        .btn-delete:hover {{
-            color: var(--danger-red);
-            background: rgba(255, 77, 77, 0.1);
-            border-color: rgba(255, 77, 77, 0.2);
+        .btn-icon:hover {{
+            color: var(--danger);
         }}
 
         .empty-state {{
-            text-align: center;
             padding: 60px 20px;
-            color: var(--text-dim);
-            grid-column: 1 / -1;
-        }}
-
-        .empty-state svg {{
-            stroke: var(--text-dim);
-            margin-bottom: 16px;
+            text-align: center;
         }}
 
         .empty-state h3 {{
-            color: var(--text-sub);
-            font-size: 1.1rem;
-            margin-bottom: 8px;
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--text-primary);
+            margin: 12px 0 6px 0;
         }}
 
         .empty-state p {{
-            font-size: 0.85rem;
-            max-width: 400px;
-            margin: 0 auto;
-            line-height: 1.5;
+            font-size: 13px;
+            color: var(--text-secondary);
         }}
 
-        .toast {{
+        #toast {{
             position: fixed;
             bottom: 24px;
             right: 24px;
-            background: var(--bg-card);
-            border: 1px solid var(--border-focus);
-            padding: 10px 18px;
-            border-radius: 8px;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 12px var(--accent-glow);
-            color: var(--text-main);
-            font-size: 0.85rem;
-            font-weight: 500;
+            background: #2B2B2B;
+            border: 1px solid var(--border);
+            color: #FFFFFF;
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             display: none;
-            animation: toastPop 0.3s ease;
-            z-index: 200;
-        }}
-
-        @keyframes toastPop {{
-            from {{ transform: translateY(12px); opacity: 0; }}
-            to {{ transform: translateY(0); opacity: 1; }}
-        }}
-
-        @keyframes fadeIn {{
-            from {{ opacity: 0; }}
-            to {{ opacity: 1; }}
+            z-index: 1000;
         }}
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="brand">
-            <div class="brand-icon">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-                </svg>
-            </div>
+    <div class="top-bar">
+        <div class="brand-section">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#0078D4" stroke-width="2.2">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
             <h1>Bookmarks</h1>
-            <span class="badge-count" id="count-badge">{total_count} Bookmarks</span>
+            <span class="count-pill">{total_count} Bookmarks</span>
         </div>
-        <div class="controls">
-            <div class="search-wrapper">
-                <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke-width="2">
-                    <circle cx="11" cy="11" r="8"/>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                </svg>
-                <input type="text" class="search-input" id="search-input" placeholder="Search bookmarks by title or domain...">
+
+        <div class="search-box">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="text" id="bm-search" placeholder="Search bookmarks" oninput="filterBookmarks(this.value)" />
+        </div>
+
+        <div class="header-actions">
+            <button class="btn btn-primary" onclick="toggleAddForm()">Add Bookmark</button>
+        </div>
+    </div>
+
+    <div class="content-container">
+        <!-- Add Bookmark Form -->
+        <div class="add-card" id="add-form">
+            <h3>Add New Bookmark</h3>
+            <div class="form-row">
+                <input type="text" id="new-title" placeholder="Name" />
+                <input type="text" id="new-url" placeholder="URL (https://...)" />
             </div>
-            <button class="btn-add" onclick="toggleAddBar()">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <line x1="12" y1="5" x2="12" y2="19"/>
-                    <line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-                Add Bookmark
-            </button>
+            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                <button class="btn" onclick="toggleAddForm()">Cancel</button>
+                <button class="btn btn-primary" onclick="submitBookmark()">Save</button>
+            </div>
         </div>
-    </div>
 
-    <div class="add-bar" id="add-bar">
-        <input type="text" class="add-input" id="add-title" placeholder="Bookmark Title (e.g., GitHub)">
-        <input type="url" class="add-input" id="add-url" placeholder="URL (e.g., https://github.com)">
-        <button class="btn-save" onclick="saveNewBookmark()">Save</button>
-        <button class="btn-cancel" onclick="toggleAddBar()">Cancel</button>
-    </div>
-
-    <div class="content">
-        <div class="bookmarks-grid" id="grid">
+        <div class="bookmarks-list" id="bookmarks-container">
             {bookmark_cards}
         </div>
     </div>
 
-    <div class="toast" id="toast">Bookmark Saved</div>
+    <div id="toast"></div>
 
     <script>
-        function toggleAddBar() {{
-            const bar = document.getElementById('add-bar');
-            bar.classList.toggle('active');
-            if (bar.classList.contains('active')) {{
-                document.getElementById('add-title').focus();
-            }}
-        }}
-
         function showToast(msg) {{
-            const t = document.getElementById('toast');
-            t.innerText = msg;
-            t.style.display = 'block';
-            setTimeout(() => {{ t.style.display = 'none'; }}, 2500);
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.style.display = 'block';
+            setTimeout(() => {{
+                toast.style.display = 'none';
+            }}, 2000);
         }}
 
         function openBookmark(url) {{
             if (window.chrome && window.chrome.webview) {{
-                window.chrome.webview.postMessage({{ action: 'navigate', url: url }});
+                window.chrome.webview.postMessage(JSON.stringify({{
+                    action: "navigate",
+                    url: url
+                }}));
             }} else {{
                 window.location.href = url;
             }}
         }}
 
         function deleteBookmark(id) {{
-            if (confirm('Delete this bookmark?')) {{
-                if (window.chrome && window.chrome.webview) {{
-                    window.chrome.webview.postMessage({{ action: 'delete_bookmark', id: id }});
-                }}
-                const card = document.querySelector(`.bookmark-card[data-id="${{id}}"]`);
-                if (card) {{
-                    card.style.opacity = '0';
-                    card.style.transform = 'scale(0.9)';
-                    setTimeout(() => {{
-                        card.remove();
-                        updateCount();
-                    }}, 200);
-                }}
-                showToast('Bookmark deleted');
+            if (window.chrome && window.chrome.webview) {{
+                window.chrome.webview.postMessage(JSON.stringify({{
+                    action: "delete_bookmark",
+                    id: id
+                }}));
+            }}
+            const row = document.querySelector(`.bookmark-row[data-id="${{id}}"]`);
+            if (row) {{
+                row.remove();
+            }}
+            showToast("Bookmark deleted");
+        }}
+
+        function toggleAddForm() {{
+            const form = document.getElementById('add-form');
+            form.classList.toggle('active');
+            if (form.classList.contains('active')) {{
+                document.getElementById('new-title').focus();
             }}
         }}
 
-        function saveNewBookmark() {{
-            const titleInput = document.getElementById('add-title');
-            const urlInput = document.getElementById('add-url');
-            const title = titleInput.value.trim();
-            let url = urlInput.value.trim();
+        function submitBookmark() {{
+            const title = document.getElementById('new-title').value.trim();
+            let url = document.getElementById('new-url').value.trim();
 
-            if (!url) {{
-                alert('Please enter a valid URL');
+            if (!title || !url) {{
+                alert("Please provide both a title and a valid URL.");
                 return;
             }}
-            if (!url.startsWith('http://') && !url.startsWith('https://')) {{
+
+            if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('nexora://')) {{
                 url = 'https://' + url;
             }}
 
-            const finalTitle = title || url;
             if (window.chrome && window.chrome.webview) {{
-                window.chrome.webview.postMessage({{ action: 'add_bookmark', title: finalTitle, url: url }});
+                window.chrome.webview.postMessage(JSON.stringify({{
+                    action: "add_bookmark",
+                    title: title,
+                    url: url
+                }}));
             }}
 
-            showToast('Bookmark added');
-            toggleAddBar();
-            titleInput.value = '';
-            urlInput.value = '';
-
+            showToast("Bookmark added");
             setTimeout(() => {{
-                if (window.chrome && window.chrome.webview) {{
-                    window.chrome.webview.postMessage({{ action: 'navigate', url: 'nexora://bookmarks' }});
-                }} else {{
-                    window.location.reload();
-                }}
-            }}, 300);
+                window.location.reload();
+            }}, 400);
         }}
 
-        function updateCount() {{
-            const cards = document.querySelectorAll('.bookmark-card');
-            document.getElementById('count-badge').innerText = cards.length + ' Bookmarks';
-        }}
-
-        document.getElementById('search-input').addEventListener('input', function(e) {{
-            const q = e.target.value.toLowerCase().trim();
-            const cards = document.querySelectorAll('.bookmark-card');
-            cards.forEach(card => {{
-                const term = card.getAttribute('data-search') || '';
-                if (term.includes(q)) {{
-                    card.style.display = 'flex';
+        function filterBookmarks(query) {{
+            const q = query.toLowerCase().trim();
+            const rows = document.querySelectorAll('.bookmark-row');
+            rows.forEach(r => {{
+                const text = r.getAttribute('data-search') || '';
+                if (!q || text.includes(q)) {{
+                    r.style.display = 'flex';
                 }} else {{
-                    card.style.display = 'none';
+                    r.style.display = 'none';
                 }}
             }});
-        }});
+        }}
     </script>
 </body>
 </html>"###,
-            total_count = bookmarks.len(),
+            total_count = total_count,
             bookmark_cards = bookmark_cards,
         )
     }
 }
 
-fn escape_html(input: &str) -> String {
-    input
-        .replace('&', "&amp;")
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
@@ -583,10 +533,13 @@ fn escape_html(input: &str) -> String {
 }
 
 fn extract_domain(url: &str) -> String {
-    if let Some(stripped) = url.strip_prefix("https://") {
-        stripped.split('/').next().unwrap_or(stripped).to_string()
-    } else if let Some(stripped) = url.strip_prefix("http://") {
-        stripped.split('/').next().unwrap_or(stripped).to_string()
+    if let Some(pos) = url.find("://") {
+        let rest = &url[pos + 3..];
+        let domain = match rest.find('/') {
+            Some(end) => &rest[..end],
+            None => rest,
+        };
+        domain.to_string()
     } else {
         url.to_string()
     }
@@ -627,4 +580,3 @@ mod tests {
         assert!(html.contains("deleteBookmark"));
     }
 }
-
