@@ -66,9 +66,28 @@ fn main() {
     let session_mgr = Arc::new(SessionManager::new(db.clone()));
     let recovery_mgr = Arc::new(crate::storage::CrashRecoveryManager::new(&app.paths.data_dir));
     let had_crash = recovery_mgr.detect_abnormal_shutdown();
-    if had_crash {
-        log::warn!("Abnormal shutdown detected! Initiating session crash recovery...");
-    }
+    let should_restore_crash = if had_crash {
+        log::warn!("Abnormal shutdown detected! Prompting user for session crash recovery...");
+        let wide_prompt: Vec<u16> = "Nexora encountered an unexpected shutdown.\n\nWould you like to restore your previous browsing session?"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let wide_title: Vec<u16> = "Restore Session - Nexora"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        unsafe {
+            let res = windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
+                None,
+                windows::core::PCWSTR(wide_prompt.as_ptr()),
+                windows::core::PCWSTR(wide_title.as_ptr()),
+                windows::Win32::UI::WindowsAndMessaging::MB_YESNO | windows::Win32::UI::WindowsAndMessaging::MB_ICONQUESTION,
+            );
+            res == windows::Win32::UI::WindowsAndMessaging::IDYES
+        }
+    } else {
+        false
+    };
     let _ = recovery_mgr.mark_session_active();
 
     let _permissions_mgr = Arc::new(crate::privacy::PermissionsManager::new(db.clone()));
@@ -122,7 +141,7 @@ fn main() {
 
     // 5. Initialize Multi-Tab State Machine via Lazy Session Restoration / Crash Recovery Pipeline
     let tab_manager = Rc::new(RefCell::new(TabManager::new()));
-    let initial_url = if had_crash {
+    let initial_url = if should_restore_crash {
         if let Ok(Some(checkpoint)) = recovery_mgr.load_checkpoint() {
             log::info!("Auto-recovering {} tabs from crash checkpoint...", checkpoint.tabs.len());
             let saved = crate::storage::SavedSession {
@@ -142,18 +161,17 @@ fn main() {
                 &mut tab_manager.borrow_mut(),
             );
             plan.active_url
-        } else if let Ok(saved_session) = session_mgr.load_session() {
-            let plan = crate::performance::LazyRestorePipeline::restore_session(
-                &saved_session,
-                &app.config.homepage,
-                &mut tab_manager.borrow_mut(),
-            );
-            plan.active_url
         } else {
             let initial_tab_id = tab_manager.borrow_mut().create_tab(&app.config.homepage, Some("Nexora Home"));
             log::info!("Created initial browser tab #{}", initial_tab_id);
             app.config.homepage.clone()
         }
+    } else if had_crash {
+        // User opted not to restore the crashed session; discard checkpoint and start fresh
+        let _ = recovery_mgr.clear_checkpoint();
+        let initial_tab_id = tab_manager.borrow_mut().create_tab(&app.config.homepage, Some("Nexora Home"));
+        log::info!("User declined crash restore. Created fresh browser tab #{}", initial_tab_id);
+        app.config.homepage.clone()
     } else if let Ok(saved_session) = session_mgr.load_session() {
         if !saved_session.tabs.is_empty() {
             log::info!("Executing Lazy Session Restoration Pipeline for {} tabs...", saved_session.tabs.len());

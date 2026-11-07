@@ -507,6 +507,39 @@ impl WebViewEngine {
                     let _ = args.PermissionKind(&mut kind);
 
                     log::info!("[Permissions] Permission requested: {:?} for origin '{}'", kind, origin_str);
+
+                    let norm_origin = crate::privacy::PermissionsManager::normalize_origin(&origin_str);
+                    let maybe_pk = match kind {
+                        COREWEBVIEW2_PERMISSION_KIND_CAMERA => Some(crate::privacy::PermissionKind::Camera),
+                        COREWEBVIEW2_PERMISSION_KIND_MICROPHONE => Some(crate::privacy::PermissionKind::Microphone),
+                        COREWEBVIEW2_PERMISSION_KIND_GEOLOCATION => Some(crate::privacy::PermissionKind::Geolocation),
+                        COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS => Some(crate::privacy::PermissionKind::Notifications),
+                        COREWEBVIEW2_PERMISSION_KIND_CLIPBOARD_READ => Some(crate::privacy::PermissionKind::ClipboardRead),
+                        COREWEBVIEW2_PERMISSION_KIND_AUTOPLAY => Some(crate::privacy::PermissionKind::Autoplay),
+                        _ => None,
+                    };
+
+                    if let Some(pk) = maybe_pk {
+                        let state = if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                            let db_path = paths.data_dir.join("nexora.db");
+                            if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                                let pm = crate::privacy::PermissionsManager::new(std::sync::Arc::new(conn));
+                                pm.get_permission(&norm_origin, pk).unwrap_or(crate::privacy::PermissionState::Prompt)
+                            } else {
+                                crate::privacy::PermissionState::Prompt
+                            }
+                        } else {
+                            crate::privacy::PermissionState::Prompt
+                        };
+
+                        let wv_state = match state {
+                            crate::privacy::PermissionState::Allow => COREWEBVIEW2_PERMISSION_STATE_ALLOW,
+                            crate::privacy::PermissionState::Block => COREWEBVIEW2_PERMISSION_STATE_DENY,
+                            crate::privacy::PermissionState::Prompt => COREWEBVIEW2_PERMISSION_STATE_DEFAULT,
+                        };
+                        let _ = args.SetState(wv_state);
+                        log::info!("[Permissions] Enforced permission {:?} for {} -> {:?}", pk, norm_origin, wv_state);
+                    }
                 }
             }
             Ok(())
@@ -514,6 +547,46 @@ impl WebViewEngine {
         let mut perm_token = EventRegistrationToken::default();
         unsafe {
             let _ = self.webview.add_PermissionRequested(&perm_handler, &mut perm_token);
+        }
+
+        // WebResourceRequested (High-Speed Ad & Tracker Blocker - TASK-701)
+        let env_for_adblock = self._environment.clone();
+        let adblock = std::sync::Arc::new(crate::privacy::AdBlockEngine::new(true, true));
+        let adblock_handler = WebResourceRequestedEventHandler::create(Box::new(move |_sender, args| {
+            if let Some(args) = args {
+                unsafe {
+                    if let Ok(req) = args.Request() {
+                        let mut uri = PWSTR::null();
+                        if req.Uri(&mut uri).is_ok() {
+                            let url_str = string_from_pcwstr(&PCWSTR(uri.0));
+                            let (should_block, category) = adblock.should_block(&url_str);
+                            if should_block {
+                                log::info!("[AdBlock Intercept] Blocked {:?}: {}", category, url_str);
+                                let reason = pwstr_from_str("Blocked by Nexora AdBlock");
+                                let headers = pwstr_from_str("Content-Type: text/plain\r\n");
+                                if let Ok(resp) = env_for_adblock.CreateWebResourceResponse(
+                                    None,
+                                    403,
+                                    PCWSTR(reason.0),
+                                    PCWSTR(headers.0),
+                                ) {
+                                    let _ = args.SetResponse(&resp);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }));
+        let mut adblock_token = EventRegistrationToken::default();
+        unsafe {
+            let filter_all = pwstr_from_str("*");
+            let _ = self.webview.AddWebResourceRequestedFilter(
+                PCWSTR(filter_all.0),
+                COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL,
+            );
+            let _ = self.webview.add_WebResourceRequested(&adblock_handler, &mut adblock_token);
         }
 
         // WebMessageReceived (Bidirectional Settings, Bookmarks, History & Engine IPC)
