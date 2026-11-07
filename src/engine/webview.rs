@@ -281,14 +281,32 @@ impl WebViewEngine {
     }
 
     fn setup_event_handlers(&self, hwnd: HWND) -> Result<()> {
-        // NavigationStarting
-        let starting_handler = NavigationStartingEventHandler::create(Box::new(|_sender, args| {
+        let hwnd_parent = hwnd;
+
+        // 1. NavigationStarting (Immediately show newly navigated URL in omnibox)
+        let starting_handler = NavigationStartingEventHandler::create(Box::new(move |_sender, args| {
             if let Some(args) = args {
                 unsafe {
                     let mut uri = PWSTR::null();
                     if args.Uri(&mut uri).is_ok() {
                         let url_str = string_from_pcwstr(&PCWSTR(uri.0));
                         log::info!("[WebView2] Navigation Starting: {}", url_str);
+
+                        let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                            hwnd_parent,
+                            windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                        ) as *mut crate::browser::host_window::WindowContext;
+                        if !ptr.is_null() {
+                            if let Some(ref chrome) = (*ptr).chrome {
+                                chrome.set_omnibox_text(&url_str);
+                            }
+                            let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            if let Some(active) = tabs.get_active_tab_mut() {
+                                active.url = url_str.clone();
+                            }
+                            drop(tabs);
+                            let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
+                        }
                     }
                 }
             }
@@ -299,8 +317,87 @@ impl WebViewEngine {
             let _ = self.webview.add_NavigationStarting(&starting_handler, &mut starting_token);
         }
 
-        // NavigationCompleted
-        let completed_handler = NavigationCompletedEventHandler::create(Box::new(|sender, args| {
+        // 2. SourceChanged (Guaranteed sync on redirects, SPAs, and deep link navigations)
+        let source_handler = SourceChangedEventHandler::create(Box::new(move |sender, _args| {
+            if let Some(sender) = sender {
+                unsafe {
+                    let mut uri = PWSTR::null();
+                    if sender.Source(&mut uri).is_ok() {
+                        let url_str = string_from_pcwstr(&PCWSTR(uri.0));
+                        log::info!("[WebView2] Source Changed: {}", url_str);
+
+                        let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                            hwnd_parent,
+                            windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                        ) as *mut crate::browser::host_window::WindowContext;
+                        if !ptr.is_null() {
+                            if let Some(ref chrome) = (*ptr).chrome {
+                                chrome.set_omnibox_text(&url_str);
+                            }
+                            let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            if let Some(active) = tabs.get_active_tab_mut() {
+                                active.url = url_str.clone();
+                            }
+                            drop(tabs);
+                            let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }));
+        let mut source_token = EventRegistrationToken::default();
+        unsafe {
+            let _ = self.webview.add_SourceChanged(&source_handler, &mut source_token);
+        }
+
+        // 3. DocumentTitleChanged (Keep tab header and window title synced with webpage title)
+        let title_handler = DocumentTitleChangedEventHandler::create(Box::new(move |sender, _args| {
+            if let Some(sender) = sender {
+                unsafe {
+                    let mut title = PWSTR::null();
+                    if sender.DocumentTitle(&mut title).is_ok() {
+                        let title_str = string_from_pcwstr(&PCWSTR(title.0));
+                        log::info!("[WebView2] Document Title Changed: {}", title_str);
+
+                        let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                            hwnd_parent,
+                            windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                        ) as *mut crate::browser::host_window::WindowContext;
+                        if !ptr.is_null() {
+                            let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            if let Some(active) = tabs.get_active_tab_mut() {
+                                if !title_str.trim().is_empty() {
+                                    active.title = title_str.clone();
+                                }
+                            }
+                            drop(tabs);
+
+                            let full_title = if title_str.trim().is_empty() {
+                                "Nexora".to_string()
+                            } else {
+                                format!("{} - Nexora", title_str)
+                            };
+                            let wide_title: Vec<u16> = full_title.encode_utf16().chain(std::iter::once(0)).collect();
+                            let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
+                                hwnd_parent,
+                                windows::core::PCWSTR(wide_title.as_ptr()),
+                            );
+
+                            let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }));
+        let mut title_token = EventRegistrationToken::default();
+        unsafe {
+            let _ = self.webview.add_DocumentTitleChanged(&title_handler, &mut title_token);
+        }
+
+        // 4. NavigationCompleted (Record visit in history and final state sync)
+        let completed_handler = NavigationCompletedEventHandler::create(Box::new(move |sender, args| {
             if let Some(args) = args {
                 unsafe {
                     let mut is_success = BOOL(0);
@@ -314,13 +411,33 @@ impl WebViewEngine {
                             let mut uri = PWSTR::null();
                             if s.Source(&mut uri).is_ok() {
                                 let url_str = string_from_pcwstr(&PCWSTR(uri.0));
+                                let mut title = PWSTR::null();
+                                let title_str = if s.DocumentTitle(&mut title).is_ok() {
+                                    string_from_pcwstr(&PCWSTR(title.0))
+                                } else {
+                                    String::new()
+                                };
+
+                                let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                                    hwnd_parent,
+                                    windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                                ) as *mut crate::browser::host_window::WindowContext;
+                                if !ptr.is_null() {
+                                    if let Some(ref chrome) = (*ptr).chrome {
+                                        chrome.set_omnibox_text(&url_str);
+                                    }
+                                    let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                    if let Some(active) = tabs.get_active_tab_mut() {
+                                        active.url = url_str.clone();
+                                        if !title_str.trim().is_empty() {
+                                            active.title = title_str.clone();
+                                        }
+                                    }
+                                    drop(tabs);
+                                    let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
+                                }
+
                                 if !url_str.starts_with("nexora://") && url_str != "about:blank" && !url_str.is_empty() {
-                                    let mut title = PWSTR::null();
-                                    let title_str = if s.DocumentTitle(&mut title).is_ok() {
-                                        string_from_pcwstr(&PCWSTR(title.0))
-                                    } else {
-                                        String::new()
-                                    };
                                     if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
                                         let db_path = paths.data_dir.join("nexora.db");
                                         if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
@@ -339,24 +456,6 @@ impl WebViewEngine {
         let mut completed_token = EventRegistrationToken::default();
         unsafe {
             let _ = self.webview.add_NavigationCompleted(&completed_handler, &mut completed_token);
-        }
-
-        // SourceChanged
-        let source_handler = SourceChangedEventHandler::create(Box::new(|sender, _args| {
-            if let Some(sender) = sender {
-                unsafe {
-                    let mut uri = PWSTR::null();
-                    if sender.Source(&mut uri).is_ok() {
-                        let url_str = string_from_pcwstr(&PCWSTR(uri.0));
-                        log::info!("[WebView2] Source Changed: {}", url_str);
-                    }
-                }
-            }
-            Ok(())
-        }));
-        let mut source_token = EventRegistrationToken::default();
-        unsafe {
-            let _ = self.webview.add_SourceChanged(&source_handler, &mut source_token);
         }
 
         // ProcessFailed (Crash Recovery Hook - TASK-803)

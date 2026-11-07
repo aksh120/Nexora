@@ -18,9 +18,10 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DispatchMessageW,
     GetClientRect, GetMessageW, GetWindowLongPtrW, GetWindowRect, IsZoomed, KillTimer,
-    PostQuitMessage, RegisterClassExW, SendMessageW, SetTimer, SetWindowLongPtrW, ShowWindow,
+    PostQuitMessage, RegisterClassExW, SendMessageW, SetTimer, SetWindowLongPtrW, SetWindowPos, ShowWindow,
     TrackPopupMenuEx, TranslateMessage, CW_USEDEFAULT, GWLP_USERDATA, MSG, SW_MAXIMIZE,
-    SW_MINIMIZE, SW_RESTORE, SW_SHOW, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTALIGN, TPM_TOPALIGN,
+    SW_MINIMIZE, SW_RESTORE, SW_SHOW, SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+    TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTALIGN, TPM_TOPALIGN,
     WINDOW_EX_STYLE, WM_CLOSE, WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED,
     WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_NCCALCSIZE,
     WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT, WM_SIZE, WM_TIMER, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
@@ -144,6 +145,17 @@ impl HostWindow {
                 cyBottomHeight: 0,
             };
             let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+
+            // Recompute frame immediately so default Windows caption is completely stripped
+            let _ = SetWindowPos(
+                hwnd,
+                None,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
+            );
 
             let layout = BrowserLayout::new(width, height);
             let suspension_engine = SmartSuspensionEngine::new(suspension_timeout_minutes, smart_suspension);

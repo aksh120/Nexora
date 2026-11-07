@@ -1,0 +1,22 @@
+<svg viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="orbit-grad1" x1="16" y1="20" x2="112" y2="108" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00E5FF" />
+      <stop offset="50%" stop-color="#EC4899" />
+      <stop offset="100%" stop-color="#8B5CF6" />
+    </linearGradient>
+    <linearGradient id="orbit-core" x1="44" y1="44" x2="84" y2="84" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#00E5FF" />
+    </linearGradient>
+  </defs>
+  <!-- Outer elliptical speed ring -->
+  <path d="M64 14 C92 14 114 36 114 64 C114 86 98 104 78 111 C70 114 60 114 52 111 C30 102 14 82 14 64" stroke="url(#orbit-grad1)" stroke-width="7" stroke-linecap="round" />
+  <!-- Counter-rotating energetic inner loop shaping an 'N' -->
+  <path d="M42 32 L42 96 M42 34 L86 94 M86 32 L86 96" stroke="#00E5FF" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Glowing accent dots -->
+  <circle cx="86" cy="32" r="4.5" fill="#EC4899" />
+  <circle cx="42" cy="96" r="4.5" fill="#00E5FF" />
+  <!-- Center pulse -->
+  <circle cx="64" cy="64" r="5" fill="url(#orbit-core)" />
+</svg>

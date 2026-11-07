@@ -1,0 +1,20 @@
+<svg viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="wave-grad1" x1="20" y1="20" x2="108" y2="108" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00F5FF" />
+      <stop offset="60%" stop-color="#8B5CF6" />
+      <stop offset="100%" stop-color="#3B82F6" />
+    </linearGradient>
+    <linearGradient id="wave-shade" x1="40" y1="40" x2="90" y2="90" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1E1B4B" />
+      <stop offset="100%" stop-color="#312E81" />
+    </linearGradient>
+  </defs>
+  <!-- Back fold shadow -->
+  <path d="M46 36 C52 26 76 26 82 36 L82 92 C76 102 52 102 46 92 Z" fill="url(#wave-shade)" />
+  <!-- Continuous Foreground Ribbon 'N' -->
+  <path d="M30 100 L30 36 C30 26 44 20 54 30 L74 98 C84 108 98 102 98 92 L98 28" 
+        stroke="url(#wave-grad1)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- High-precision highlight gleam -->
+  <path d="M30 60 L30 36 C30 30 38 26 44 32" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" opacity="0.8" />
+</svg>
