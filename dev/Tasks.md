@@ -9,9 +9,9 @@
 
 | Status | Count |
 | :--- | :--- |
-| **Completed** | 4 |
+| **Completed** | 8 |
 | **In Progress** | 0 |
-| **Not Started** | 41 |
+| **Not Started** | 37 |
 | **Blocked** | 0 |
 | **Total** | 45 |
 
@@ -32,10 +32,10 @@
 
 | Task ID | Description | Priority | Status | Dependencies | Completion Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `TASK-101` | Initialize Cargo Workspace & Project Structure | P0 | **Not Started** | `TASK-004` | Establish modular directory layout per Section 14. |
-| `TASK-102` | Configure Cargo Dependencies & Build Profiles | P0 | **Not Started** | `TASK-101` | Add `windows`, `webview2-com`, `rusqlite`, etc. Configure LTO and codegen-units. |
-| `TASK-103` | Implement Core Logging & Error Handling Subsystem | P1 | **Not Started** | `TASK-102` | File and debug console sinks with zero performance overhead in release. |
-| `TASK-104` | Configure Windows Manifest & DPI Awareness | P1 | **Not Started** | `TASK-101` | Per-Monitor V2 DPI awareness manifest and Windows 10/11 common controls. |
+| `TASK-101` | Initialize Cargo Workspace & Project Structure | P0 | **Completed** | `TASK-004` | Modular directory structure initialized: `src/{app, core, browser, engine, tabs, navigation, performance, media, privacy, storage, ui, settings, diagnostics}`. |
+| `TASK-102` | Configure Cargo Dependencies & Build Profiles | P0 | **Completed** | `TASK-101` | Configured `windows v0.58`, `webview2-com v0.33`, `serde`, `serde_json`, `log`, `directories`. Configured dev and release profiles with LTO. |
+| `TASK-103` | Implement Core Logging & Error Handling Subsystem | P1 | **Completed** | `TASK-102` | Implemented `NexoraError` enum with full std error traits and `NexoraLogger` with file sink, console sink, and Win32 `OutputDebugStringW`. |
+| `TASK-104` | Configure Windows Manifest & DPI Awareness | P1 | **Completed** | `TASK-101` | Implemented Per-Monitor V2 DPI awareness via Win32 API and created `assets/manifest/nexora.manifest` with Common-Controls v6. |
 
 ---
 
