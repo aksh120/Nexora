@@ -131,6 +131,10 @@ impl TabManager {
         &self.tabs
     }
 
+    pub fn tabs_mut(&mut self) -> &mut [Tab] {
+        &mut self.tabs
+    }
+
     pub fn update_title(&mut self, id: usize, title: &str) {
         if let Some(tab) = self.get_tab_mut(id) {
             tab.title = title.to_string();

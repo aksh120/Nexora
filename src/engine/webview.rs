@@ -354,6 +354,8 @@ mod tests {
             "https://www.google.com",
             "Google",
             tab_mgr,
+            true,
+            10,
         )
         .expect("HostWindow creation failed in test");
 

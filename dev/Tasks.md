@@ -92,10 +92,10 @@
 
 | Task ID | Description | Priority | Status | Dependencies | Completion Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `TASK-601` | Smart Tab Suspension Engine | P0 | **Not Started** | `TASK-504` | Automatic background tab suspension based on idle time and system RAM. |
-| `TASK-602` | Working Set Trimming via Windows Native APIs | P1 | **Not Started** | `TASK-601` | Call `SetProcessWorkingSetSize` to release inactive physical memory. |
-| `TASK-603` | Lazy Session Restoration Pipeline | P0 | **Not Started** | `TASK-401` | Cold-start tab restoration using lightweight placeholder stubs. |
-| `TASK-604` | System Memory Pressure Monitor | P1 | **Not Started** | `TASK-601` | Poll `GlobalMemoryStatusEx` and trigger aggressive cleanup under low memory. |
+| `TASK-601` | Smart Tab Suspension Engine | P0 | **Completed** | `TASK-504` | Implemented `SmartSuspensionEngine` in `src/performance/suspension.rs`. Evaluates background tab inactivity against adaptive pressure thresholds, respects strict exemptions (active, audio playing, loading), and renders lightweight HTML placeholder cards with instant waking on tab select. |
+| `TASK-602` | Working Set Trimming via Windows Native APIs | P1 | **Completed** | `TASK-601` | Implemented Win32 working set trimmer in `src/performance/memory.rs` using `SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX)` and `GetProcessMemoryInfo`. Automatically returns inactive physical memory pages to the Windows standby list upon tab suspension sweeps. |
+| `TASK-603` | Lazy Session Restoration Pipeline | P0 | **Completed** | `TASK-401` | Implemented `LazyRestorePipeline` in `src/performance/lazy_restore.rs`. Cold boots restore only the single active foreground tab, registering remaining tabs as dormant suspended stubs to keep cold startup latency < 400ms and idle memory under 20MB. |
+| `TASK-604` | System Memory Pressure Monitor | P1 | **Completed** | `TASK-601` | Implemented `MemoryPressureMonitor` in `src/performance/pressure.rs` querying `GlobalMemoryStatusEx`. Dynamically classifies memory into `Normal`, `Moderate`, and `Critical` pressure and scales tab idle timeouts accordingly (e.g. 10m -> 5m -> 2-3m). |
 
 ---
 

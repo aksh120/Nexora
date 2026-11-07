@@ -95,32 +95,27 @@ fn main() {
     let theme = ThemePalette::from_mode(theme_mode);
     log::info!("Active Theme: {:?} (dark: {})", app.config.theme, theme.is_dark);
 
-    // 5. Initialize Multi-Tab State Machine (Restore previous session if available)
+    // 5. Initialize Multi-Tab State Machine via Lazy Session Restoration Pipeline
     let tab_manager = Rc::new(RefCell::new(TabManager::new()));
-    let mut initial_url = app.config.homepage.clone();
-
-    if let Ok(saved_session) = session_mgr.load_session() {
+    let initial_url = if let Ok(saved_session) = session_mgr.load_session() {
         if !saved_session.tabs.is_empty() {
-            log::info!("Restoring {} tabs from previous session...", saved_session.tabs.len());
-            for saved_tab in saved_session.tabs {
-                let tid = tab_manager.borrow_mut().create_tab(&saved_tab.url, Some(&saved_tab.title));
-                if saved_tab.is_suspended {
-                    let _ = tab_manager.borrow_mut().suspend_tab(tid);
-                }
-            }
-            if let Some(active_id) = saved_session.active_tab_id {
-                let _ = tab_manager.borrow_mut().switch_tab(active_id);
-                if let Some(active) = tab_manager.borrow().get_active_tab() {
-                    initial_url = active.url.clone();
-                }
-            }
+            log::info!("Executing Lazy Session Restoration Pipeline for {} tabs...", saved_session.tabs.len());
+            let plan = crate::performance::LazyRestorePipeline::restore_session(
+                &saved_session,
+                &app.config.homepage,
+                &mut tab_manager.borrow_mut(),
+            );
+            plan.active_url
+        } else {
+            let initial_tab_id = tab_manager.borrow_mut().create_tab(&app.config.homepage, Some("Nexora Home"));
+            log::info!("Created initial browser tab #{}", initial_tab_id);
+            app.config.homepage.clone()
         }
-    }
-
-    if tab_manager.borrow().tab_count() == 0 {
+    } else {
         let initial_tab_id = tab_manager.borrow_mut().create_tab(&app.config.homepage, Some("Nexora Home"));
         log::info!("Created initial browser tab #{}", initial_tab_id);
-    }
+        app.config.homepage.clone()
+    };
 
     // 6. Create the native Win32 Host Window
     let host_window = match HostWindow::new(
@@ -131,6 +126,8 @@ fn main() {
         &app.config.homepage,
         &app.config.default_search_engine,
         tab_manager.clone(),
+        app.config.smart_suspension,
+        app.config.suspension_timeout_minutes,
     ) {
         Ok(window) => Rc::new(window),
         Err(err) => {

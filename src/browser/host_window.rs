@@ -10,15 +10,16 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
-    GetWindowLongPtrW, PostQuitMessage, RegisterClassExW, SetWindowLongPtrW, ShowWindow,
-    TranslateMessage, CW_USEDEFAULT, GWLP_USERDATA, MSG, SW_SHOW, WINDOW_EX_STYLE,
+    GetWindowLongPtrW, KillTimer, PostQuitMessage, RegisterClassExW, SetTimer, SetWindowLongPtrW,
+    ShowWindow, TranslateMessage, CW_USEDEFAULT, GWLP_USERDATA, MSG, SW_SHOW, WINDOW_EX_STYLE,
     WM_CLOSE, WM_COMMAND, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND, WM_LBUTTONDOWN,
-    WM_PAINT, WM_SIZE, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
+    WM_PAINT, WM_SIZE, WM_TIMER, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
 };
 
 use crate::core::error::{NexoraError, Result};
 use crate::engine::WebViewEngine;
 use crate::navigation::Omnibox;
+use crate::performance::SmartSuspensionEngine;
 use crate::tabs::TabManager;
 use crate::ui::chrome::{
     BrowserChrome, ChromeHitResult, IDC_BTN_BACK, IDC_BTN_FORWARD, IDC_BTN_HOME,
@@ -26,6 +27,8 @@ use crate::ui::chrome::{
 };
 use crate::ui::layout::{BrowserLayout, TAB_BAR_HEIGHT};
 use crate::ui::theme::ThemePalette;
+
+pub const IDT_SUSPENSION_TIMER: usize = 1001;
 
 pub struct WindowContext {
     pub layout: BrowserLayout,
@@ -36,6 +39,7 @@ pub struct WindowContext {
     pub homepage: String,
     pub default_search_engine: String,
     pub is_closing: Arc<AtomicBool>,
+    pub suspension_engine: SmartSuspensionEngine,
 }
 
 pub struct HostWindow {
@@ -52,6 +56,8 @@ impl HostWindow {
         homepage: &str,
         default_search: &str,
         tab_manager: Rc<RefCell<TabManager>>,
+        smart_suspension: bool,
+        suspension_timeout_minutes: u32,
     ) -> Result<Self> {
         let is_closing = Arc::new(AtomicBool::new(false));
 
@@ -108,6 +114,7 @@ impl HostWindow {
             ThemePalette::apply_to_window(hwnd, theme.is_dark);
 
             let layout = BrowserLayout::new(width, height);
+            let suspension_engine = SmartSuspensionEngine::new(suspension_timeout_minutes, smart_suspension);
 
             let context = Box::new(WindowContext {
                 layout,
@@ -118,9 +125,13 @@ impl HostWindow {
                 homepage: homepage.to_string(),
                 default_search_engine: default_search.to_string(),
                 is_closing: is_closing.clone(),
+                suspension_engine,
             });
 
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(context) as isize);
+
+            // Start 30-second periodic timer for memory pressure & smart tab suspension
+            let _ = SetTimer(hwnd, IDT_SUSPENSION_TIMER, 30_000, None);
 
             log::info!("Native Win32 Host Window created (HWND: {:?}, size: {}x{})", hwnd.0, width, height);
 
@@ -309,10 +320,14 @@ impl HostWindow {
                         match hit {
                             ChromeHitResult::Tab(id) => {
                                 let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                let was_suspended = tabs.get_tab(id).map(|t| t.is_suspended()).unwrap_or(false);
                                 if tabs.switch_tab(id) {
                                     if let Some(active) = tabs.get_active_tab() {
                                         let url = active.url.clone();
                                         drop(tabs);
+                                        if was_suspended {
+                                            log::info!("Waking suspended/lazy tab #{} and navigating to {}", id, url);
+                                        }
                                         if let Some(ref webview) = (*ptr).webview {
                                             let _ = webview.navigate(&url);
                                         }
@@ -434,7 +449,19 @@ impl HostWindow {
                 // Prevent flicker
                 LRESULT(1)
             }
+            WM_TIMER => {
+                if !ptr.is_null() && wparam.0 == IDT_SUSPENSION_TIMER {
+                    let mut tabs = (*ptr).tab_manager.borrow_mut();
+                    let suspended = (*ptr).suspension_engine.sweep_and_suspend(&mut tabs);
+                    if !suspended.is_empty() {
+                        log::info!("SmartSuspension: Suspended {} idle tabs via background sweep", suspended.len());
+                        let _ = InvalidateRect(hwnd, None, false);
+                    }
+                }
+                LRESULT(0)
+            }
             WM_CLOSE => {
+                let _ = KillTimer(hwnd, IDT_SUSPENSION_TIMER);
                 if !ptr.is_null() {
                     (*ptr).is_closing.store(true, Ordering::SeqCst);
                 }
@@ -442,6 +469,7 @@ impl HostWindow {
                 LRESULT(0)
             }
             WM_DESTROY => {
+                let _ = KillTimer(hwnd, IDT_SUSPENSION_TIMER);
                 if !ptr.is_null() {
                     let _ = Box::from_raw(ptr);
                     SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
@@ -470,6 +498,8 @@ mod tests {
             "https://www.google.com",
             "Google",
             tab_mgr.clone(),
+            true,
+            10,
         );
         assert!(window.is_ok(), "HostWindow creation should succeed");
         let window = window.unwrap();
