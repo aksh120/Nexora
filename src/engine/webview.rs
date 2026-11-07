@@ -134,7 +134,10 @@ impl WebViewEngine {
 
     pub fn navigate(&self, target_url: &str) -> Result<()> {
         if target_url == "nexora://settings" {
-            let config = crate::app::config::NexoraConfig::default();
+            let app_data_dir = crate::app::application::ApplicationPaths::resolve()
+                .map(|p| p.app_data_dir)
+                .unwrap_or_else(|_| std::env::temp_dir());
+            let config = crate::app::config::NexoraConfig::load_or_default(&app_data_dir);
             let html = crate::settings::SettingsUi::render_html(&config);
             return self.navigate_to_string(&html);
         } else if target_url == "nexora://diagnostics" {
@@ -412,7 +415,160 @@ impl WebViewEngine {
             let _ = self.webview.add_PermissionRequested(&perm_handler, &mut perm_token);
         }
 
+        // WebMessageReceived (Bidirectional Settings & Engine IPC)
+        let web_message_handler = WebMessageReceivedEventHandler::create(Box::new(|_sender, args| {
+            if let Some(args) = args {
+                unsafe {
+                    let mut message = PWSTR::null();
+                    if args.TryGetWebMessageAsString(&mut message).is_ok() {
+                        let msg_str = string_from_pcwstr(&PCWSTR(message.0));
+                        log::info!("[WebView2 IPC] Received WebMessage: {}", msg_str);
+                        Self::handle_ipc_message(&msg_str);
+                    }
+                }
+            }
+            Ok(())
+        }));
+        let mut msg_token = EventRegistrationToken::default();
+        unsafe {
+            let _ = self.webview.add_WebMessageReceived(&web_message_handler, &mut msg_token);
+        }
+
         Ok(())
+    }
+
+    fn handle_ipc_message(msg_str: &str) {
+        #[derive(serde::Deserialize)]
+        struct IpcPayload {
+            action: String,
+            key: Option<String>,
+            value: Option<serde_json::Value>,
+        }
+
+        let parsed: std::result::Result<IpcPayload, _> = serde_json::from_str(msg_str);
+        match parsed {
+            Ok(payload) => match payload.action.as_str() {
+                "save_setting" => {
+                    if let (Some(key), Some(val)) = (payload.key, payload.value) {
+                        Self::apply_and_save_setting(&key, &val);
+                    }
+                }
+                "compact_wal" => {
+                    log::info!("[IPC Action] Compacting SQLite database WAL...");
+                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                        let db_path = paths.data_dir.join("nexora.db");
+                        if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                            if let Err(e) = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);") {
+                                log::error!("[IPC Action] WAL checkpoint failed: {}", e);
+                            } else {
+                                log::info!("[IPC Action] SQLite WAL truncated and compacted successfully.");
+                            }
+                        }
+                    }
+                }
+                "clear_cache" => {
+                    log::info!("[IPC Action] Clearing browser cache...");
+                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                        let _ = std::fs::remove_dir_all(&paths.engine_data_dir);
+                        let _ = std::fs::create_dir_all(&paths.engine_data_dir);
+                        log::info!("[IPC Action] Engine cache directory cleared.");
+                    }
+                }
+                "reset_defaults" => {
+                    log::info!("[IPC Action] Resetting all settings to factory defaults...");
+                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                        let default_config = crate::app::config::NexoraConfig::default();
+                        let _ = default_config.save(&paths.app_data_dir);
+                        log::info!("[IPC Action] Default configuration saved to {:?}", paths.app_data_dir);
+                    }
+                }
+                other => {
+                    log::warn!("[WebView2 IPC] Unrecognized action: {}", other);
+                }
+            },
+            Err(e) => {
+                log::warn!("[WebView2 IPC] Failed to parse message JSON: {}. Raw: {}", e, msg_str);
+            }
+        }
+    }
+
+    fn apply_and_save_setting(key: &str, val: &serde_json::Value) {
+        let paths = match crate::app::application::ApplicationPaths::resolve() {
+            Ok(p) => p,
+            Err(e) => {
+                log::error!("[Settings IPC] Could not resolve app paths: {}", e);
+                return;
+            }
+        };
+
+        let mut config = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
+
+        match key {
+            "homepage" => {
+                if let Some(s) = val.as_str() {
+                    config.homepage = s.trim().to_string();
+                }
+            }
+            "default_search_engine" => {
+                if let Some(s) = val.as_str() {
+                    config.default_search_engine = s.to_string();
+                }
+            }
+            "theme" => {
+                if let Some(s) = val.as_str() {
+                    config.theme = match s {
+                        "dark" => crate::app::config::ThemeMode::Dark,
+                        "light" => crate::app::config::ThemeMode::Light,
+                        _ => crate::app::config::ThemeMode::System,
+                    };
+                }
+            }
+            "hardware_acceleration" => {
+                if let Some(b) = val.as_bool() {
+                    config.hardware_acceleration = b;
+                }
+            }
+            "smart_suspension" => {
+                if let Some(b) = val.as_bool() {
+                    config.smart_suspension = b;
+                }
+            }
+            "suspension_timeout_minutes" => {
+                if let Some(n) = val.as_u64() {
+                    config.suspension_timeout_minutes = (n as u32).clamp(1, 120);
+                }
+            }
+            "ad_block_enabled" => {
+                if let Some(b) = val.as_bool() {
+                    config.ad_block_enabled = b;
+                }
+            }
+            "tracker_protection_enabled" => {
+                if let Some(b) = val.as_bool() {
+                    config.tracker_protection_enabled = b;
+                }
+            }
+            "disk_cache_limit_mb" => {
+                if let Some(n) = val.as_u64() {
+                    config.disk_cache_limit_mb = (n as u32).clamp(32, 4096);
+                }
+            }
+            "media_cache_limit_mb" => {
+                if let Some(n) = val.as_u64() {
+                    config.media_cache_limit_mb = (n as u32).clamp(16, 2048);
+                }
+            }
+            unknown => {
+                log::warn!("[Settings IPC] Unrecognized configuration key: {}", unknown);
+                return;
+            }
+        }
+
+        if let Err(e) = config.save(&paths.app_data_dir) {
+            log::error!("[Settings IPC] Failed to save config for key '{}': {}", key, e);
+        } else {
+            log::info!("[Settings IPC] Successfully persisted '{}' = {:?} to config.json", key, val);
+        }
     }
 }
 
@@ -455,5 +611,34 @@ mod tests {
         unsafe {
             let _ = windows::Win32::UI::WindowsAndMessaging::DestroyWindow(window.hwnd());
         }
+    }
+
+    #[test]
+    fn test_settings_ipc_save_and_persist() {
+        let msg = r#"{"action":"save_setting","key":"homepage","value":"https://duckduckgo.com"}"#;
+        WebViewEngine::handle_ipc_message(msg);
+
+        let paths = crate::app::application::ApplicationPaths::resolve().expect("paths");
+        let config = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
+        assert_eq!(config.homepage, "https://duckduckgo.com");
+
+        // Test theme setting
+        let msg_theme = r#"{"action":"save_setting","key":"theme","value":"dark"}"#;
+        WebViewEngine::handle_ipc_message(msg_theme);
+        let config2 = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
+        assert_eq!(config2.theme, crate::app::config::ThemeMode::Dark);
+
+        // Test timeout setting
+        let msg_timeout = r#"{"action":"save_setting","key":"suspension_timeout_minutes","value":25}"#;
+        WebViewEngine::handle_ipc_message(msg_timeout);
+        let config3 = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
+        assert_eq!(config3.suspension_timeout_minutes, 25);
+
+        // Reset to default
+        let reset_msg = r#"{"action":"reset_defaults"}"#;
+        WebViewEngine::handle_ipc_message(reset_msg);
+        let config_def = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
+        assert_eq!(config_def.homepage, "https://www.google.com");
+        assert_eq!(config_def.suspension_timeout_minutes, 10);
     }
 }
