@@ -3,30 +3,38 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use windows::core::{w, PCWSTR};
-use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Dwm::DwmExtendFrameIntoClientArea;
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreateSolidBrush, DeleteObject, EndPaint, InvalidateRect, SetBkColor, SetTextColor,
+    BeginPaint, ClientToScreen, CreateSolidBrush, DeleteObject, EndPaint, InvalidateRect, SetBkColor, SetTextColor,
     HBRUSH, HDC, PAINTSTRUCT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::MARGINS;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    ReleaseCapture, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
+    GetKeyState, ReleaseCapture, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT, VK_CONTROL,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
-    GetWindowLongPtrW, GetWindowRect, IsZoomed, KillTimer, PostQuitMessage, RegisterClassExW,
-    SendMessageW, SetTimer, SetWindowLongPtrW, ShowWindow, TranslateMessage, CW_USEDEFAULT,
-    GWLP_USERDATA, MSG, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SW_SHOW, WINDOW_EX_STYLE,
-    WM_CLOSE, WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND,
-    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCHITTEST,
-    WM_NCLBUTTONDOWN, WM_PAINT, WM_SIZE, WM_TIMER, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
+    AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DispatchMessageW,
+    GetClientRect, GetMessageW, GetWindowLongPtrW, GetWindowRect, IsZoomed, KillTimer,
+    PostQuitMessage, RegisterClassExW, SendMessageW, SetTimer, SetWindowLongPtrW, ShowWindow,
+    TrackPopupMenuEx, TranslateMessage, CW_USEDEFAULT, GWLP_USERDATA, MSG, SW_MAXIMIZE,
+    SW_MINIMIZE, SW_RESTORE, SW_SHOW, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTALIGN, TPM_TOPALIGN,
+    WINDOW_EX_STYLE, WM_CLOSE, WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED,
+    WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_NCCALCSIZE,
+    WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT, WM_SIZE, WM_TIMER, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
     HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTLEFT, HTRIGHT, HTTOP,
-    HTTOPLEFT, HTTOPRIGHT,
+    HTTOPLEFT, HTTOPRIGHT, MF_SEPARATOR, MF_STRING,
 };
 
 pub const WM_MOUSELEAVE: u32 = 0x02A3;
+
+pub const IDM_NEW_TAB: usize = 2001;
+pub const IDM_BOOKMARKS: usize = 2002;
+pub const IDM_HISTORY: usize = 2003;
+pub const IDM_SETTINGS: usize = 2004;
+pub const IDM_DIAGNOSTICS: usize = 2005;
+pub const IDM_EXIT: usize = 2006;
 
 use crate::core::error::{NexoraError, Result};
 use crate::engine::WebViewEngine;
@@ -486,20 +494,160 @@ impl HostWindow {
                                 chrome.set_omnibox_text(&homepage);
                             }
                         }
-                        ChromeHitResult::BtnMenu => {
-                            log::info!("Toolbar Menu clicked. Navigating to nexora://settings");
-                            if let Some(ref webview) = (*ptr).webview {
-                                let _ = webview.navigate("nexora://settings");
-                            }
-                            if let Some(ref chrome) = (*ptr).chrome {
-                                chrome.set_omnibox_text("nexora://settings");
-                            }
+                        ChromeHitResult::BtnBookmark => {
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             if let Some(active) = tabs.get_active_tab_mut() {
-                                active.url = "nexora://settings".to_string();
-                                active.title = "Settings - Nexora".to_string();
+                                let current_url = active.url.clone();
+                                let current_title = active.title.clone();
+                                drop(tabs);
+
+                                if current_url == "nexora://bookmarks" {
+                                    // Already on bookmarks page
+                                } else if !current_url.starts_with("nexora://") && current_url != "about:blank" && !current_url.is_empty() {
+                                    // Add bookmark to SQLite
+                                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                                        let db_path = paths.data_dir.join("nexora.db");
+                                        if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                                            let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
+                                            let _ = bm_mgr.add_bookmark(&current_title, &current_url, None);
+                                        }
+                                    }
+                                    log::info!("Bookmarked active page: {} ({})", current_title, current_url);
+                                    if let Some(ref webview) = (*ptr).webview {
+                                        let _ = webview.navigate("nexora://bookmarks");
+                                    }
+                                    if let Some(ref chrome) = (*ptr).chrome {
+                                        chrome.set_omnibox_text("nexora://bookmarks");
+                                    }
+                                    let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                    if let Some(active) = tabs.get_active_tab_mut() {
+                                        active.url = "nexora://bookmarks".to_string();
+                                        active.title = "Bookmarks - Nexora".to_string();
+                                    }
+                                    let _ = InvalidateRect(hwnd, None, false);
+                                } else {
+                                    if let Some(ref webview) = (*ptr).webview {
+                                        let _ = webview.navigate("nexora://bookmarks");
+                                    }
+                                    if let Some(ref chrome) = (*ptr).chrome {
+                                        chrome.set_omnibox_text("nexora://bookmarks");
+                                    }
+                                    let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                    if let Some(active) = tabs.get_active_tab_mut() {
+                                        active.url = "nexora://bookmarks".to_string();
+                                        active.title = "Bookmarks - Nexora".to_string();
+                                    }
+                                    let _ = InvalidateRect(hwnd, None, false);
+                                }
                             }
-                            let _ = InvalidateRect(hwnd, None, false);
+                        }
+                        ChromeHitResult::BtnMenu => {
+                            let menu_rect = (*ptr).layout.menu_button_rect();
+                            let mut pt = POINT {
+                                x: menu_rect.0,
+                                y: menu_rect.1 + menu_rect.3,
+                            };
+                            let _ = ClientToScreen(hwnd, &mut pt);
+
+                            if let Ok(hmenu) = CreatePopupMenu() {
+                                let _ = AppendMenuW(hmenu, MF_STRING, IDM_NEW_TAB, w!("New Tab\tCtrl+T"));
+                                let _ = AppendMenuW(hmenu, MF_SEPARATOR, 0, PCWSTR::null());
+                                let _ = AppendMenuW(hmenu, MF_STRING, IDM_BOOKMARKS, w!("Bookmarks\tCtrl+B"));
+                                let _ = AppendMenuW(hmenu, MF_STRING, IDM_HISTORY, w!("History\tCtrl+H"));
+                                let _ = AppendMenuW(hmenu, MF_SEPARATOR, 0, PCWSTR::null());
+                                let _ = AppendMenuW(hmenu, MF_STRING, IDM_SETTINGS, w!("Settings\tCtrl+,"));
+                                let _ = AppendMenuW(hmenu, MF_STRING, IDM_DIAGNOSTICS, w!("Diagnostics\tCtrl+Shift+D"));
+                                let _ = AppendMenuW(hmenu, MF_SEPARATOR, 0, PCWSTR::null());
+                                let _ = AppendMenuW(hmenu, MF_STRING, IDM_EXIT, w!("Exit\tAlt+F4"));
+
+                                let cmd = TrackPopupMenuEx(
+                                    hmenu,
+                                    (TPM_RIGHTALIGN.0 | TPM_TOPALIGN.0 | TPM_RETURNCMD.0 | TPM_NONOTIFY.0) as u32,
+                                    pt.x + menu_rect.2,
+                                    pt.y,
+                                    hwnd,
+                                    None,
+                                );
+                                let _ = DestroyMenu(hmenu);
+
+                                match cmd.0 as usize {
+                                    IDM_NEW_TAB => {
+                                        let homepage = (*ptr).homepage.clone();
+                                        let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                        let _ = tabs.create_tab(&homepage, Some("New Tab"));
+                                        drop(tabs);
+                                        if let Some(ref webview) = (*ptr).webview {
+                                            let _ = webview.navigate(&homepage);
+                                        }
+                                        if let Some(ref chrome) = (*ptr).chrome {
+                                            chrome.set_omnibox_text(&homepage);
+                                            let count = (*ptr).tab_manager.borrow().tab_count();
+                                            chrome.layout_controls(&(*ptr).layout, count);
+                                        }
+                                        let _ = InvalidateRect(hwnd, None, false);
+                                    }
+                                    IDM_BOOKMARKS => {
+                                        if let Some(ref webview) = (*ptr).webview {
+                                            let _ = webview.navigate("nexora://bookmarks");
+                                        }
+                                        if let Some(ref chrome) = (*ptr).chrome {
+                                            chrome.set_omnibox_text("nexora://bookmarks");
+                                        }
+                                        let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                        if let Some(active) = tabs.get_active_tab_mut() {
+                                            active.url = "nexora://bookmarks".to_string();
+                                            active.title = "Bookmarks - Nexora".to_string();
+                                        }
+                                        let _ = InvalidateRect(hwnd, None, false);
+                                    }
+                                    IDM_HISTORY => {
+                                        if let Some(ref webview) = (*ptr).webview {
+                                            let _ = webview.navigate("nexora://history");
+                                        }
+                                        if let Some(ref chrome) = (*ptr).chrome {
+                                            chrome.set_omnibox_text("nexora://history");
+                                        }
+                                        let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                        if let Some(active) = tabs.get_active_tab_mut() {
+                                            active.url = "nexora://history".to_string();
+                                            active.title = "History - Nexora".to_string();
+                                        }
+                                        let _ = InvalidateRect(hwnd, None, false);
+                                    }
+                                    IDM_SETTINGS => {
+                                        if let Some(ref webview) = (*ptr).webview {
+                                            let _ = webview.navigate("nexora://settings");
+                                        }
+                                        if let Some(ref chrome) = (*ptr).chrome {
+                                            chrome.set_omnibox_text("nexora://settings");
+                                        }
+                                        let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                        if let Some(active) = tabs.get_active_tab_mut() {
+                                            active.url = "nexora://settings".to_string();
+                                            active.title = "Settings - Nexora".to_string();
+                                        }
+                                        let _ = InvalidateRect(hwnd, None, false);
+                                    }
+                                    IDM_DIAGNOSTICS => {
+                                        if let Some(ref webview) = (*ptr).webview {
+                                            let _ = webview.navigate("nexora://diagnostics");
+                                        }
+                                        if let Some(ref chrome) = (*ptr).chrome {
+                                            chrome.set_omnibox_text("nexora://diagnostics");
+                                        }
+                                        let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                        if let Some(active) = tabs.get_active_tab_mut() {
+                                            active.url = "nexora://diagnostics".to_string();
+                                            active.title = "Diagnostics - Nexora".to_string();
+                                        }
+                                        let _ = InvalidateRect(hwnd, None, false);
+                                    }
+                                    IDM_EXIT => {
+                                        let _ = SendMessageW(hwnd, WM_CLOSE, WPARAM(0), LPARAM(0));
+                                    }
+                                    _ => {}
+                                }
+                            }
                         }
                         ChromeHitResult::Tab(id) => {
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
@@ -587,6 +735,78 @@ impl HostWindow {
                     }
                 }
                 LRESULT(0)
+            }
+            WM_KEYDOWN => {
+                if !ptr.is_null() {
+                    let ctrl_pressed = (GetKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0;
+                    if ctrl_pressed {
+                        match wparam.0 as u8 as char {
+                            'H' | 'h' => {
+                                if let Some(ref webview) = (*ptr).webview {
+                                    let _ = webview.navigate("nexora://history");
+                                }
+                                if let Some(ref chrome) = (*ptr).chrome {
+                                    chrome.set_omnibox_text("nexora://history");
+                                }
+                                let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                if let Some(active) = tabs.get_active_tab_mut() {
+                                    active.url = "nexora://history".to_string();
+                                    active.title = "History - Nexora".to_string();
+                                }
+                                let _ = InvalidateRect(hwnd, None, false);
+                                return LRESULT(0);
+                            }
+                            'B' | 'b' => {
+                                if let Some(ref webview) = (*ptr).webview {
+                                    let _ = webview.navigate("nexora://bookmarks");
+                                }
+                                if let Some(ref chrome) = (*ptr).chrome {
+                                    chrome.set_omnibox_text("nexora://bookmarks");
+                                }
+                                let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                if let Some(active) = tabs.get_active_tab_mut() {
+                                    active.url = "nexora://bookmarks".to_string();
+                                    active.title = "Bookmarks - Nexora".to_string();
+                                }
+                                let _ = InvalidateRect(hwnd, None, false);
+                                return LRESULT(0);
+                            }
+                            'D' | 'd' => {
+                                let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                if let Some(active) = tabs.get_active_tab_mut() {
+                                    let current_url = active.url.clone();
+                                    let current_title = active.title.clone();
+                                    drop(tabs);
+
+                                    if !current_url.starts_with("nexora://") && current_url != "about:blank" && !current_url.is_empty() {
+                                        if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                                            let db_path = paths.data_dir.join("nexora.db");
+                                            if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                                                let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
+                                                let _ = bm_mgr.add_bookmark(&current_title, &current_url, None);
+                                            }
+                                        }
+                                        if let Some(ref webview) = (*ptr).webview {
+                                            let _ = webview.navigate("nexora://bookmarks");
+                                        }
+                                        if let Some(ref chrome) = (*ptr).chrome {
+                                            chrome.set_omnibox_text("nexora://bookmarks");
+                                        }
+                                        let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                        if let Some(active) = tabs.get_active_tab_mut() {
+                                            active.url = "nexora://bookmarks".to_string();
+                                            active.title = "Bookmarks - Nexora".to_string();
+                                        }
+                                        let _ = InvalidateRect(hwnd, None, false);
+                                    }
+                                }
+                                return LRESULT(0);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                DefWindowProcW(hwnd, msg, wparam, lparam)
             }
             WM_CTLCOLOREDIT | WM_CTLCOLORSTATIC => {
                 if !ptr.is_null() {

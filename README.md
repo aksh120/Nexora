@@ -180,7 +180,8 @@ flowchart TD
 | <kbd>F11</kbd> | Toggle Borderless Fullscreen |
 | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd> | Toggle Picture-in-Picture (PiP) video window |
 | <kbd>Ctrl</kbd> + <kbd>D</kbd> | Bookmark current page |
-| <kbd>Ctrl</kbd> + <kbd>H</kbd> | Open Browsing History |
+| <kbd>Ctrl</kbd> + <kbd>B</kbd> | Open Bookmarks (`nexora://bookmarks`) |
+| <kbd>Ctrl</kbd> + <kbd>H</kbd> | Open Browsing History (`nexora://history`) |
 | <kbd>Ctrl</kbd> + <kbd>,</kbd> | Open Settings (`nexora://settings`) |
 | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>D</kbd> | Open Diagnostics (`nexora://diagnostics`) |
 
@@ -190,6 +191,13 @@ flowchart TD
 
 Navigate directly to Nexora's built-in cyber-styled pages:
 
+- **`nexora://bookmarks`**: Fluent dark-mode bookmark manager:
+  - Visual card grid displaying all saved sites with custom vector icons and domain badges.
+  - Live real-time search filter and instant "Add Bookmark" inline tool.
+  - Direct 1-click launch and removal with SQLite database synchronization.
+- **`nexora://history`**: Chronological browsing history viewer:
+  - Searchable list of all visited domains and pages with visit counts and timestamps.
+  - 1-click removal of individual entries or complete history clearing.
 - **`nexora://settings`**: Native tabbed settings dashboard:
   - **General**: Default homepage, startup behavior, Omnibox search engine (DuckDuckGo, Google, Bing, Brave).
   - **Performance**: Smart suspension idle timeout, memory pressure sensitivity.

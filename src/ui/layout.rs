@@ -100,6 +100,12 @@ impl BrowserLayout {
         (reload.0 + reload.2 + BUTTON_GAP, reload.1, BUTTON_WIDTH, BUTTON_HEIGHT)
     }
 
+    pub fn bookmark_button_rect(&self) -> (i32, i32, i32, i32) {
+        let y = TAB_BAR_HEIGHT + (TOOLBAR_HEIGHT - BUTTON_HEIGHT) / 2;
+        let x = self.window_width - BUTTON_WIDTH * 2 - 12;
+        (x, y, BUTTON_WIDTH, BUTTON_HEIGHT)
+    }
+
     pub fn menu_button_rect(&self) -> (i32, i32, i32, i32) {
         let y = TAB_BAR_HEIGHT + (TOOLBAR_HEIGHT - BUTTON_HEIGHT) / 2;
         let x = self.window_width - BUTTON_WIDTH - 8;
@@ -108,9 +114,9 @@ impl BrowserLayout {
 
     pub fn omnibox_rect(&self) -> (i32, i32, i32, i32) {
         let home = self.home_button_rect();
-        let menu = self.menu_button_rect();
+        let bm = self.bookmark_button_rect();
         let x = home.0 + home.2 + 10;
-        let right = menu.0 - 10;
+        let right = bm.0 - 10;
         let w = (right - x).max(120);
         let y = TAB_BAR_HEIGHT + (TOOLBAR_HEIGHT - OMNIBOX_HEIGHT) / 2;
         (x, y, w, OMNIBOX_HEIGHT)

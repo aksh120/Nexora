@@ -151,6 +151,32 @@ impl WebViewEngine {
             );
             let html = crate::diagnostics::DiagnosticsUi::render_html(&snapshot);
             return self.navigate_to_string(&html);
+        } else if target_url == "nexora://bookmarks" {
+            let app_data_dir = crate::app::application::ApplicationPaths::resolve()
+                .map(|p| p.data_dir)
+                .unwrap_or_else(|_| std::env::temp_dir());
+            let db_path = app_data_dir.join("nexora.db");
+            let bookmarks = if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
+                bm_mgr.get_all().unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            let html = crate::storage::BookmarksUi::render_html(&bookmarks);
+            return self.navigate_to_string(&html);
+        } else if target_url == "nexora://history" {
+            let app_data_dir = crate::app::application::ApplicationPaths::resolve()
+                .map(|p| p.data_dir)
+                .unwrap_or_else(|_| std::env::temp_dir());
+            let db_path = app_data_dir.join("nexora.db");
+            let history = if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                let hist_mgr = crate::storage::HistoryManager::new(std::sync::Arc::new(conn));
+                hist_mgr.get_recent(200).unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            let html = crate::storage::HistoryUi::render_html(&history);
+            return self.navigate_to_string(&html);
         }
 
         let normalized = if target_url.starts_with("http://")
@@ -274,7 +300,7 @@ impl WebViewEngine {
         }
 
         // NavigationCompleted
-        let completed_handler = NavigationCompletedEventHandler::create(Box::new(|_sender, args| {
+        let completed_handler = NavigationCompletedEventHandler::create(Box::new(|sender, args| {
             if let Some(args) = args {
                 unsafe {
                     let mut is_success = BOOL(0);
@@ -282,6 +308,30 @@ impl WebViewEngine {
                     let mut web_error = COREWEBVIEW2_WEB_ERROR_STATUS::default();
                     let _ = args.WebErrorStatus(&mut web_error);
                     log::info!("[WebView2] Navigation Completed: success={}, status={:?}", is_success.as_bool(), web_error);
+
+                    if is_success.as_bool() {
+                        if let Some(ref s) = sender {
+                            let mut uri = PWSTR::null();
+                            if s.Source(&mut uri).is_ok() {
+                                let url_str = string_from_pcwstr(&PCWSTR(uri.0));
+                                if !url_str.starts_with("nexora://") && url_str != "about:blank" && !url_str.is_empty() {
+                                    let mut title = PWSTR::null();
+                                    let title_str = if s.DocumentTitle(&mut title).is_ok() {
+                                        string_from_pcwstr(&PCWSTR(title.0))
+                                    } else {
+                                        String::new()
+                                    };
+                                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                                        let db_path = paths.data_dir.join("nexora.db");
+                                        if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                                            let hist_mgr = crate::storage::HistoryManager::new(std::sync::Arc::new(conn));
+                                            let _ = hist_mgr.add_visit(&url_str, &title_str);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             Ok(())
@@ -415,15 +465,15 @@ impl WebViewEngine {
             let _ = self.webview.add_PermissionRequested(&perm_handler, &mut perm_token);
         }
 
-        // WebMessageReceived (Bidirectional Settings & Engine IPC)
-        let web_message_handler = WebMessageReceivedEventHandler::create(Box::new(|_sender, args| {
+        // WebMessageReceived (Bidirectional Settings, Bookmarks, History & Engine IPC)
+        let web_message_handler = WebMessageReceivedEventHandler::create(Box::new(|sender, args| {
             if let Some(args) = args {
                 unsafe {
                     let mut message = PWSTR::null();
                     if args.TryGetWebMessageAsString(&mut message).is_ok() {
                         let msg_str = string_from_pcwstr(&PCWSTR(message.0));
                         log::info!("[WebView2 IPC] Received WebMessage: {}", msg_str);
-                        Self::handle_ipc_message(&msg_str);
+                        Self::handle_ipc_message(sender.as_ref(), &msg_str);
                     }
                 }
             }
@@ -437,17 +487,105 @@ impl WebViewEngine {
         Ok(())
     }
 
-    fn handle_ipc_message(msg_str: &str) {
+    fn handle_ipc_message(sender: Option<&ICoreWebView2>, msg_str: &str) {
         #[derive(serde::Deserialize)]
         struct IpcPayload {
             action: String,
             key: Option<String>,
             value: Option<serde_json::Value>,
+            id: Option<i64>,
+            title: Option<String>,
+            url: Option<String>,
         }
 
         let parsed: std::result::Result<IpcPayload, _> = serde_json::from_str(msg_str);
         match parsed {
             Ok(payload) => match payload.action.as_str() {
+                "navigate" => {
+                    if let Some(url) = payload.url {
+                        log::info!("[IPC Action] Navigating to '{}'", url);
+                        if let Some(s) = sender {
+                            unsafe {
+                                if url == "nexora://bookmarks" {
+                                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                                        let db_path = paths.data_dir.join("nexora.db");
+                                        let bookmarks = if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                                            let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
+                                            bm_mgr.get_all().unwrap_or_default()
+                                        } else {
+                                            Vec::new()
+                                        };
+                                        let html = crate::storage::BookmarksUi::render_html(&bookmarks);
+                                        let wide = pwstr_from_str(&html);
+                                        let _ = s.NavigateToString(PCWSTR(wide.0));
+                                    }
+                                } else if url == "nexora://history" {
+                                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                                        let db_path = paths.data_dir.join("nexora.db");
+                                        let history = if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                                            let hist_mgr = crate::storage::HistoryManager::new(std::sync::Arc::new(conn));
+                                            hist_mgr.get_recent(200).unwrap_or_default()
+                                        } else {
+                                            Vec::new()
+                                        };
+                                        let html = crate::storage::HistoryUi::render_html(&history);
+                                        let wide = pwstr_from_str(&html);
+                                        let _ = s.NavigateToString(PCWSTR(wide.0));
+                                    }
+                                } else {
+                                    let wide = pwstr_from_str(&url);
+                                    let _ = s.Navigate(PCWSTR(wide.0));
+                                }
+                            }
+                        }
+                    }
+                }
+                "delete_bookmark" => {
+                    if let Some(id) = payload.id {
+                        log::info!("[IPC Action] Deleting bookmark #{}", id);
+                        if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                            let db_path = paths.data_dir.join("nexora.db");
+                            if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                                let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
+                                let _ = bm_mgr.delete_bookmark(id);
+                            }
+                        }
+                    }
+                }
+                "add_bookmark" => {
+                    if let (Some(title), Some(url)) = (payload.title, payload.url) {
+                        log::info!("[IPC Action] Adding bookmark '{}' ({})", title, url);
+                        if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                            let db_path = paths.data_dir.join("nexora.db");
+                            if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                                let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
+                                let _ = bm_mgr.add_bookmark(&title, &url, None);
+                            }
+                        }
+                    }
+                }
+                "delete_history_entry" => {
+                    if let Some(id) = payload.id {
+                        log::info!("[IPC Action] Deleting history entry #{}", id);
+                        if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                            let db_path = paths.data_dir.join("nexora.db");
+                            if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                                let hist_mgr = crate::storage::HistoryManager::new(std::sync::Arc::new(conn));
+                                let _ = hist_mgr.delete_entry(id);
+                            }
+                        }
+                    }
+                }
+                "clear_history" => {
+                    log::info!("[IPC Action] Clearing all browsing history...");
+                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                        let db_path = paths.data_dir.join("nexora.db");
+                        if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                            let hist_mgr = crate::storage::HistoryManager::new(std::sync::Arc::new(conn));
+                            let _ = hist_mgr.clear_all();
+                        }
+                    }
+                }
                 "save_setting" => {
                     if let (Some(key), Some(val)) = (payload.key, payload.value) {
                         Self::apply_and_save_setting(&key, &val);
@@ -616,7 +754,7 @@ mod tests {
     #[test]
     fn test_settings_ipc_save_and_persist() {
         let msg = r#"{"action":"save_setting","key":"homepage","value":"https://duckduckgo.com"}"#;
-        WebViewEngine::handle_ipc_message(msg);
+        WebViewEngine::handle_ipc_message(None, msg);
 
         let paths = crate::app::application::ApplicationPaths::resolve().expect("paths");
         let config = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
@@ -624,19 +762,19 @@ mod tests {
 
         // Test theme setting
         let msg_theme = r#"{"action":"save_setting","key":"theme","value":"dark"}"#;
-        WebViewEngine::handle_ipc_message(msg_theme);
+        WebViewEngine::handle_ipc_message(None, msg_theme);
         let config2 = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
         assert_eq!(config2.theme, crate::app::config::ThemeMode::Dark);
 
         // Test timeout setting
         let msg_timeout = r#"{"action":"save_setting","key":"suspension_timeout_minutes","value":25}"#;
-        WebViewEngine::handle_ipc_message(msg_timeout);
+        WebViewEngine::handle_ipc_message(None, msg_timeout);
         let config3 = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
         assert_eq!(config3.suspension_timeout_minutes, 25);
 
         // Reset to default
         let reset_msg = r#"{"action":"reset_defaults"}"#;
-        WebViewEngine::handle_ipc_message(reset_msg);
+        WebViewEngine::handle_ipc_message(None, reset_msg);
         let config_def = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
         assert_eq!(config_def.homepage, "https://www.google.com");
         assert_eq!(config_def.suspension_timeout_minutes, 10);

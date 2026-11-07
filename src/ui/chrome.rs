@@ -30,6 +30,7 @@ pub enum ChromeHitResult {
     BtnForward,
     BtnReload,
     BtnHome,
+    BtnBookmark,
     BtnMenu,
     CaptionMinimize,
     CaptionMaximize,
@@ -239,6 +240,11 @@ impl BrowserChrome {
             let home = layout.home_button_rect();
             if x >= home.0 && x < home.0 + home.2 && y >= home.1 && y < home.1 + home.3 {
                 return ChromeHitResult::BtnHome;
+            }
+
+            let bm = layout.bookmark_button_rect();
+            if x >= bm.0 && x < bm.0 + bm.2 && y >= bm.1 && y < bm.1 + bm.3 {
+                return ChromeHitResult::BtnBookmark;
             }
 
             let menu = layout.menu_button_rect();
@@ -465,6 +471,14 @@ impl BrowserChrome {
                 Self::draw_vector_home(dc, cx, cy, col);
             });
 
+            // Bookmark Button
+            let bm = layout.bookmark_button_rect();
+            let is_bm_hovered = self.hovered_item == ChromeHitResult::BtnBookmark;
+            Self::render_nav_button(mem_dc, bm, is_bm_hovered, self.theme.button_hover_bg, |dc, cx, cy, col| {
+                let star_color = if is_bm_hovered { rgb(255, 215, 0) } else { col };
+                Self::draw_vector_star(dc, cx, cy, star_color);
+            });
+
             // Menu Button
             let menu = layout.menu_button_rect();
             Self::render_nav_button(mem_dc, menu, self.hovered_item == ChromeHitResult::BtnMenu, self.theme.button_hover_bg, |dc, cx, cy, col| {
@@ -619,6 +633,33 @@ impl BrowserChrome {
         let _ = LineTo(hdc, cx - 2, cy + 2);
         let _ = LineTo(hdc, cx + 2, cy + 2);
         let _ = LineTo(hdc, cx + 2, cy + 6);
+
+        let _ = SelectObject(hdc, old_pen);
+        let _ = DeleteObject(pen);
+    }
+
+    unsafe fn draw_vector_star(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
+        let pen = CreatePen(PS_SOLID, 1, color);
+        let old_pen = SelectObject(hdc, pen);
+
+        let pts = [
+            (cx, cy - 7),
+            (cx + 2, cy - 2),
+            (cx + 7, cy - 2),
+            (cx + 3, cy + 1),
+            (cx + 5, cy + 6),
+            (cx, cy + 3),
+            (cx - 5, cy + 6),
+            (cx - 3, cy + 1),
+            (cx - 7, cy - 2),
+            (cx - 2, cy - 2),
+            (cx, cy - 7),
+        ];
+
+        let _ = MoveToEx(hdc, pts[0].0, pts[0].1, None);
+        for pt in &pts[1..] {
+            let _ = LineTo(hdc, pt.0, pt.1);
+        }
 
         let _ = SelectObject(hdc, old_pen);
         let _ = DeleteObject(pen);
