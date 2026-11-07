@@ -9,11 +9,11 @@
 
 | Status | Count |
 | :--- | :--- |
-| **Completed** | 8 |
+| **Completed** | 48 |
 | **In Progress** | 0 |
-| **Not Started** | 37 |
+| **Not Started** | 0 |
 | **Blocked** | 0 |
-| **Total** | 45 |
+| **Total** | 48 |
 
 ---
 
