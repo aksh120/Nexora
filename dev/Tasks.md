@@ -68,11 +68,11 @@
 
 | Task ID | Description | Priority | Status | Dependencies | Completion Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `TASK-401` | SQLite Persistence Architecture & Migrations | P0 | **Not Started** | `TASK-101` | Implement `rusqlite` database layer with WAL mode and schema versioning. |
-| `TASK-402` | Cookie Persistence & Session Management | P0 | **Not Started** | `TASK-401` | Utilize `ICoreWebView2CookieManager` for cross-session cookie persistence. |
-| `TASK-403` | Full-Text Searchable History Subsystem | P1 | **Not Started** | `TASK-401` | SQLite FTS5 table for lightning-fast chronological history queries. |
-| `TASK-404` | Bookmarks Management (Add, Edit, Delete, Folders) | P1 | **Not Started** | `TASK-401` | Hierarchical bookmark tree storage and fast retrieval. |
-| `TASK-405` | Smart Cache Policy & Disk Boundary Enforcement | P1 | **Not Started** | `TASK-401` | WebView2 `--disk-cache-size` enforcement and cache sweeping. |
+| `TASK-401` | SQLite Persistence Architecture & Migrations | P0 | **Completed** | `TASK-101` | Implemented zero-overhead dynamic binding to Windows OS `winsqlite3.dll` with WAL mode, parameterized prepared statements, and automated versioned migrations (`user_version = 1`). |
+| `TASK-402` | Cookie Persistence & Session Management | P0 | **Completed** | `TASK-401` | Implemented `SessionManager` in `src/storage/session.rs` persisting tab collection, active index, and suspension states. Cookies persisted across runs via WebView2 dedicated UDF. |
+| `TASK-403` | Full-Text Searchable History Subsystem | P1 | **Completed** | `TASK-401` | Implemented `HistoryManager` in `src/storage/history.rs` with visit deduplication, visit and typed frequency counters, and indexed query search. |
+| `TASK-404` | Bookmarks Management (Add, Edit, Delete, Folders) | P1 | **Completed** | `TASK-401` | Implemented hierarchical `BookmarkManager` in `src/storage/bookmarks.rs` with pre-seeded streaming services (YouTube, Netflix, Prime Video, Hotstar, Twitch, Spotify). |
+| `TASK-405` | Smart Cache Policy & Disk Boundary Enforcement | P1 | **Completed** | `TASK-401` | Implemented `CacheManager` in `src/storage/cache.rs` with directory size calculation, LRU file pruning, and configurable limit enforcement (`disk_cache_limit_mb = 256`). |
 
 ---
 

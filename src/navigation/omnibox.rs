@@ -132,6 +132,16 @@ impl Omnibox {
     }
 
     pub fn get_suggestions(&self, input: &str, default_engine: &str) -> Vec<OmniboxSuggestion> {
+        self.get_suggestions_with_store(input, default_engine, None, None)
+    }
+
+    pub fn get_suggestions_with_store(
+        &self,
+        input: &str,
+        default_engine: &str,
+        history: Option<&[crate::storage::HistoryEntry]>,
+        bookmarks: Option<&[crate::storage::BookmarkEntry]>,
+    ) -> Vec<OmniboxSuggestion> {
         let trimmed = input.trim();
         if trimmed.is_empty() {
             return Vec::new();
@@ -140,25 +150,54 @@ impl Omnibox {
         let lower = trimmed.to_lowercase();
         let mut suggestions = Vec::new();
 
-        // 1. Search Query suggestion always first or second
+        // 1. Matched Bookmarks (highest priority for user curated URLs)
+        if let Some(bms) = bookmarks {
+            for b in bms {
+                if b.title.to_lowercase().contains(&lower) || b.url.to_lowercase().contains(&lower) {
+                    suggestions.push(OmniboxSuggestion {
+                        title: b.title.clone(),
+                        url: b.url.clone(),
+                        suggestion_type: SuggestionType::Bookmark,
+                    });
+                }
+            }
+        }
+
+        // 2. Matched History (visited URLs)
+        if let Some(hist) = history {
+            for h in hist {
+                if h.title.to_lowercase().contains(&lower) || h.url.to_lowercase().contains(&lower) {
+                    suggestions.push(OmniboxSuggestion {
+                        title: h.title.clone(),
+                        url: h.url.clone(),
+                        suggestion_type: SuggestionType::History,
+                    });
+                }
+            }
+        }
+
+        // 3. Pre-seeded popular streaming & developer top sites
+        for (name, url) in &self.top_sites {
+            let domain = url.trim_start_matches("https://").trim_start_matches("www.");
+            if domain.contains(&lower) || name.to_lowercase().contains(&lower) {
+                // Avoid duplicate if already in bookmarks/history
+                if !suggestions.iter().any(|s| s.url == *url) {
+                    suggestions.push(OmniboxSuggestion {
+                        title: name.to_string(),
+                        url: url.to_string(),
+                        suggestion_type: SuggestionType::TopSite,
+                    });
+                }
+            }
+        }
+
+        // 4. Search Query suggestion
         let search_url = SearchEngine::build_url(default_engine, trimmed);
         suggestions.push(OmniboxSuggestion {
             title: format!("Search {} for \"{}\"", default_engine, trimmed),
             url: search_url,
             suggestion_type: SuggestionType::SearchQuery,
         });
-
-        // 2. Pre-seeded popular streaming & developer top sites
-        for (name, url) in &self.top_sites {
-            let domain = url.trim_start_matches("https://").trim_start_matches("www.");
-            if domain.contains(&lower) || name.to_lowercase().contains(&lower) {
-                suggestions.push(OmniboxSuggestion {
-                    title: name.to_string(),
-                    url: url.to_string(),
-                    suggestion_type: SuggestionType::TopSite,
-                });
-            }
-        }
 
         // Limit to top 6 suggestions for sleek compact display
         suggestions.truncate(6);
@@ -245,9 +284,9 @@ mod tests {
         let omnibox = Omnibox::new();
         let suggestions = omnibox.get_suggestions("you", "Google");
         assert!(!suggestions.is_empty());
-        assert_eq!(suggestions[0].suggestion_type, SuggestionType::SearchQuery);
-        // YouTube should match "you"
-        let has_youtube = suggestions.iter().any(|s| s.title == "YouTube");
+        let has_youtube = suggestions.iter().any(|s| s.title == "YouTube" && s.suggestion_type == SuggestionType::TopSite);
+        let has_search = suggestions.iter().any(|s| s.suggestion_type == SuggestionType::SearchQuery);
         assert!(has_youtube, "YouTube should be suggested for 'you'");
+        assert!(has_search, "Search query should be suggested");
     }
 }

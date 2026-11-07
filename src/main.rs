@@ -17,9 +17,11 @@ mod ui;
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 use crate::app::Application;
 use crate::browser::HostWindow;
 use crate::engine::WebViewEngine;
+use crate::storage::{BookmarkManager, CacheManager, HistoryManager, SessionManager, SqliteConnection};
 use crate::tabs::TabManager;
 use crate::ui::theme::{ThemeMode, ThemePalette};
 
@@ -45,7 +47,46 @@ fn main() {
     log::info!("  Ad Blocker:            {}", app.config.ad_block_enabled);
     log::info!("  Tracker Protection:    {}", app.config.tracker_protection_enabled);
 
-    // 2. Resolve Theme
+    // 2. Initialize Persistent Storage (SQLite via native winsqlite3.dll)
+    let db_path = app.paths.data_dir.join("nexora.db");
+    let db = match SqliteConnection::open(&db_path) {
+        Ok(conn) => {
+            if let Err(err) = conn.migrate() {
+                log::error!("Database migration failed: {}", err);
+            }
+            Arc::new(conn)
+        }
+        Err(err) => {
+            log::error!("Failed to open database at {:?}: {}. Falling back to in-memory.", db_path, err);
+            let in_mem = SqliteConnection::open_in_memory().expect("In-memory SQLite failed");
+            let _ = in_mem.migrate();
+            Arc::new(in_mem)
+        }
+    };
+
+    let history_mgr = Arc::new(HistoryManager::new(db.clone()));
+    let bookmark_mgr = Arc::new(BookmarkManager::new(db.clone()));
+    let session_mgr = Arc::new(SessionManager::new(db.clone()));
+
+    // Seed default streaming bookmarks if bookmark store is empty
+    if let Ok(existing) = bookmark_mgr.get_all() {
+        if existing.is_empty() {
+            log::info!("Seeding default streaming bookmarks...");
+            let _ = bookmark_mgr.add_bookmark("YouTube", "https://www.youtube.com", None);
+            let _ = bookmark_mgr.add_bookmark("Netflix", "https://www.netflix.com", None);
+            let _ = bookmark_mgr.add_bookmark("Prime Video", "https://www.primevideo.com", None);
+            let _ = bookmark_mgr.add_bookmark("JioHotstar", "https://www.hotstar.com", None);
+            let _ = bookmark_mgr.add_bookmark("Twitch", "https://www.twitch.tv", None);
+            let _ = bookmark_mgr.add_bookmark("Spotify", "https://open.spotify.com", None);
+        }
+    }
+
+    // 3. Enforce Engine Disk Cache Boundary
+    if let Err(err) = CacheManager::enforce_boundary(&app.paths.engine_data_dir, app.config.disk_cache_limit_mb) {
+        log::warn!("Cache boundary enforcement warning: {}", err);
+    }
+
+    // 4. Resolve Theme
     let theme_mode = match app.config.theme {
         crate::app::config::ThemeMode::Light => ThemeMode::Light,
         crate::app::config::ThemeMode::Dark => ThemeMode::Dark,
@@ -54,12 +95,34 @@ fn main() {
     let theme = ThemePalette::from_mode(theme_mode);
     log::info!("Active Theme: {:?} (dark: {})", app.config.theme, theme.is_dark);
 
-    // 3. Initialize Multi-Tab State Machine
+    // 5. Initialize Multi-Tab State Machine (Restore previous session if available)
     let tab_manager = Rc::new(RefCell::new(TabManager::new()));
-    let initial_tab_id = tab_manager.borrow_mut().create_tab(&app.config.homepage, Some("Nexora Home"));
-    log::info!("Created initial browser tab #{}", initial_tab_id);
+    let mut initial_url = app.config.homepage.clone();
 
-    // 4. Create the native Win32 Host Window
+    if let Ok(saved_session) = session_mgr.load_session() {
+        if !saved_session.tabs.is_empty() {
+            log::info!("Restoring {} tabs from previous session...", saved_session.tabs.len());
+            for saved_tab in saved_session.tabs {
+                let tid = tab_manager.borrow_mut().create_tab(&saved_tab.url, Some(&saved_tab.title));
+                if saved_tab.is_suspended {
+                    let _ = tab_manager.borrow_mut().suspend_tab(tid);
+                }
+            }
+            if let Some(active_id) = saved_session.active_tab_id {
+                let _ = tab_manager.borrow_mut().switch_tab(active_id);
+                if let Some(active) = tab_manager.borrow().get_active_tab() {
+                    initial_url = active.url.clone();
+                }
+            }
+        }
+    }
+
+    if tab_manager.borrow().tab_count() == 0 {
+        let initial_tab_id = tab_manager.borrow_mut().create_tab(&app.config.homepage, Some("Nexora Home"));
+        log::info!("Created initial browser tab #{}", initial_tab_id);
+    }
+
+    // 6. Create the native Win32 Host Window
     let host_window = match HostWindow::new(
         "Nexora",
         1280,
@@ -76,18 +139,18 @@ fn main() {
         }
     };
 
-    // 5. Initialize Native Chrome (Tab bar, Navigation buttons, Omnibox)
+    // 7. Initialize Native Chrome (Tab bar, Navigation buttons, Omnibox)
     if let Err(err) = host_window.init_chrome() {
         log::error!("Failed to initialize browser chrome: {}", err);
         return;
     }
-    host_window.update_omnibox_url(&app.config.homepage);
+    host_window.update_omnibox_url(&initial_url);
 
-    // 6. Initialize WebView2 Engine attached to the Host Window
+    // 8. Initialize WebView2 Engine attached to the Host Window
     let webview = match WebViewEngine::new(
         host_window.hwnd(),
         &app.paths.engine_data_dir,
-        &app.config.homepage,
+        &initial_url,
     ) {
         Ok(engine) => Rc::new(engine),
         Err(err) => {
@@ -96,15 +159,24 @@ fn main() {
         }
     };
 
-    // 7. Associate WebView2 with HostWindow
+    // Record initial navigation in history
+    let _ = history_mgr.add_visit(&initial_url, "Nexora Home");
+
+    // 9. Associate WebView2 with HostWindow
     host_window.set_webview(webview);
 
-    // 8. Display the Host Window
+    // 10. Display the Host Window
     host_window.show();
     log::info!("Nexora main window shown. Entering message loop.");
 
-    // 9. Enter the native Win32 message loop
+    // 11. Enter the native Win32 message loop
     host_window.run_message_loop();
+
+    // 12. Clean Shutdown & Session Persistence
+    log::info!("Persisting active session on application exit...");
+    let tabs = tab_manager.borrow();
+    let _ = session_mgr.save_session(tabs.tabs(), tabs.active_tab_id());
+    drop(tabs);
 
     log::info!("Nexora Browser exited cleanly.");
 }
