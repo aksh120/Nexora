@@ -69,19 +69,19 @@ impl BookmarksUi {
     <title>Bookmarks - Nexora</title>
     <style>
         :root {{
-            --bg-base: #1E1E1E;
-            --bg-header: #181818;
-            --bg-card: #252525;
-            --bg-hover: #2C2C2C;
-            --border: #333333;
-            --border-subtle: #292929;
-            --border-focus: #0078D4;
-            --text-primary: #E8EAED;
-            --text-secondary: #9AA0A6;
-            --text-muted: #70757A;
-            --accent: #0078D4;
-            --accent-hover: #106EBE;
-            --danger: #D13438;
+            --bg-base: #000000;
+            --bg-header: #050304;
+            --bg-card: #0C0708;
+            --bg-hover: #160D0F;
+            --border: #291518;
+            --border-subtle: #190B0D;
+            --border-focus: #E11D48;
+            --text-primary: #F7F0F1;
+            --text-secondary: #997F83;
+            --text-muted: #665256;
+            --accent: #E11D48;
+            --accent-hover: #F43F5E;
+            --danger: #E11D48;
             --font-stack: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
         }}
 

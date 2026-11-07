@@ -413,7 +413,7 @@ impl BrowserChrome {
             }
             let plus_cx = new_tab.0 + new_tab.2 / 2;
             let plus_cy = new_tab.1 + new_tab.3 / 2;
-            let plus_color = if is_new_tab_hovered { rgb(0, 229, 255) } else { rgb(180, 190, 205) };
+            let plus_color = if is_new_tab_hovered { self.theme.accent_color } else { rgb(180, 165, 170) };
             Self::draw_vector_plus(mem_dc, plus_cx, plus_cy, plus_color);
 
             // 6. Render Custom Caption Buttons on Top-Right
@@ -428,7 +428,7 @@ impl BrowserChrome {
                 FillRect(mem_dc, &r, h_brush);
                 let _ = DeleteObject(h_brush);
             }
-            Self::draw_caption_minimize(mem_dc, min_rect.0 + min_rect.2 / 2, min_rect.1 + min_rect.3 / 2, rgb(200, 210, 225));
+            Self::draw_caption_minimize(mem_dc, min_rect.0 + min_rect.2 / 2, min_rect.1 + min_rect.3 / 2, rgb(190, 175, 180));
 
             // Maximize
             if self.hovered_item == ChromeHitResult::CaptionMaximize {
@@ -437,17 +437,17 @@ impl BrowserChrome {
                 FillRect(mem_dc, &r, h_brush);
                 let _ = DeleteObject(h_brush);
             }
-            Self::draw_caption_maximize(mem_dc, max_rect.0 + max_rect.2 / 2, max_rect.1 + max_rect.3 / 2, is_maximized, rgb(200, 210, 225));
+            Self::draw_caption_maximize(mem_dc, max_rect.0 + max_rect.2 / 2, max_rect.1 + max_rect.3 / 2, is_maximized, rgb(190, 175, 180));
 
             // Close
             let is_close_hover = self.hovered_item == ChromeHitResult::CaptionClose;
             if is_close_hover {
-                let red_brush = CreateSolidBrush(rgb(232, 17, 35)); // Windows red
+                let red_brush = CreateSolidBrush(rgb(225, 29, 72)); // Eclipse Crimson red
                 let r = RECT { left: close_rect.0, top: close_rect.1, right: close_rect.0 + close_rect.2, bottom: close_rect.1 + close_rect.3 };
                 FillRect(mem_dc, &r, red_brush);
                 let _ = DeleteObject(red_brush);
             }
-            let close_icon_color = if is_close_hover { rgb(255, 255, 255) } else { rgb(200, 210, 225) };
+            let close_icon_color = if is_close_hover { rgb(255, 255, 255) } else { rgb(190, 175, 180) };
             Self::draw_caption_close(mem_dc, close_rect.0 + close_rect.2 / 2, close_rect.1 + close_rect.3 / 2, close_icon_color);
 
             // 7. Render Navigation Toolbar Buttons with Clean Vector Icons
@@ -550,7 +550,7 @@ impl BrowserChrome {
 
         let cx = rect.0 + rect.2 / 2;
         let cy = rect.1 + rect.3 / 2;
-        let icon_color = if is_hovered { rgb(0, 229, 255) } else { rgb(200, 210, 225) };
+        let icon_color = if is_hovered { rgb(225, 29, 72) } else { rgb(190, 175, 180) };
         draw_icon(hdc, cx, cy, icon_color);
     }
 

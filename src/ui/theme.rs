@@ -41,20 +41,20 @@ impl ThemePalette {
     pub fn dark() -> Self {
         Self {
             is_dark: true,
-            window_bg: rgb(30, 30, 30),          // #1E1E1E
-            tab_bar_bg: rgb(24, 24, 24),         // #181818
-            tab_active_bg: rgb(40, 40, 40),      // #282828
-            tab_inactive_bg: rgb(24, 24, 24),    // #181818
-            tab_hover_bg: rgb(34, 34, 34),       // #222222
-            tab_text_active: rgb(245, 245, 245), // #F5F5F5
-            tab_text_inactive: rgb(160, 160, 160),// #A0A0A0
-            toolbar_bg: rgb(32, 32, 32),         // #202020
-            omnibox_bg: rgb(20, 20, 20),         // #141414
-            omnibox_border: rgb(55, 55, 55),     // #373737
-            omnibox_text: rgb(240, 240, 240),    // #F0F0F0
-            button_hover_bg: rgb(48, 48, 48),    // #303030
-            accent_color: rgb(0, 180, 216),      // #00B4D8 (Nexora Cyan)
-            divider_color: rgb(45, 45, 45),      // #2D2D2D
+            window_bg: rgb(0, 0, 0),             // Pure AMOLED Black #000000
+            tab_bar_bg: rgb(0, 0, 0),            // Pure AMOLED Black #000000
+            tab_active_bg: rgb(12, 7, 8),        // #0C0708 (Dark carbon card surface)
+            tab_inactive_bg: rgb(0, 0, 0),       // #000000
+            tab_hover_bg: rgb(22, 13, 15),       // #160D0F (Carbon hover)
+            tab_text_active: rgb(247, 240, 241), // #F7F0F1 (Warm crisp off-white)
+            tab_text_inactive: rgb(153, 127, 131),// #997F83 (Muted warm slate)
+            toolbar_bg: rgb(0, 0, 0),            // #000000
+            omnibox_bg: rgb(12, 7, 8),           // #0C0708
+            omnibox_border: rgb(41, 21, 24),     // #291518 (1px crimson outline)
+            omnibox_text: rgb(247, 240, 241),    // #F7F0F1
+            button_hover_bg: rgb(22, 13, 15),    // #160D0F
+            accent_color: rgb(225, 29, 72),      // #E11D48 (Eclipse Crimson)
+            divider_color: rgb(41, 21, 24),      // #291518
         }
     }
 
@@ -141,7 +141,7 @@ mod tests {
     fn test_theme_palettes() {
         let dark = ThemePalette::dark();
         assert!(dark.is_dark);
-        assert_ne!(dark.window_bg.0, 0);
+        assert_eq!(dark.window_bg.0, 0); // Pure AMOLED #000000
 
         let light = ThemePalette::light();
         assert!(!light.is_dark);

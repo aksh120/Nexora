@@ -125,13 +125,13 @@ impl SmartSuspensionEngine {
     <title>Suspended: {title_escaped}</title>
     <style>
         :root {{
-            --bg-color: #1E1E1E;
-            --card-bg: #252525;
-            --text-main: #E8EAED;
-            --text-dim: #9AA0A6;
-            --accent: #0078D4;
-            --accent-hover: #106EBE;
-            --border: #333333;
+            --bg-color: #000000;
+            --card-bg: #0C0708;
+            --text-main: #F7F0F1;
+            --text-dim: #997F83;
+            --accent: #E11D48;
+            --accent-hover: #F43F5E;
+            --border: #291518;
         }}
         @media (prefers-color-scheme: light) {{
             :root {{
@@ -172,7 +172,7 @@ impl SmartSuspensionEngine {
             height: 44px;
             margin: 0 auto 16px auto;
             border-radius: 50%;
-            background: rgba(0, 120, 212, 0.12);
+            background: rgba(225, 29, 72, 0.12);
             display: flex;
             align-items: center;
             justify-content: center;

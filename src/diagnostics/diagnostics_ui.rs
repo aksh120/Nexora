@@ -99,19 +99,19 @@ impl DiagnosticsUi {
     <title>Diagnostics - Nexora</title>
     <style>
         :root {{
-            --bg-base: #1E1E1E;
-            --bg-card: #252525;
-            --bg-card-hover: #2B2B2B;
-            --border: #333333;
-            --border-subtle: #292929;
-            --text-primary: #E8EAED;
-            --text-secondary: #9AA0A6;
-            --text-muted: #70757A;
-            --accent: #0078D4;
-            --accent-hover: #106EBE;
-            --success: #107C41;
-            --warn: #D83B01;
-            --danger: #D13438;
+            --bg-base: #000000;
+            --bg-card: #0C0708;
+            --bg-card-hover: #160D0F;
+            --border: #291518;
+            --border-subtle: #190B0D;
+            --text-primary: #F7F0F1;
+            --text-secondary: #997F83;
+            --text-muted: #665256;
+            --accent: #E11D48;
+            --accent-hover: #F43F5E;
+            --success: #10B981;
+            --warn: #F59E0B;
+            --danger: #E11D48;
             --font-stack: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
             --font-mono: Consolas, "Cascadia Code", monospace;
         }}
@@ -295,9 +295,9 @@ impl DiagnosticsUi {
         }}
 
         .badge-active {{
-            background: rgba(0, 120, 212, 0.15);
-            color: #4EA6FF;
-            border-color: rgba(0, 120, 212, 0.3);
+            background: rgba(225, 29, 72, 0.15);
+            color: #FB7185;
+            border-color: rgba(225, 29, 72, 0.3);
         }}
 
         #toast {{
@@ -319,7 +319,7 @@ impl DiagnosticsUi {
 <body>
     <div class="header">
         <div class="brand">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0078D4" stroke-width="2.2">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#E11D48" stroke-width="2.2">
                 <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
             </svg>
             <h1>NEXORA DIAGNOSTICS</h1>

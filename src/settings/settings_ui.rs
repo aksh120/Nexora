@@ -33,22 +33,22 @@ impl SettingsUi {
     <title>Settings - Nexora</title>
     <style>
         :root {{
-            --bg-base: #1E1E1E;
-            --bg-sidebar: #181818;
-            --bg-card: #252525;
-            --bg-card-hover: #2A2A2A;
-            --bg-input: #1F1F1F;
-            --border: #333333;
-            --border-subtle: #2C2C2C;
-            --border-focus: #0078D4;
-            --text-primary: #E8EAED;
-            --text-secondary: #9AA0A6;
-            --text-muted: #70757A;
-            --accent: #0078D4;
-            --accent-hover: #106EBE;
-            --danger: #D13438;
-            --danger-hover: #A80000;
-            --success: #107C41;
+            --bg-base: #000000;
+            --bg-sidebar: #050304;
+            --bg-card: #0C0708;
+            --bg-card-hover: #160D0F;
+            --bg-input: #110A0C;
+            --border: #291518;
+            --border-subtle: #190B0D;
+            --border-focus: #E11D48;
+            --text-primary: #F7F0F1;
+            --text-secondary: #997F83;
+            --text-muted: #665256;
+            --accent: #E11D48;
+            --accent-hover: #F43F5E;
+            --danger: #E11D48;
+            --danger-hover: #BE123C;
+            --success: #10B981;
             --font-stack: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
         }}
 
@@ -141,7 +141,7 @@ impl SettingsUi {
         }}
 
         .nav-item.active {{
-            background: rgba(0, 120, 212, 0.12);
+            background: rgba(225, 29, 72, 0.12);
             color: var(--accent);
             font-weight: 600;
         }}
