@@ -7,11 +7,12 @@ use windows::Win32::Graphics::Gdi::{
     FW_NORMAL, HDC, HFONT, PS_SOLID, SRCCOPY, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Input::KeyboardAndMouse::VK_RETURN;
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_RETURN};
 use windows::Win32::UI::WindowsAndMessaging::{
     CallWindowProcW, CreateWindowExW, GetWindowLongPtrW, GetWindowTextLengthW, GetWindowTextW,
     MoveWindow, SendMessageW, SetWindowLongPtrW, SetWindowTextW, GWLP_USERDATA, GWLP_WNDPROC, HMENU,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WM_CHAR, WM_KEYDOWN, WM_SETFONT, WNDPROC, WS_CHILD, WS_TABSTOP, WS_VISIBLE,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WM_CHAR, WM_KEYDOWN, WM_KILLFOCUS, WM_LBUTTONUP, WM_SETFOCUS,
+    WM_SETFONT, WNDPROC, WS_CHILD, WS_TABSTOP, WS_VISIBLE,
 };
 
 use crate::core::error::{NexoraError, Result};
@@ -20,6 +21,7 @@ use crate::ui::layout::{BrowserLayout, OMNIBOX_HEIGHT, TAB_BAR_HEIGHT, TOP_CHROM
 use crate::ui::theme::{rgb, ThemePalette};
 
 pub const IDC_OMNIBOX: usize = 1005;
+pub const EM_SETSEL: u32 = 0x00B1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChromeHitResult {
@@ -50,6 +52,7 @@ pub struct BrowserChrome {
 struct OmniboxSubclassContext {
     orig_proc: WNDPROC,
     on_enter: Box<dyn Fn(String) + 'static>,
+    just_got_focus: bool,
 }
 
 impl BrowserChrome {
@@ -105,10 +108,11 @@ impl BrowserChrome {
                 LPARAM(1),
             );
 
-            // Subclass the Omnibox to intercept Enter key
+            // Subclass the Omnibox to intercept Enter key, Ctrl+A, and click selection
             let context = Box::new(OmniboxSubclassContext {
                 orig_proc: std::mem::transmute(GetWindowLongPtrW(hwnd_omnibox, GWLP_WNDPROC)),
                 on_enter: Box::new(on_navigate),
+                just_got_focus: false,
             });
             SetWindowLongPtrW(hwnd_omnibox, GWLP_USERDATA, Box::into_raw(context) as isize);
             SetWindowLongPtrW(hwnd_omnibox, GWLP_WNDPROC, Self::omnibox_subclass_proc as *const () as isize);
@@ -764,6 +768,20 @@ impl BrowserChrome {
         }
 
         match msg {
+            WM_SETFOCUS => {
+                (*ptr).just_got_focus = true;
+            }
+            WM_KILLFOCUS => {
+                (*ptr).just_got_focus = false;
+            }
+            WM_LBUTTONUP => {
+                let res = CallWindowProcW((*ptr).orig_proc, hwnd, msg, wparam, lparam);
+                if (*ptr).just_got_focus {
+                    (*ptr).just_got_focus = false;
+                    let _ = SendMessageW(hwnd, EM_SETSEL, WPARAM(0), LPARAM(-1));
+                }
+                return res;
+            }
             WM_KEYDOWN => {
                 if wparam.0 == VK_RETURN.0 as usize {
                     let len = GetWindowTextLengthW(hwnd);
@@ -777,10 +795,23 @@ impl BrowserChrome {
                     }
                     return LRESULT(0);
                 }
+
+                // Handle Ctrl + A (Select All)
+                if wparam.0 == 0x41 || wparam.0 == b'a' as usize || wparam.0 == b'A' as usize {
+                    let ctrl_pressed = (GetKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0;
+                    if ctrl_pressed {
+                        let _ = SendMessageW(hwnd, EM_SETSEL, WPARAM(0), LPARAM(-1));
+                        return LRESULT(0);
+                    }
+                }
             }
             WM_CHAR => {
                 if wparam.0 == VK_RETURN.0 as usize {
                     // Suppress ding sound on Enter
+                    return LRESULT(0);
+                }
+                if wparam.0 == 1 {
+                    // Suppress ding/beep sound on Ctrl + A
                     return LRESULT(0);
                 }
             }
