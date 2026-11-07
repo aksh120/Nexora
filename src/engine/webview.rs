@@ -333,6 +333,27 @@ impl WebViewEngine {
             }
         }
 
+        // PermissionRequested (Per-Site Permissions - TASK-702)
+        let perm_handler = PermissionRequestedEventHandler::create(Box::new(|_sender, args| {
+            if let Some(args) = args {
+                unsafe {
+                    let mut uri = PWSTR::null();
+                    let _ = args.Uri(&mut uri);
+                    let origin_str = string_from_pcwstr(&PCWSTR(uri.0));
+
+                    let mut kind = COREWEBVIEW2_PERMISSION_KIND::default();
+                    let _ = args.PermissionKind(&mut kind);
+
+                    log::info!("[Permissions] Permission requested: {:?} for origin '{}'", kind, origin_str);
+                }
+            }
+            Ok(())
+        }));
+        let mut perm_token = EventRegistrationToken::default();
+        unsafe {
+            let _ = self.webview.add_PermissionRequested(&perm_handler, &mut perm_token);
+        }
+
         Ok(())
     }
 }

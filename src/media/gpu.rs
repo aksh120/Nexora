@@ -50,6 +50,11 @@ impl GpuCapabilities {
             "--enable-accelerated-video-decode",
             "--disable-features=Translate,OptimizationHints,MediaRouter",
             "--disable-background-networking",
+            "--disable-sync",
+            "--disable-breakpad",
+            "--disable-component-update",
+            "--disable-domain-reliability",
+            "--no-pings",
         ];
 
         // Kepler / older GPU compatibility: force D3D11 video decoding

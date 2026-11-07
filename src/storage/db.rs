@@ -411,6 +411,27 @@ impl SqliteConnection {
             log::info!("Database schema migration v1 applied successfully.");
         }
 
+        if version < 2 {
+            log::info!("Applying schema migration v2...");
+            self.execute("BEGIN TRANSACTION;")?;
+
+            // 4. Site Permissions Table
+            self.execute(
+                "CREATE TABLE IF NOT EXISTS site_permissions (
+                    origin TEXT NOT NULL,
+                    permission_type TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    PRIMARY KEY (origin, permission_type)
+                );"
+            )?;
+            self.execute("CREATE INDEX IF NOT EXISTS idx_site_permissions_origin ON site_permissions(origin);")?;
+
+            self.execute("PRAGMA user_version = 2;")?;
+            self.execute("COMMIT;")?;
+            log::info!("Database schema migration v2 applied successfully.");
+        }
+
         Ok(())
     }
 }
@@ -459,5 +480,6 @@ mod tests {
         assert!(tables.contains(&"history".to_string()));
         assert!(tables.contains(&"bookmarks".to_string()));
         assert!(tables.contains(&"session_tabs".to_string()));
+        assert!(tables.contains(&"site_permissions".to_string()));
     }
 }

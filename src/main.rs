@@ -67,6 +67,27 @@ fn main() {
     let history_mgr = Arc::new(HistoryManager::new(db.clone()));
     let bookmark_mgr = Arc::new(BookmarkManager::new(db.clone()));
     let session_mgr = Arc::new(SessionManager::new(db.clone()));
+    let _permissions_mgr = Arc::new(crate::privacy::PermissionsManager::new(db.clone()));
+    let adblock_engine = Arc::new(crate::privacy::AdBlockEngine::new(
+        app.config.ad_block_enabled,
+        app.config.tracker_protection_enabled,
+    ));
+    log::info!(
+        "Privacy Guard Active: AdBlock={}, TrackerProtection={}, Loaded Rules={}",
+        adblock_engine.enabled,
+        adblock_engine.block_trackers,
+        adblock_engine.total_rules()
+    );
+
+    // Audit engine switches for strict zero-telemetry compliance
+    let gpu_caps = crate::media::GpuCapabilities::detect(app.config.hardware_acceleration);
+    let browser_switches = gpu_caps.build_browser_switches().join(" ");
+    let audit_result = crate::privacy::ZeroTelemetryAuditor::audit_flags(&browser_switches);
+    log::info!(
+        "Zero-Telemetry Audit Status: Compliant={}, Active Kill-Switches={}",
+        audit_result.compliant,
+        audit_result.verified_flags.len()
+    );
 
     // Seed default streaming bookmarks if bookmark store is empty
     if let Ok(existing) = bookmark_mgr.get_all() {
