@@ -29,8 +29,8 @@ impl WebViewEngine {
         // Hardware video acceleration and low-overhead flags via GPU capabilities
         let gpu_caps = crate::media::GpuCapabilities::detect(true);
         let mut browser_args_vec = gpu_caps.build_browser_switches();
-        browser_args_vec.push("--disk-cache-size=268435456");
-        browser_args_vec.push("--media-cache-size=134217728");
+        browser_args_vec.push("--disk-cache-size=33554432"); // 32 MB disk cache cap
+        browser_args_vec.push("--media-cache-size=16777216"); // 16 MB media cache cap
         let browser_args = browser_args_vec.join(" ");
 
         log::info!("Configuring Microsoft WebView2 Environment:");
@@ -292,6 +292,11 @@ impl WebViewEngine {
                         let url_str = string_from_pcwstr(&PCWSTR(uri.0));
                         log::info!("[WebView2] Navigation Starting: {}", url_str);
 
+                        // Strict Guard: Never overwrite omnibox or tab state with about:blank
+                        if url_str.is_empty() || url_str == "about:blank" {
+                            return Ok(());
+                        }
+
                         let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
                             hwnd_parent,
                             windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
@@ -303,6 +308,7 @@ impl WebViewEngine {
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             if let Some(active) = tabs.get_active_tab_mut() {
                                 active.url = url_str.clone();
+                                active.push_history(&url_str);
                             }
                             drop(tabs);
                             let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
@@ -326,6 +332,11 @@ impl WebViewEngine {
                         let url_str = string_from_pcwstr(&PCWSTR(uri.0));
                         log::info!("[WebView2] Source Changed: {}", url_str);
 
+                        // Strict Guard: Never overwrite omnibox or tab state with about:blank
+                        if url_str.is_empty() || url_str == "about:blank" {
+                            return Ok(());
+                        }
+
                         let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
                             hwnd_parent,
                             windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
@@ -337,6 +348,7 @@ impl WebViewEngine {
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             if let Some(active) = tabs.get_active_tab_mut() {
                                 active.url = url_str.clone();
+                                active.push_history(&url_str);
                             }
                             drop(tabs);
                             let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
@@ -360,6 +372,11 @@ impl WebViewEngine {
                         let title_str = string_from_pcwstr(&PCWSTR(title.0));
                         log::info!("[WebView2] Document Title Changed: {}", title_str);
 
+                        // Guard: Do not overwrite titles with blank or about:blank
+                        if title_str.trim().is_empty() || title_str == "about:blank" {
+                            return Ok(());
+                        }
+
                         let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
                             hwnd_parent,
                             windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
@@ -367,17 +384,11 @@ impl WebViewEngine {
                         if !ptr.is_null() {
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             if let Some(active) = tabs.get_active_tab_mut() {
-                                if !title_str.trim().is_empty() {
-                                    active.title = title_str.clone();
-                                }
+                                active.title = title_str.clone();
                             }
                             drop(tabs);
 
-                            let full_title = if title_str.trim().is_empty() {
-                                "Nexora".to_string()
-                            } else {
-                                format!("{} - Nexora", title_str)
-                            };
+                            let full_title = format!("{} - Nexora", title_str);
                             let wide_title: Vec<u16> = full_title.encode_utf16().chain(std::iter::once(0)).collect();
                             let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
                                 hwnd_parent,
@@ -418,31 +429,46 @@ impl WebViewEngine {
                                     String::new()
                                 };
 
-                                let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
-                                    hwnd_parent,
-                                    windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
-                                ) as *mut crate::browser::host_window::WindowContext;
-                                if !ptr.is_null() {
-                                    if let Some(ref chrome) = (*ptr).chrome {
-                                        chrome.set_omnibox_text(&url_str);
-                                    }
-                                    let mut tabs = (*ptr).tab_manager.borrow_mut();
-                                    if let Some(active) = tabs.get_active_tab_mut() {
-                                        active.url = url_str.clone();
-                                        if !title_str.trim().is_empty() {
-                                            active.title = title_str.clone();
-                                        }
-                                    }
-                                    drop(tabs);
-                                    let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
-                                }
+                                // Guard: Never record or sync about:blank
+                                if !url_str.is_empty() && url_str != "about:blank" {
+                                    let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                                        hwnd_parent,
+                                        windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                                    ) as *mut crate::browser::host_window::WindowContext;
+                                    if !ptr.is_null() {
+                                        let is_bm = if !url_str.starts_with("nexora://") {
+                                            if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                                                let db_path = paths.data_dir.join("nexora.db");
+                                                if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                                                    let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
+                                                    bm_mgr.is_bookmarked(&url_str).unwrap_or(false)
+                                                } else { false }
+                                            } else { false }
+                                        } else { false };
 
-                                if !url_str.starts_with("nexora://") && url_str != "about:blank" && !url_str.is_empty() {
-                                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
-                                        let db_path = paths.data_dir.join("nexora.db");
-                                        if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
-                                            let hist_mgr = crate::storage::HistoryManager::new(std::sync::Arc::new(conn));
-                                            let _ = hist_mgr.add_visit(&url_str, &title_str);
+                                        if let Some(ref mut chrome) = (*ptr).chrome {
+                                            chrome.set_omnibox_text(&url_str);
+                                            chrome.set_is_bookmarked(is_bm);
+                                        }
+                                        let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                        if let Some(active) = tabs.get_active_tab_mut() {
+                                            active.url = url_str.clone();
+                                            active.push_history(&url_str);
+                                            if !title_str.trim().is_empty() && title_str != "about:blank" {
+                                                active.title = title_str.clone();
+                                            }
+                                        }
+                                        drop(tabs);
+                                        let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
+                                    }
+
+                                    if !url_str.starts_with("nexora://") {
+                                        if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                                            let db_path = paths.data_dir.join("nexora.db");
+                                            if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                                                let hist_mgr = crate::storage::HistoryManager::new(std::sync::Arc::new(conn));
+                                                let _ = hist_mgr.add_visit(&url_str, &title_str);
+                                            }
                                         }
                                     }
                                 }
@@ -456,6 +482,45 @@ impl WebViewEngine {
         let mut completed_token = EventRegistrationToken::default();
         unsafe {
             let _ = self.webview.add_NavigationCompleted(&completed_handler, &mut completed_token);
+        }
+
+        // 5. NewWindowRequested (Intercept target="_blank" and popups -> open as native Nexora tab)
+        let new_window_handler = NewWindowRequestedEventHandler::create(Box::new(move |_sender, args| {
+            if let Some(args) = args {
+                unsafe {
+                    let _ = args.SetHandled(true);
+                    let mut uri = PWSTR::null();
+                    if args.Uri(&mut uri).is_ok() {
+                        let target_url = string_from_pcwstr(&PCWSTR(uri.0));
+                        log::info!("[WebView2] NewWindowRequested for '{}' -> Opening as tab in Nexora", target_url);
+
+                        let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                            hwnd_parent,
+                            windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                        ) as *mut crate::browser::host_window::WindowContext;
+                        if !ptr.is_null() {
+                            let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            let _tab_id = tabs.create_tab(&target_url, None);
+                            let tab_count = tabs.tab_count();
+                            drop(tabs);
+
+                            if let Some(ref webview) = (*ptr).webview {
+                                let _ = webview.navigate(&target_url);
+                            }
+                            if let Some(ref chrome) = (*ptr).chrome {
+                                chrome.set_omnibox_text(&target_url);
+                                chrome.layout_controls(&(*ptr).layout, tab_count);
+                            }
+                            let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }));
+        let mut new_window_token = EventRegistrationToken::default();
+        unsafe {
+            let _ = self.webview.add_NewWindowRequested(&new_window_handler, &mut new_window_token);
         }
 
         // ProcessFailed (Crash Recovery Hook - TASK-803)
@@ -689,14 +754,25 @@ impl WebViewEngine {
         }
 
         // WebMessageReceived (Bidirectional Settings, Bookmarks, History & Engine IPC)
-        let web_message_handler = WebMessageReceivedEventHandler::create(Box::new(|sender, args| {
+        let web_message_handler = WebMessageReceivedEventHandler::create(Box::new(move |sender, args| {
             if let Some(args) = args {
                 unsafe {
                     let mut message = PWSTR::null();
-                    if args.TryGetWebMessageAsString(&mut message).is_ok() {
-                        let msg_str = string_from_pcwstr(&PCWSTR(message.0));
+                    let got_str = args.TryGetWebMessageAsString(&mut message).is_ok();
+                    let msg_str = if got_str && !message.0.is_null() {
+                        string_from_pcwstr(&PCWSTR(message.0))
+                    } else {
+                        let mut json_str = PWSTR::null();
+                        if args.WebMessageAsJson(&mut json_str).is_ok() && !json_str.0.is_null() {
+                            string_from_pcwstr(&PCWSTR(json_str.0))
+                        } else {
+                            String::new()
+                        }
+                    };
+
+                    if !msg_str.is_empty() {
                         log::info!("[WebView2 IPC] Received WebMessage: {}", msg_str);
-                        Self::handle_ipc_message(sender.as_ref(), &msg_str);
+                        Self::handle_ipc_message(hwnd_parent, sender.as_ref(), &msg_str);
                     }
                 }
             }
@@ -710,7 +786,7 @@ impl WebViewEngine {
         Ok(())
     }
 
-    fn handle_ipc_message(sender: Option<&ICoreWebView2>, msg_str: &str) {
+    fn handle_ipc_message(hwnd: HWND, sender: Option<&ICoreWebView2>, msg_str: &str) {
         #[derive(serde::Deserialize)]
         struct IpcPayload {
             action: String,
@@ -727,6 +803,28 @@ impl WebViewEngine {
                 "navigate" => {
                     if let Some(url) = payload.url {
                         log::info!("[IPC Action] Navigating to '{}'", url);
+                        
+                        let ptr = unsafe {
+                            windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                                hwnd,
+                                windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                            ) as *mut crate::browser::host_window::WindowContext
+                        };
+                        if !ptr.is_null() {
+                            unsafe {
+                                if let Some(ref chrome) = (*ptr).chrome {
+                                    chrome.set_omnibox_text(&url);
+                                }
+                                let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                if let Some(active) = tabs.get_active_tab_mut() {
+                                    active.url = url.clone();
+                                    active.push_history(&url);
+                                }
+                                drop(tabs);
+                                let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd, None, false);
+                            }
+                        }
+
                         if let Some(s) = sender {
                             unsafe {
                                 if url == "nexora://bookmarks" {
@@ -752,6 +850,13 @@ impl WebViewEngine {
                                             Vec::new()
                                         };
                                         let html = crate::storage::HistoryUi::render_html(&history);
+                                        let wide = pwstr_from_str(&html);
+                                        let _ = s.NavigateToString(PCWSTR(wide.0));
+                                    }
+                                } else if url == "nexora://settings" {
+                                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                                        let config = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
+                                        let html = crate::settings::SettingsUi::render_html(&config);
                                         let wide = pwstr_from_str(&html);
                                         let _ = s.NavigateToString(PCWSTR(wide.0));
                                     }
@@ -811,7 +916,7 @@ impl WebViewEngine {
                 }
                 "save_setting" => {
                     if let (Some(key), Some(val)) = (payload.key, payload.value) {
-                        Self::apply_and_save_setting(&key, &val);
+                        Self::apply_and_save_setting(hwnd, &key, &val);
                     }
                 }
                 "compact_wal" => {
@@ -853,7 +958,7 @@ impl WebViewEngine {
         }
     }
 
-    fn apply_and_save_setting(key: &str, val: &serde_json::Value) {
+    fn apply_and_save_setting(hwnd: HWND, key: &str, val: &serde_json::Value) {
         let paths = match crate::app::application::ApplicationPaths::resolve() {
             Ok(p) => p,
             Err(e) => {
@@ -930,6 +1035,49 @@ impl WebViewEngine {
         } else {
             log::info!("[Settings IPC] Successfully persisted '{}' = {:?} to config.json", key, val);
         }
+
+        // Dynamically update live WindowContext
+        let ptr = unsafe {
+            windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                hwnd,
+                windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+            ) as *mut crate::browser::host_window::WindowContext
+        };
+        if !ptr.is_null() {
+            unsafe {
+                match key {
+                    "homepage" => {
+                        (*ptr).homepage = config.homepage.clone();
+                        log::info!("[Live Settings] Updated HostWindow homepage to '{}'", (*ptr).homepage);
+                    }
+                    "default_search_engine" => {
+                        (*ptr).default_search_engine = config.default_search_engine.clone();
+                        log::info!("[Live Settings] Updated HostWindow default_search_engine to '{}'", (*ptr).default_search_engine);
+                    }
+                    "smart_suspension" => {
+                        (*ptr).suspension_engine.enabled = config.smart_suspension;
+                    }
+                    "suspension_timeout_minutes" => {
+                        (*ptr).suspension_engine.base_timeout_minutes = config.suspension_timeout_minutes;
+                    }
+                    "ad_block_enabled" => {
+                        let block_trackers = (&(*ptr).adblock_engine).block_trackers;
+                        (*ptr).adblock_engine = std::sync::Arc::new(crate::privacy::AdBlockEngine::new(
+                            config.ad_block_enabled,
+                            block_trackers,
+                        ));
+                    }
+                    "tracker_protection_enabled" => {
+                        let enabled = (&(*ptr).adblock_engine).enabled;
+                        (*ptr).adblock_engine = std::sync::Arc::new(crate::privacy::AdBlockEngine::new(
+                            enabled,
+                            config.tracker_protection_enabled,
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+        }
     }
 }
 
@@ -976,8 +1124,9 @@ mod tests {
 
     #[test]
     fn test_settings_ipc_save_and_persist() {
+        let dummy_hwnd = HWND::default();
         let msg = r#"{"action":"save_setting","key":"homepage","value":"https://duckduckgo.com"}"#;
-        WebViewEngine::handle_ipc_message(None, msg);
+        WebViewEngine::handle_ipc_message(dummy_hwnd, None, msg);
 
         let paths = crate::app::application::ApplicationPaths::resolve().expect("paths");
         let config = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
@@ -985,19 +1134,19 @@ mod tests {
 
         // Test theme setting
         let msg_theme = r#"{"action":"save_setting","key":"theme","value":"dark"}"#;
-        WebViewEngine::handle_ipc_message(None, msg_theme);
+        WebViewEngine::handle_ipc_message(dummy_hwnd, None, msg_theme);
         let config2 = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
         assert_eq!(config2.theme, crate::app::config::ThemeMode::Dark);
 
         // Test timeout setting
         let msg_timeout = r#"{"action":"save_setting","key":"suspension_timeout_minutes","value":25}"#;
-        WebViewEngine::handle_ipc_message(None, msg_timeout);
+        WebViewEngine::handle_ipc_message(dummy_hwnd, None, msg_timeout);
         let config3 = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
         assert_eq!(config3.suspension_timeout_minutes, 25);
 
         // Reset to default
         let reset_msg = r#"{"action":"reset_defaults"}"#;
-        WebViewEngine::handle_ipc_message(None, reset_msg);
+        WebViewEngine::handle_ipc_message(dummy_hwnd, None, reset_msg);
         let config_def = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
         assert_eq!(config_def.homepage, "https://www.google.com");
         assert_eq!(config_def.suspension_timeout_minutes, 10);

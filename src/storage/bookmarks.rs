@@ -182,6 +182,37 @@ impl BookmarkManager {
         Ok(())
     }
 
+    pub fn is_bookmarked(&self, url: &str) -> Result<bool> {
+        let sql = "SELECT COUNT(*) FROM bookmarks WHERE url = ? AND is_folder = 0;";
+        let rows = self.db.query(sql, &[SqliteValue::Text(url.to_string())], |row| {
+            Ok(row.get_i64(0))
+        })?;
+        Ok(rows.first().copied().unwrap_or(0) > 0)
+    }
+
+    pub fn delete_bookmark_by_url(&self, url: &str) -> Result<()> {
+        self.db.execute_with_params(
+            "DELETE FROM bookmarks WHERE url = ? AND is_folder = 0;",
+            &[SqliteValue::Text(url.to_string())],
+        )?;
+        Ok(())
+    }
+
+    pub fn purge_default_bookmarks(&self) -> Result<()> {
+        let default_urls = [
+            "https://www.youtube.com",
+            "https://www.netflix.com",
+            "https://www.primevideo.com",
+            "https://www.hotstar.com",
+            "https://www.twitch.tv",
+            "https://open.spotify.com",
+        ];
+        for url in default_urls {
+            let _ = self.delete_bookmark_by_url(url);
+        }
+        Ok(())
+    }
+
     fn get_next_position(&self, parent_id: Option<i64>) -> Result<i32> {
         let (sql, params) = match parent_id {
             Some(pid) => (

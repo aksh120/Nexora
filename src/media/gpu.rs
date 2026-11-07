@@ -48,13 +48,20 @@ impl GpuCapabilities {
             "--enable-zero-copy",
             "--ignore-gpu-blocklist",
             "--enable-accelerated-video-decode",
-            "--disable-features=Translate,OptimizationHints,MediaRouter",
+            "--disable-features=Translate,OptimizationHints,MediaRouter,CalculateNativeWinOcclusion",
             "--disable-background-networking",
             "--disable-sync",
             "--disable-breakpad",
             "--disable-component-update",
             "--disable-domain-reliability",
             "--no-pings",
+            "--renderer-process-limit=1",
+            "--process-per-site",
+            "--enable-low-end-device-mode",
+            "--js-flags=--max-old-space-size=128",
+            "--enable-low-res-tiling",
+            "--num-raster-threads=1",
+            "--disable-extensions",
         ];
 
         // Kepler / older GPU compatibility: force D3D11 video decoding

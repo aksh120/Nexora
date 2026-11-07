@@ -19,6 +19,8 @@ pub struct Tab {
     pub scroll_position: (i32, i32),
     pub created_at: Instant,
     pub last_accessed: Instant,
+    pub history: Vec<String>,
+    pub history_index: usize,
 }
 
 impl Tab {
@@ -29,6 +31,12 @@ impl Tab {
         } else {
             url
         });
+
+        let initial_history = if !url.is_empty() && url != "about:blank" {
+            vec![url.to_string()]
+        } else {
+            Vec::new()
+        };
 
         Self {
             id,
@@ -41,6 +49,53 @@ impl Tab {
             scroll_position: (0, 0),
             created_at: now,
             last_accessed: now,
+            history: initial_history,
+            history_index: 0,
+        }
+    }
+
+    pub fn push_history(&mut self, new_url: &str) {
+        if new_url.is_empty() || new_url == "about:blank" {
+            return;
+        }
+        if !self.history.is_empty() && self.history_index < self.history.len() {
+            if self.history[self.history_index] == new_url {
+                return;
+            }
+            // Branch history
+            self.history.truncate(self.history_index + 1);
+        }
+        self.history.push(new_url.to_string());
+        self.history_index = self.history.len().saturating_sub(1);
+    }
+
+    pub fn can_go_back(&self) -> bool {
+        self.history_index > 0 && !self.history.is_empty()
+    }
+
+    pub fn can_go_forward(&self) -> bool {
+        !self.history.is_empty() && self.history_index + 1 < self.history.len()
+    }
+
+    pub fn go_back(&mut self) -> Option<String> {
+        if self.can_go_back() {
+            self.history_index -= 1;
+            let url = self.history[self.history_index].clone();
+            self.url = url.clone();
+            Some(url)
+        } else {
+            None
+        }
+    }
+
+    pub fn go_forward(&mut self) -> Option<String> {
+        if self.can_go_forward() {
+            self.history_index += 1;
+            let url = self.history[self.history_index].clone();
+            self.url = url.clone();
+            Some(url)
+        } else {
+            None
         }
     }
 

@@ -1,6 +1,13 @@
 use std::mem;
-use windows::Win32::System::Threading::{GetCurrentProcess, SetProcessWorkingSetSize};
+use windows::Win32::Foundation::CloseHandle;
+use windows::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+};
 use windows::Win32::System::ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
+use windows::Win32::System::Threading::{
+    GetCurrentProcess, GetCurrentProcessId, OpenProcess, SetProcessWorkingSetSize,
+    PROCESS_QUERY_INFORMATION, PROCESS_SET_QUOTA,
+};
 use crate::core::error::{NexoraError, Result};
 
 /// Process memory consumption statistics
@@ -73,7 +80,7 @@ pub fn get_process_memory() -> Result<ProcessMemoryInfo> {
 }
 
 /// Instruct the Windows Memory Manager to trim unused physical pages from the working set
-/// of the current process using `SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX)`.
+/// of the current process and all child WebView2 processes.
 pub fn trim_working_set() -> Result<WorkingSetTrimResult> {
     let before = get_process_memory().unwrap_or_default();
 
@@ -83,6 +90,9 @@ pub fn trim_working_set() -> Result<WorkingSetTrimResult> {
         SetProcessWorkingSetSize(process, usize::MAX, usize::MAX)
             .map_err(|e| NexoraError::Win32(format!("Failed to trim working set: {:?}", e)))?;
     }
+
+    // Also trim all child processes (WebView2 browser, renderer, GPU, and utility processes)
+    let _ = trim_child_processes();
 
     let after = get_process_memory().unwrap_or_default();
     let bytes_freed = if before.working_set_bytes > after.working_set_bytes {
@@ -103,6 +113,67 @@ pub fn trim_working_set() -> Result<WorkingSetTrimResult> {
         after_bytes: after.working_set_bytes,
         bytes_freed,
     })
+}
+
+/// Trims the working sets of all child processes (including WebView2 browser & renderer processes)
+pub fn trim_child_processes() -> usize {
+    let parent_pid = unsafe { GetCurrentProcessId() };
+    let mut trimmed_count = 0;
+
+    unsafe {
+        let snapshot = match CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
+            Ok(s) => s,
+            Err(_) => return 0,
+        };
+
+        let mut entry = PROCESSENTRY32W {
+            dwSize: mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+
+        let mut child_pids = Vec::new();
+
+        if Process32FirstW(snapshot, &mut entry).is_ok() {
+            loop {
+                if entry.th32ParentProcessID == parent_pid {
+                    child_pids.push(entry.th32ProcessID);
+                }
+                if Process32NextW(snapshot, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+
+        // Also discover any grandchild processes spawned by WebView2 child processes
+        if !child_pids.is_empty() {
+            if Process32FirstW(snapshot, &mut entry).is_ok() {
+                loop {
+                    if child_pids.contains(&entry.th32ParentProcessID) && !child_pids.contains(&entry.th32ProcessID) {
+                        child_pids.push(entry.th32ProcessID);
+                    }
+                    if Process32NextW(snapshot, &mut entry).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+
+        let _ = CloseHandle(snapshot);
+
+        for pid in child_pids {
+            if let Ok(h_proc) = OpenProcess(PROCESS_SET_QUOTA | PROCESS_QUERY_INFORMATION, false, pid) {
+                if SetProcessWorkingSetSize(h_proc, usize::MAX, usize::MAX).is_ok() {
+                    trimmed_count += 1;
+                }
+                let _ = CloseHandle(h_proc);
+            }
+        }
+    }
+
+    if trimmed_count > 0 {
+        log::info!("Trimmed working set for {} child WebView2 processes", trimmed_count);
+    }
+    trimmed_count
 }
 
 #[cfg(test)]

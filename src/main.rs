@@ -63,6 +63,7 @@ fn main() {
 
     let history_mgr = Arc::new(HistoryManager::new(db.clone()));
     let bookmark_mgr = Arc::new(BookmarkManager::new(db.clone()));
+    let _ = bookmark_mgr.purge_default_bookmarks();
     let session_mgr = Arc::new(SessionManager::new(db.clone()));
     let recovery_mgr = Arc::new(crate::storage::CrashRecoveryManager::new(&app.paths.data_dir));
     let had_crash = recovery_mgr.detect_abnormal_shutdown();
@@ -112,18 +113,6 @@ fn main() {
         audit_result.verified_flags.len()
     );
 
-    // Seed default streaming bookmarks if bookmark store is empty
-    if let Ok(existing) = bookmark_mgr.get_all() {
-        if existing.is_empty() {
-            log::info!("Seeding default streaming bookmarks...");
-            let _ = bookmark_mgr.add_bookmark("YouTube", "https://www.youtube.com", None);
-            let _ = bookmark_mgr.add_bookmark("Netflix", "https://www.netflix.com", None);
-            let _ = bookmark_mgr.add_bookmark("Prime Video", "https://www.primevideo.com", None);
-            let _ = bookmark_mgr.add_bookmark("JioHotstar", "https://www.hotstar.com", None);
-            let _ = bookmark_mgr.add_bookmark("Twitch", "https://www.twitch.tv", None);
-            let _ = bookmark_mgr.add_bookmark("Spotify", "https://open.spotify.com", None);
-        }
-    }
 
     // 3. Enforce Engine Disk Cache Boundary
     if let Err(err) = CacheManager::enforce_boundary(&app.paths.engine_data_dir, app.config.disk_cache_limit_mb) {

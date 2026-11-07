@@ -64,6 +64,7 @@ pub struct WindowContext {
     pub session_manager: Option<Arc<crate::storage::SessionManager>>,
     pub omnibox_brush: HBRUSH,
     pub fullscreen: crate::media::FullscreenController,
+    pub adblock_engine: Arc<crate::privacy::AdBlockEngine>,
 }
 
 pub struct HostWindow {
@@ -175,6 +176,7 @@ impl HostWindow {
                 session_manager: None,
                 omnibox_brush,
                 fullscreen: crate::media::FullscreenController::new(),
+                adblock_engine: Arc::new(crate::privacy::AdBlockEngine::new(true, true)),
             });
 
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(context) as isize);
@@ -490,13 +492,33 @@ impl HostWindow {
                             );
                         }
                         ChromeHitResult::BtnBack => {
-                            if let Some(ref webview) = (*ptr).webview {
-                                let _ = webview.go_back();
+                            let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            if let Some(active) = tabs.get_active_tab_mut() {
+                                if let Some(prev_url) = active.go_back() {
+                                    drop(tabs);
+                                    if let Some(ref webview) = (*ptr).webview {
+                                        let _ = webview.navigate(&prev_url);
+                                    }
+                                    if let Some(ref chrome) = (*ptr).chrome {
+                                        chrome.set_omnibox_text(&prev_url);
+                                    }
+                                    let _ = InvalidateRect(hwnd, None, false);
+                                }
                             }
                         }
                         ChromeHitResult::BtnForward => {
-                            if let Some(ref webview) = (*ptr).webview {
-                                let _ = webview.go_forward();
+                            let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            if let Some(active) = tabs.get_active_tab_mut() {
+                                if let Some(next_url) = active.go_forward() {
+                                    drop(tabs);
+                                    if let Some(ref webview) = (*ptr).webview {
+                                        let _ = webview.navigate(&next_url);
+                                    }
+                                    if let Some(ref chrome) = (*ptr).chrome {
+                                        chrome.set_omnibox_text(&next_url);
+                                    }
+                                    let _ = InvalidateRect(hwnd, None, false);
+                                }
                             }
                         }
                         ChromeHitResult::BtnReload => {
@@ -514,49 +536,35 @@ impl HostWindow {
                             }
                         }
                         ChromeHitResult::BtnBookmark => {
-                            let mut tabs = (*ptr).tab_manager.borrow_mut();
-                            if let Some(active) = tabs.get_active_tab_mut() {
-                                let current_url = active.url.clone();
-                                let current_title = active.title.clone();
-                                drop(tabs);
+                            let tabs = (*ptr).tab_manager.borrow();
+                            let (current_url, current_title) = if let Some(active) = tabs.get_active_tab() {
+                                (active.url.clone(), active.title.clone())
+                            } else {
+                                (String::new(), String::new())
+                            };
+                            drop(tabs);
 
-                                if current_url == "nexora://bookmarks" {
-                                    // Already on bookmarks page
-                                } else if !current_url.starts_with("nexora://") && current_url != "about:blank" && !current_url.is_empty() {
-                                    // Add bookmark to SQLite
-                                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
-                                        let db_path = paths.data_dir.join("nexora.db");
-                                        if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
-                                            let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
+                            if !current_url.is_empty() && !current_url.starts_with("nexora://") && current_url != "about:blank" {
+                                if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                                    let db_path = paths.data_dir.join("nexora.db");
+                                    if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                                        let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
+                                        let is_bm = bm_mgr.is_bookmarked(&current_url).unwrap_or(false);
+                                        if is_bm {
+                                            let _ = bm_mgr.delete_bookmark_by_url(&current_url);
+                                            if let Some(ref mut chrome) = (*ptr).chrome {
+                                                chrome.set_is_bookmarked(false);
+                                            }
+                                            log::info!("Toggled bookmark OFF: {}", current_url);
+                                        } else {
                                             let _ = bm_mgr.add_bookmark(&current_title, &current_url, None);
+                                            if let Some(ref mut chrome) = (*ptr).chrome {
+                                                chrome.set_is_bookmarked(true);
+                                            }
+                                            log::info!("Toggled bookmark ON: {} ({})", current_title, current_url);
                                         }
+                                        let _ = InvalidateRect(hwnd, None, false);
                                     }
-                                    log::info!("Bookmarked active page: {} ({})", current_title, current_url);
-                                    if let Some(ref webview) = (*ptr).webview {
-                                        let _ = webview.navigate("nexora://bookmarks");
-                                    }
-                                    if let Some(ref chrome) = (*ptr).chrome {
-                                        chrome.set_omnibox_text("nexora://bookmarks");
-                                    }
-                                    let mut tabs = (*ptr).tab_manager.borrow_mut();
-                                    if let Some(active) = tabs.get_active_tab_mut() {
-                                        active.url = "nexora://bookmarks".to_string();
-                                        active.title = "Bookmarks - Nexora".to_string();
-                                    }
-                                    let _ = InvalidateRect(hwnd, None, false);
-                                } else {
-                                    if let Some(ref webview) = (*ptr).webview {
-                                        let _ = webview.navigate("nexora://bookmarks");
-                                    }
-                                    if let Some(ref chrome) = (*ptr).chrome {
-                                        chrome.set_omnibox_text("nexora://bookmarks");
-                                    }
-                                    let mut tabs = (*ptr).tab_manager.borrow_mut();
-                                    if let Some(active) = tabs.get_active_tab_mut() {
-                                        active.url = "nexora://bookmarks".to_string();
-                                        active.title = "Bookmarks - Nexora".to_string();
-                                    }
-                                    let _ = InvalidateRect(hwnd, None, false);
                                 }
                             }
                         }
@@ -678,11 +686,24 @@ impl HostWindow {
                                     if was_suspended {
                                         log::info!("Waking suspended/lazy tab #{} and navigating to {}", id, url);
                                     }
+
+                                    // Update bookmark star state for switched tab
+                                    let is_bm = if !url.starts_with("nexora://") && url != "about:blank" && !url.is_empty() {
+                                        if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                                            let db_path = paths.data_dir.join("nexora.db");
+                                            if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                                                let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
+                                                bm_mgr.is_bookmarked(&url).unwrap_or(false)
+                                            } else { false }
+                                        } else { false }
+                                    } else { false };
+
+                                    if let Some(ref mut chrome) = (*ptr).chrome {
+                                        chrome.set_omnibox_text(&url);
+                                        chrome.set_is_bookmarked(is_bm);
+                                    }
                                     if let Some(ref webview) = (*ptr).webview {
                                         let _ = webview.navigate(&url);
-                                    }
-                                    if let Some(ref chrome) = (*ptr).chrome {
-                                        chrome.set_omnibox_text(&url);
                                     }
                                     let _ = InvalidateRect(hwnd, None, false);
                                 }
@@ -695,11 +716,22 @@ impl HostWindow {
                             drop(tabs);
 
                             if let Some(url) = maybe_url {
+                                let is_bm = if !url.starts_with("nexora://") && url != "about:blank" && !url.is_empty() {
+                                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                                        let db_path = paths.data_dir.join("nexora.db");
+                                        if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                                            let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
+                                            bm_mgr.is_bookmarked(&url).unwrap_or(false)
+                                        } else { false }
+                                    } else { false }
+                                } else { false };
+
+                                if let Some(ref mut chrome) = (*ptr).chrome {
+                                    chrome.set_omnibox_text(&url);
+                                    chrome.set_is_bookmarked(is_bm);
+                                }
                                 if let Some(ref webview) = (*ptr).webview {
                                     let _ = webview.navigate(&url);
-                                }
-                                if let Some(ref chrome) = (*ptr).chrome {
-                                    chrome.set_omnibox_text(&url);
                                 }
                             }
 
@@ -805,14 +837,34 @@ impl HostWindow {
                     // 4. Alt shortcuts (Back, Forward, Focus Omnibox)
                     if alt_pressed {
                         if vk == VK_LEFT.0 {
-                            if let Some(ref webview) = (*ptr).webview {
-                                let _ = webview.go_back();
+                            let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            if let Some(active) = tabs.get_active_tab_mut() {
+                                if let Some(prev_url) = active.go_back() {
+                                    drop(tabs);
+                                    if let Some(ref webview) = (*ptr).webview {
+                                        let _ = webview.navigate(&prev_url);
+                                    }
+                                    if let Some(ref chrome) = (*ptr).chrome {
+                                        chrome.set_omnibox_text(&prev_url);
+                                    }
+                                    let _ = InvalidateRect(hwnd, None, false);
+                                }
                             }
                             return LRESULT(0);
                         }
                         if vk == VK_RIGHT.0 {
-                            if let Some(ref webview) = (*ptr).webview {
-                                let _ = webview.go_forward();
+                            let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            if let Some(active) = tabs.get_active_tab_mut() {
+                                if let Some(next_url) = active.go_forward() {
+                                    drop(tabs);
+                                    if let Some(ref webview) = (*ptr).webview {
+                                        let _ = webview.navigate(&next_url);
+                                    }
+                                    if let Some(ref chrome) = (*ptr).chrome {
+                                        chrome.set_omnibox_text(&next_url);
+                                    }
+                                    let _ = InvalidateRect(hwnd, None, false);
+                                }
                             }
                             return LRESULT(0);
                         }
@@ -888,32 +940,35 @@ impl HostWindow {
                                 return LRESULT(0);
                             }
                             'D' | 'd' => {
-                                let mut tabs = (*ptr).tab_manager.borrow_mut();
-                                if let Some(active) = tabs.get_active_tab_mut() {
-                                    let current_url = active.url.clone();
-                                    let current_title = active.title.clone();
-                                    drop(tabs);
+                                let tabs = (*ptr).tab_manager.borrow();
+                                let (current_url, current_title) = if let Some(active) = tabs.get_active_tab() {
+                                    (active.url.clone(), active.title.clone())
+                                } else {
+                                    (String::new(), String::new())
+                                };
+                                drop(tabs);
 
-                                    if !current_url.starts_with("nexora://") && current_url != "about:blank" && !current_url.is_empty() {
-                                        if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
-                                            let db_path = paths.data_dir.join("nexora.db");
-                                            if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
-                                                let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
+                                if !current_url.is_empty() && !current_url.starts_with("nexora://") && current_url != "about:blank" {
+                                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                                        let db_path = paths.data_dir.join("nexora.db");
+                                        if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                                            let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
+                                            let is_bm = bm_mgr.is_bookmarked(&current_url).unwrap_or(false);
+                                            if is_bm {
+                                                let _ = bm_mgr.delete_bookmark_by_url(&current_url);
+                                                if let Some(ref mut chrome) = (*ptr).chrome {
+                                                    chrome.set_is_bookmarked(false);
+                                                }
+                                                log::info!("Ctrl+D toggled bookmark OFF: {}", current_url);
+                                            } else {
                                                 let _ = bm_mgr.add_bookmark(&current_title, &current_url, None);
+                                                if let Some(ref mut chrome) = (*ptr).chrome {
+                                                    chrome.set_is_bookmarked(true);
+                                                }
+                                                log::info!("Ctrl+D toggled bookmark ON: {} ({})", current_title, current_url);
                                             }
+                                            let _ = InvalidateRect(hwnd, None, false);
                                         }
-                                        if let Some(ref webview) = (*ptr).webview {
-                                            let _ = webview.navigate("nexora://bookmarks");
-                                        }
-                                        if let Some(ref chrome) = (*ptr).chrome {
-                                            chrome.set_omnibox_text("nexora://bookmarks");
-                                        }
-                                        let mut tabs = (*ptr).tab_manager.borrow_mut();
-                                        if let Some(active) = tabs.get_active_tab_mut() {
-                                            active.url = "nexora://bookmarks".to_string();
-                                            active.title = "Bookmarks - Nexora".to_string();
-                                        }
-                                        let _ = InvalidateRect(hwnd, None, false);
                                     }
                                 }
                                 return LRESULT(0);
@@ -1033,6 +1088,10 @@ impl HostWindow {
                     if let Some(ref session_mgr) = (*ptr).session_manager {
                         let _ = session_mgr.save_session(tabs.tabs(), tabs.active_tab_id());
                     }
+                    drop(tabs);
+
+                    // Periodic Working Set Trimming for Nexora and child WebView2 processes
+                    let _ = crate::performance::memory::trim_working_set();
                 }
                 LRESULT(0)
             }

@@ -1,5 +1,5 @@
 use windows::core::{w, PCWSTR};
-use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateFontW, CreatePen, CreateSolidBrush,
     DeleteDC, DeleteObject, DrawTextW, FillRect, LineTo, MoveToEx, SelectObject,
@@ -47,6 +47,7 @@ pub struct BrowserChrome {
     pub hovered_item: ChromeHitResult,
     font: HFONT,
     pub theme: ThemePalette,
+    pub is_current_page_bookmarked: bool,
 }
 
 struct OmniboxSubclassContext {
@@ -123,8 +124,13 @@ impl BrowserChrome {
                 hovered_item: ChromeHitResult::None,
                 font,
                 theme,
+                is_current_page_bookmarked: false,
             })
         }
+    }
+
+    pub fn set_is_bookmarked(&mut self, bookmarked: bool) {
+        self.is_current_page_bookmarked = bookmarked;
     }
 
     pub fn update_hover(&mut self, new_hover: ChromeHitResult) -> bool {
@@ -478,9 +484,16 @@ impl BrowserChrome {
             // Bookmark Button
             let bm = layout.bookmark_button_rect();
             let is_bm_hovered = self.hovered_item == ChromeHitResult::BtnBookmark;
+            let is_bm_filled = self.is_current_page_bookmarked;
             Self::render_nav_button(mem_dc, bm, is_bm_hovered, self.theme.button_hover_bg, |dc, cx, cy, col| {
-                let star_color = if is_bm_hovered { rgb(255, 215, 0) } else { col };
-                Self::draw_vector_star(dc, cx, cy, star_color);
+                let star_color = if is_bm_hovered {
+                    rgb(244, 63, 94)
+                } else if is_bm_filled {
+                    rgb(225, 29, 72)
+                } else {
+                    col
+                };
+                Self::draw_vector_star(dc, cx, cy, star_color, is_bm_filled);
             });
 
             // Menu Button
@@ -558,14 +571,13 @@ impl BrowserChrome {
         let pen = CreatePen(PS_SOLID, 2, color);
         let old_pen = SelectObject(hdc, pen);
 
-        // Horizontal stem: right to left
-        let _ = MoveToEx(hdc, cx + 5, cy, None);
-        let _ = LineTo(hdc, cx - 5, cy);
+        // Shadcn/Lucide ArrowLeft: horizontal shaft + 45-degree arrow wings
+        let _ = MoveToEx(hdc, cx + 6, cy, None);
+        let _ = LineTo(hdc, cx - 6, cy);
 
-        // Left arrowhead wings
-        let _ = MoveToEx(hdc, cx, cy - 5, None);
-        let _ = LineTo(hdc, cx - 5, cy);
-        let _ = LineTo(hdc, cx, cy + 5);
+        let _ = MoveToEx(hdc, cx - 1, cy - 5, None);
+        let _ = LineTo(hdc, cx - 6, cy);
+        let _ = LineTo(hdc, cx - 1, cy + 5);
 
         let _ = SelectObject(hdc, old_pen);
         let _ = DeleteObject(pen);
@@ -575,14 +587,13 @@ impl BrowserChrome {
         let pen = CreatePen(PS_SOLID, 2, color);
         let old_pen = SelectObject(hdc, pen);
 
-        // Horizontal stem: left to right
-        let _ = MoveToEx(hdc, cx - 5, cy, None);
-        let _ = LineTo(hdc, cx + 5, cy);
+        // Shadcn/Lucide ArrowRight: horizontal shaft + 45-degree arrow wings
+        let _ = MoveToEx(hdc, cx - 6, cy, None);
+        let _ = LineTo(hdc, cx + 6, cy);
 
-        // Right arrowhead wings
-        let _ = MoveToEx(hdc, cx, cy - 5, None);
-        let _ = LineTo(hdc, cx + 5, cy);
-        let _ = LineTo(hdc, cx, cy + 5);
+        let _ = MoveToEx(hdc, cx + 1, cy - 5, None);
+        let _ = LineTo(hdc, cx + 6, cy);
+        let _ = LineTo(hdc, cx + 1, cy + 5);
 
         let _ = SelectObject(hdc, old_pen);
         let _ = DeleteObject(pen);
@@ -592,26 +603,28 @@ impl BrowserChrome {
         let pen = CreatePen(PS_SOLID, 2, color);
         let old_pen = SelectObject(hdc, pen);
 
-        // Circular arc from 7 points
-        let pts = [
-            (cx, cy - 6),
-            (cx - 4, cy - 4),
-            (cx - 6, cy),
-            (cx - 4, cy + 4),
-            (cx, cy + 6),
-            (cx + 4, cy + 4),
-            (cx + 6, cy),
+        // Shadcn/Lucide RotateCw: smooth circular arc
+        let arc_pts = [
+            (cx + 4, cy - 3),
+            (cx + 1, cy - 5),
+            (cx - 3, cy - 4),
+            (cx - 5, cy - 1),
+            (cx - 5, cy + 2),
+            (cx - 3, cy + 5),
+            (cx + 1, cy + 5),
+            (cx + 4, cy + 3),
+            (cx + 5, cy),
         ];
 
-        let _ = MoveToEx(hdc, pts[0].0, pts[0].1, None);
-        for pt in &pts[1..] {
+        let _ = MoveToEx(hdc, arc_pts[0].0, arc_pts[0].1, None);
+        for pt in &arc_pts[1..] {
             let _ = LineTo(hdc, pt.0, pt.1);
         }
 
-        // Arrow tip at top
-        let _ = MoveToEx(hdc, cx + 1, cy - 7, None);
-        let _ = LineTo(hdc, cx + 4, cy - 4);
-        let _ = LineTo(hdc, cx + 1, cy - 1);
+        // Arrow tip at top right pointing clockwise
+        let _ = MoveToEx(hdc, cx + 1, cy - 5, None);
+        let _ = LineTo(hdc, cx + 5, cy - 3);
+        let _ = LineTo(hdc, cx + 4, cy + 1);
 
         let _ = SelectObject(hdc, old_pen);
         let _ = DeleteObject(pen);
@@ -621,48 +634,53 @@ impl BrowserChrome {
         let pen = CreatePen(PS_SOLID, 2, color);
         let old_pen = SelectObject(hdc, pen);
 
-        // Gable roof
-        let _ = MoveToEx(hdc, cx - 7, cy, None);
-        let _ = LineTo(hdc, cx, cy - 6);
-        let _ = LineTo(hdc, cx + 7, cy);
+        // Shadcn/Lucide Home: crisp pitched roof
+        let _ = MoveToEx(hdc, cx - 6, cy - 1, None);
+        let _ = LineTo(hdc, cx, cy - 7);
+        let _ = LineTo(hdc, cx + 6, cy - 1);
 
-        // House walls & floor
+        // Walls with bottom doorway opening
         let _ = MoveToEx(hdc, cx - 5, cy, None);
         let _ = LineTo(hdc, cx - 5, cy + 6);
-        let _ = LineTo(hdc, cx + 5, cy + 6);
-        let _ = LineTo(hdc, cx + 5, cy);
-
-        // Door notch
-        let _ = MoveToEx(hdc, cx - 2, cy + 6, None);
+        let _ = LineTo(hdc, cx - 2, cy + 6);
         let _ = LineTo(hdc, cx - 2, cy + 2);
         let _ = LineTo(hdc, cx + 2, cy + 2);
         let _ = LineTo(hdc, cx + 2, cy + 6);
+        let _ = LineTo(hdc, cx + 5, cy + 6);
+        let _ = LineTo(hdc, cx + 5, cy);
 
         let _ = SelectObject(hdc, old_pen);
         let _ = DeleteObject(pen);
     }
 
-    unsafe fn draw_vector_star(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
+    unsafe fn draw_vector_star(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF, is_filled: bool) {
         let pen = CreatePen(PS_SOLID, 1, color);
         let old_pen = SelectObject(hdc, pen);
 
         let pts = [
-            (cx, cy - 7),
-            (cx + 2, cy - 2),
-            (cx + 7, cy - 2),
-            (cx + 3, cy + 1),
-            (cx + 5, cy + 6),
-            (cx, cy + 3),
-            (cx - 5, cy + 6),
-            (cx - 3, cy + 1),
-            (cx - 7, cy - 2),
-            (cx - 2, cy - 2),
-            (cx, cy - 7),
+            POINT { x: cx, y: cy - 7 },
+            POINT { x: cx + 2, y: cy - 2 },
+            POINT { x: cx + 7, y: cy - 2 },
+            POINT { x: cx + 3, y: cy + 1 },
+            POINT { x: cx + 5, y: cy + 6 },
+            POINT { x: cx, y: cy + 3 },
+            POINT { x: cx - 5, y: cy + 6 },
+            POINT { x: cx - 3, y: cy + 1 },
+            POINT { x: cx - 7, y: cy - 2 },
+            POINT { x: cx - 2, y: cy - 2 },
         ];
 
-        let _ = MoveToEx(hdc, pts[0].0, pts[0].1, None);
-        for pt in &pts[1..] {
-            let _ = LineTo(hdc, pt.0, pt.1);
+        if is_filled {
+            let brush = CreateSolidBrush(color);
+            let old_brush = SelectObject(hdc, brush);
+            let _ = windows::Win32::Graphics::Gdi::Polygon(hdc, &pts);
+            let _ = SelectObject(hdc, old_brush);
+            let _ = DeleteObject(brush);
+        } else {
+            let stock_brush = windows::Win32::Graphics::Gdi::GetStockObject(windows::Win32::Graphics::Gdi::HOLLOW_BRUSH);
+            let old_brush = SelectObject(hdc, stock_brush);
+            let _ = windows::Win32::Graphics::Gdi::Polygon(hdc, &pts);
+            let _ = SelectObject(hdc, old_brush);
         }
 
         let _ = SelectObject(hdc, old_pen);
@@ -673,15 +691,15 @@ impl BrowserChrome {
         let pen = CreatePen(PS_SOLID, 2, color);
         let old_pen = SelectObject(hdc, pen);
 
-        // Three clean horizontal lines
-        let _ = MoveToEx(hdc, cx - 6, cy - 4, None);
-        let _ = LineTo(hdc, cx + 6, cy - 4);
+        // Shadcn/Lucide Menu: 3 crisp horizontal bars
+        let _ = MoveToEx(hdc, cx - 6, cy - 5, None);
+        let _ = LineTo(hdc, cx + 6, cy - 5);
 
         let _ = MoveToEx(hdc, cx - 6, cy, None);
         let _ = LineTo(hdc, cx + 6, cy);
 
-        let _ = MoveToEx(hdc, cx - 6, cy + 4, None);
-        let _ = LineTo(hdc, cx + 6, cy + 4);
+        let _ = MoveToEx(hdc, cx - 6, cy + 5, None);
+        let _ = LineTo(hdc, cx + 6, cy + 5);
 
         let _ = SelectObject(hdc, old_pen);
         let _ = DeleteObject(pen);
