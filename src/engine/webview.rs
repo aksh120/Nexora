@@ -133,6 +133,23 @@ impl WebViewEngine {
     }
 
     pub fn navigate(&self, target_url: &str) -> Result<()> {
+        if target_url == "nexora://settings" {
+            let config = crate::app::config::NexoraConfig::default();
+            let html = crate::settings::SettingsUi::render_html(&config);
+            return self.navigate_to_string(&html);
+        } else if target_url == "nexora://diagnostics" {
+            let snapshot = crate::diagnostics::DiagnosticsSnapshot::capture(
+                1,
+                "Nexora Diagnostics",
+                "nexora://diagnostics",
+                0,
+                Default::default(),
+                false,
+            );
+            let html = crate::diagnostics::DiagnosticsUi::render_html(&snapshot);
+            return self.navigate_to_string(&html);
+        }
+
         let normalized = if target_url.starts_with("http://")
             || target_url.starts_with("https://")
             || target_url.starts_with("edge://")
@@ -148,6 +165,16 @@ impl WebViewEngine {
         unsafe {
             self.webview.Navigate(PCWSTR(wide.0))
                 .map_err(|e| NexoraError::Navigation(format!("Navigation failed for {}: {}", normalized, e)))?;
+        }
+        Ok(())
+    }
+
+    pub fn navigate_to_string(&self, html_content: &str) -> Result<()> {
+        log::info!("Rendering internal page via NavigateToString ({} bytes)", html_content.len());
+        let wide = pwstr_from_str(html_content);
+        unsafe {
+            self.webview.NavigateToString(PCWSTR(wide.0))
+                .map_err(|e| NexoraError::Navigation(format!("NavigateToString failed: {}", e)))?;
         }
         Ok(())
     }

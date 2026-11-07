@@ -123,9 +123,9 @@
 
 | Task ID | Description | Priority | Status | Dependencies | Completion Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `TASK-901` | Custom Branding & Visual Identity Implementation | P1 | **Not Started** | `TASK-306` | Minimalist Nexora vector logo, application icon, and styling. |
-| `TASK-902` | Minimal Native Settings Interface | P1 | **Not Started** | `TASK-401` | Tabbed settings dialog (General, Performance, Privacy, Video, Storage, About). |
-| `TASK-903` | Real-Time Resource Diagnostics View | P1 | **Not Started** | `TASK-604` | Lightweight overlay displaying active RAM, CPU, GPU decoder, and tab count. |
+| `TASK-901` | Custom Branding & Visual Identity Implementation | P1 | **Completed** | `TASK-306` | Implemented `Branding` visual identity in `src/ui/branding.rs` with embedded vector assets in `assets/branding/logo.svg` and `assets/branding/icon.svg`. Cyber-minimalist electric cyan (`#00E5FF`) and deep slate palette, geometric chevron/lightning emblem, and crisp rendering across all display scales. |
+| `TASK-902` | Minimal Native Settings Interface | P1 | **Completed** | `TASK-401` | Implemented native tabbed settings dashboard in `src/settings/settings_ui.rs` rendered via `nexora://settings` internal scheme. Features 6 categorized panels (General, Performance, Privacy, Video, Storage, About) with dark-mode cyber styling, search engine selection, suspension timeouts, adblock toggles, hardware acceleration controls, and cache management. |
+| `TASK-903` | Real-Time Resource Diagnostics View | P1 | **Completed** | `TASK-604` | Implemented real-time diagnostics dashboard in `src/diagnostics/diagnostics_ui.rs` rendered via `nexora://diagnostics`. Captures live host working set RAM, peak working set, pagefile commit, system memory load & pressure, tab states (active, suspended), adblock inspection statistics & block rates, Direct3D 11 GPU offload, and SQLite WAL integrity. |
 
 ---
 

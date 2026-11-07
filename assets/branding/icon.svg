@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+    <defs>
+        <linearGradient id="iconBg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#181e29" />
+            <stop offset="100%" stop-color="#0b0e14" />
+        </linearGradient>
+        <linearGradient id="iconBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#60a5fa" />
+            <stop offset="50%" stop-color="#3b82f6" />
+            <stop offset="100%" stop-color="#1d4ed8" />
+        </linearGradient>
+    </defs>
+    <!-- Rounded Squircle Base -->
+    <rect x="8" y="8" width="240" height="240" rx="54" fill="url(#iconBg)" stroke="#2a3443" stroke-width="4" />
+    <!-- Sharp Geometric Apex 'N' -->
+    <g transform="translate(64, 52)">
+        <polygon points="12,152 12,0 42,0 86,96 86,0 116,0 116,152 86,152 42,56 42,152" fill="url(#iconBlue)" />
+        <polygon points="86,0 116,0 116,48" fill="#93c5fd" />
+        <polygon points="12,104 12,152 42,152" fill="#1e40af" />
+        <!-- Aerodynamic Energy Node -->
+        <circle cx="27" cy="22" r="8" fill="#dbeafe" />
+    </g>
+</svg>

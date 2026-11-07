@@ -242,3 +242,4 @@ mod tests {
         assert!(html.contains("Reload Page"));
     }
 }
+

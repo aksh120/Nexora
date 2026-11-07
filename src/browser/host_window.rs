@@ -442,7 +442,19 @@ impl HostWindow {
                             let _ = InvalidateRect(hwnd, None, false);
                         }
                         IDC_BTN_MENU => {
-                            log::info!("Toolbar Menu clicked.");
+                            log::info!("Toolbar Menu clicked. Navigating to nexora://settings");
+                            if let Some(ref webview) = (*ptr).webview {
+                                let _ = webview.navigate("nexora://settings");
+                            }
+                            if let Some(ref chrome) = (*ptr).chrome {
+                                chrome.set_omnibox_text("nexora://settings");
+                            }
+                            let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            if let Some(active) = tabs.get_active_tab_mut() {
+                                active.url = "nexora://settings".to_string();
+                                active.title = "Settings - Nexora".to_string();
+                            }
+                            let _ = InvalidateRect(hwnd, None, false);
                         }
                         _ => {}
                     }
