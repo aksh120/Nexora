@@ -1,6 +1,6 @@
 use std::path::Path;
 use std::sync::mpsc::channel;
-use windows::core::{PCWSTR, PWSTR};
+use windows::core::{Interface, PCWSTR, PWSTR};
 use windows::Win32::Foundation::{BOOL, HWND, RECT};
 use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
 use windows::Win32::System::WinRT::EventRegistrationToken;
@@ -26,16 +26,12 @@ impl WebViewEngine {
         let udata_str = user_data_dir.to_string_lossy().to_string();
         let udata_wide = pwstr_from_str(&udata_str);
 
-        // Hardware video acceleration and low-overhead flags
-        let browser_args = [
-            "--enable-features=VaapiVideoDecoder,D3D11VideoDecoder",
-            "--enable-gpu-rasterization",
-            "--disk-cache-size=268435456",
-            "--media-cache-size=134217728",
-            "--disable-features=Translate,OptimizationHints,MediaRouter",
-            "--disable-background-networking",
-        ]
-        .join(" ");
+        // Hardware video acceleration and low-overhead flags via GPU capabilities
+        let gpu_caps = crate::media::GpuCapabilities::detect(true);
+        let mut browser_args_vec = gpu_caps.build_browser_switches();
+        browser_args_vec.push("--disk-cache-size=268435456");
+        browser_args_vec.push("--media-cache-size=134217728");
+        let browser_args = browser_args_vec.join(" ");
 
         log::info!("Configuring Microsoft WebView2 Environment:");
         log::info!("  UserDataFolder: {}", udata_str);
@@ -214,6 +210,20 @@ impl WebViewEngine {
         }
     }
 
+    pub fn execute_script(&self, script: &str) -> Result<()> {
+        let wide = pwstr_from_str(script);
+        unsafe {
+            self.webview.ExecuteScript(PCWSTR(wide.0), None)
+                .map_err(|e| NexoraError::Engine(format!("ExecuteScript failed: {}", e)))?;
+        }
+        Ok(())
+    }
+
+    pub fn trigger_pip(&self) -> Result<()> {
+        let script = crate::media::PipWindow::generate_pip_script();
+        self.execute_script(script)
+    }
+
     fn setup_event_handlers(&self) -> Result<()> {
         // NavigationStarting
         let starting_handler = NavigationStartingEventHandler::create(Box::new(|_sender, args| {
@@ -283,6 +293,44 @@ impl WebViewEngine {
         let mut failed_token = EventRegistrationToken::default();
         unsafe {
             let _ = self.webview.add_ProcessFailed(&process_failed_handler, &mut failed_token);
+        }
+
+        // ContainsFullScreenElementChanged (HTML5 Fullscreen Hook - TASK-505)
+        let fs_handler = ContainsFullScreenElementChangedEventHandler::create(Box::new(|sender, _args| {
+            if let Some(sender) = sender {
+                unsafe {
+                    let mut is_fs = BOOL(0);
+                    if sender.ContainsFullScreenElement(&mut is_fs).is_ok() {
+                        log::info!("[Media Engine] HTML5 Fullscreen changed: {}", is_fs.as_bool());
+                    }
+                }
+            }
+            Ok(())
+        }));
+        let mut fs_token = EventRegistrationToken::default();
+        unsafe {
+            let _ = self.webview.add_ContainsFullScreenElementChanged(&fs_handler, &mut fs_token);
+        }
+
+        // IsDocumentPlayingAudioChanged (Active Media Detection - TASK-504)
+        if let Ok(wv8) = self.webview.cast::<ICoreWebView2_8>() {
+            let audio_handler = IsDocumentPlayingAudioChangedEventHandler::create(Box::new(|sender, _args| {
+                if let Some(sender) = sender {
+                    unsafe {
+                        if let Ok(wv8_sender) = sender.cast::<ICoreWebView2_8>() {
+                            let mut is_audio = BOOL(0);
+                            if wv8_sender.IsDocumentPlayingAudio(&mut is_audio).is_ok() {
+                                log::info!("[Media Engine] Document audio playback changed: {}", is_audio.as_bool());
+                            }
+                        }
+                    }
+                }
+                Ok(())
+            }));
+            let mut audio_token = EventRegistrationToken::default();
+            unsafe {
+                let _ = wv8.add_IsDocumentPlayingAudioChanged(&audio_handler, &mut audio_token);
+            }
         }
 
         Ok(())

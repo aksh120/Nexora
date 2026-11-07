@@ -80,11 +80,11 @@
 
 | Task ID | Description | Priority | Status | Dependencies | Completion Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `TASK-501` | Direct3D 11 & DXVA2 Hardware Acceleration Configuration | P0 | **Not Started** | `TASK-202` | Verify GPU hardware video decoding flags and runtime capabilities. |
-| `TASK-502` | Legitimate Widevine & PlayReady DRM Pipeline | P0 | **Not Started** | `TASK-202` | Verify Encrypted Media Extensions (EME) handshake on Netflix/Prime/Hotstar. |
-| `TASK-503` | Picture-in-Picture (PiP) Window Architecture | P1 | **Not Started** | `TASK-301` | Always-on-top draggable floating video window with playback controls. |
-| `TASK-504` | Active Media Detection & Priority Scheduling | P0 | **Not Started** | `TASK-301` | Detect `IsDocumentPlayingAudio` / fullscreen video; exempt from suspension. |
-| `TASK-505` | Fullscreen Video Transition & HTML5 Fullscreen | P1 | **Not Started** | `TASK-301` | Handle `ContainsFullScreenElementChanged` with seamless host window toggle. |
+| `TASK-501` | Direct3D 11 & DXVA2 Hardware Acceleration Configuration | P0 | **Completed** | `TASK-202` | Implemented `GpuCapabilities` in `src/media/gpu.rs`. Dynamically detects NVIDIA Kepler GT 730 and configures `--enable-features=VaapiVideoDecoder,D3D11VideoDecoder`, `--use-angle=d3d11`, `--ignore-gpu-blocklist`, `--enable-zero-copy`. Verified in live boot. |
+| `TASK-502` | Legitimate Widevine & PlayReady DRM Pipeline | P0 | **Completed** | `TASK-202` | Implemented `DrmDiagnostics` in `src/media/drm.rs`. Verified authorized Widevine CDM & PlayReady EME pipeline in WebView2 Evergreen under Windows OS licensing for streaming services (YouTube, Netflix, Prime Video, Hotstar, Sony LIV, ZEE5, Twitch, Spotify). |
+| `TASK-503` | Picture-in-Picture (PiP) Window Architecture | P1 | **Completed** | `TASK-301` | Implemented `PipWindow` in `src/media/pip.rs` with `WS_EX_TOPMOST` floating window, 16:9 aspect ratio preservation, and HTML5 video script injection (`requestPictureInPicture`). |
+| `TASK-504` | Active Media Detection & Priority Scheduling | P0 | **Completed** | `TASK-301` | Implemented `MediaMonitor` in `src/media/media_monitor.rs` hooked to `add_IsDocumentPlayingAudioChanged`. Automatically boosts process priority to `ABOVE_NORMAL_PRIORITY_CLASS` during active playback and exempts media tabs from smart suspension. |
+| `TASK-505` | Fullscreen Video Transition & HTML5 Fullscreen | P1 | **Completed** | `TASK-301` | Implemented `FullscreenController` in `src/media/fullscreen.rs` hooked to `add_ContainsFullScreenElementChanged`. Seamlessly transitions host window to borderless `WS_POPUP` over monitor rect and restores geometry on exit. |
 
 ---
 
