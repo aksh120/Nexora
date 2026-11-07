@@ -4,27 +4,36 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Graphics::Dwm::DwmExtendFrameIntoClientArea;
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreateSolidBrush, EndPaint, InvalidateRect, HBRUSH, PAINTSTRUCT,
+    BeginPaint, CreateSolidBrush, DeleteObject, EndPaint, InvalidateRect, SetBkColor, SetTextColor,
+    HBRUSH, HDC, PAINTSTRUCT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Controls::MARGINS;
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    ReleaseCapture, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
-    GetWindowLongPtrW, KillTimer, PostQuitMessage, RegisterClassExW, SetTimer, SetWindowLongPtrW,
-    ShowWindow, TranslateMessage, CW_USEDEFAULT, GWLP_USERDATA, MSG, SW_SHOW, WINDOW_EX_STYLE,
-    WM_CLOSE, WM_COMMAND, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND, WM_LBUTTONDOWN,
-    WM_PAINT, WM_SIZE, WM_TIMER, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
+    GetWindowLongPtrW, GetWindowRect, IsZoomed, KillTimer, PostQuitMessage, RegisterClassExW,
+    SendMessageW, SetTimer, SetWindowLongPtrW, ShowWindow, TranslateMessage, CW_USEDEFAULT,
+    GWLP_USERDATA, MSG, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SW_SHOW, WINDOW_EX_STYLE,
+    WM_CLOSE, WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED, WM_ERASEBKGND,
+    WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCHITTEST,
+    WM_NCLBUTTONDOWN, WM_PAINT, WM_SIZE, WM_TIMER, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
+    HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTLEFT, HTRIGHT, HTTOP,
+    HTTOPLEFT, HTTOPRIGHT,
 };
+
+pub const WM_MOUSELEAVE: u32 = 0x02A3;
 
 use crate::core::error::{NexoraError, Result};
 use crate::engine::WebViewEngine;
 use crate::navigation::Omnibox;
 use crate::performance::SmartSuspensionEngine;
 use crate::tabs::TabManager;
-use crate::ui::chrome::{
-    BrowserChrome, ChromeHitResult, IDC_BTN_BACK, IDC_BTN_FORWARD, IDC_BTN_HOME,
-    IDC_BTN_MENU, IDC_BTN_NEW_TAB, IDC_BTN_RELOAD,
-};
+use crate::ui::chrome::{BrowserChrome, ChromeHitResult};
 use crate::ui::layout::{BrowserLayout, TAB_BAR_HEIGHT};
 use crate::ui::theme::ThemePalette;
 
@@ -42,6 +51,7 @@ pub struct WindowContext {
     pub suspension_engine: SmartSuspensionEngine,
     pub recovery_manager: Option<Arc<crate::storage::CrashRecoveryManager>>,
     pub session_manager: Option<Arc<crate::storage::SessionManager>>,
+    pub omnibox_brush: HBRUSH,
 }
 
 pub struct HostWindow {
@@ -115,8 +125,18 @@ impl HostWindow {
             // Apply native dark title bar if theme is dark
             ThemePalette::apply_to_window(hwnd, theme.is_dark);
 
+            // Extend frame into client area by 1px at the top so DWM handles frameless window shadows and transitions properly
+            let margins = MARGINS {
+                cxLeftWidth: 0,
+                cxRightWidth: 0,
+                cyTopHeight: 1,
+                cyBottomHeight: 0,
+            };
+            let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+
             let layout = BrowserLayout::new(width, height);
             let suspension_engine = SmartSuspensionEngine::new(suspension_timeout_minutes, smart_suspension);
+            let omnibox_brush = CreateSolidBrush(theme.omnibox_bg);
 
             let context = Box::new(WindowContext {
                 layout,
@@ -130,6 +150,7 @@ impl HostWindow {
                 suspension_engine,
                 recovery_manager: None,
                 session_manager: None,
+                omnibox_brush,
             });
 
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(context) as isize);
@@ -287,13 +308,63 @@ impl HostWindow {
         let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut WindowContext;
 
         match msg {
+            WM_NCCALCSIZE => {
+                if wparam.0 != 0 {
+                    // Stripping default OS caption, title bar, and OS minimize/maximize/close buttons.
+                    return LRESULT(0);
+                }
+                DefWindowProcW(hwnd, msg, wparam, lparam)
+            }
+            WM_NCHITTEST => {
+                let sx = (lparam.0 & 0xffff) as i16 as i32;
+                let sy = ((lparam.0 >> 16) & 0xffff) as i16 as i32;
+
+                let is_zoomed = IsZoomed(hwnd).as_bool();
+                if !is_zoomed {
+                    let mut rect = RECT::default();
+                    if GetWindowRect(hwnd, &mut rect).is_ok() {
+                        const BORDER: i32 = 6;
+                        let on_left = sx < rect.left + BORDER;
+                        let on_right = sx >= rect.right - BORDER;
+                        let on_top = sy < rect.top + BORDER;
+                        let on_bottom = sy >= rect.bottom - BORDER;
+
+                        if on_top && on_left {
+                            return LRESULT(HTTOPLEFT as isize);
+                        }
+                        if on_top && on_right {
+                            return LRESULT(HTTOPRIGHT as isize);
+                        }
+                        if on_bottom && on_left {
+                            return LRESULT(HTBOTTOMLEFT as isize);
+                        }
+                        if on_bottom && on_right {
+                            return LRESULT(HTBOTTOMRIGHT as isize);
+                        }
+                        if on_top {
+                            return LRESULT(HTTOP as isize);
+                        }
+                        if on_bottom {
+                            return LRESULT(HTBOTTOM as isize);
+                        }
+                        if on_left {
+                            return LRESULT(HTLEFT as isize);
+                        }
+                        if on_right {
+                            return LRESULT(HTRIGHT as isize);
+                        }
+                    }
+                }
+                LRESULT(HTCLIENT as isize)
+            }
             WM_PAINT => {
                 let mut ps = PAINTSTRUCT::default();
                 let hdc = BeginPaint(hwnd, &mut ps);
                 if !ptr.is_null() {
                     if let Some(ref chrome) = (*ptr).chrome {
                         let tabs = (*ptr).tab_manager.borrow();
-                        chrome.render(hdc, &(*ptr).layout, tabs.tabs(), tabs.active_tab_id());
+                        let is_maximized = IsZoomed(hwnd).as_bool();
+                        chrome.render(hdc, &(*ptr).layout, tabs.tabs(), tabs.active_tab_id(), is_maximized);
                     }
                 }
                 let _ = EndPaint(hwnd, &ps);
@@ -322,102 +393,91 @@ impl HostWindow {
                 }
                 LRESULT(0)
             }
+            WM_MOUSEMOVE => {
+                let mut tme = TRACKMOUSEEVENT {
+                    cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                    dwFlags: TME_LEAVE,
+                    hwndTrack: hwnd,
+                    dwHoverTime: 0,
+                };
+                let _ = TrackMouseEvent(&mut tme);
+
+                if !ptr.is_null() {
+                    let x = (lparam.0 & 0xffff) as i16 as i32;
+                    let y = ((lparam.0 >> 16) & 0xffff) as i16 as i32;
+                    if let Some(ref mut chrome) = (*ptr).chrome {
+                        let tabs = (*ptr).tab_manager.borrow();
+                        let hit = chrome.hit_test(x, y, &(*ptr).layout, tabs.tabs());
+                        if chrome.update_hover(hit) {
+                            let _ = InvalidateRect(hwnd, None, false);
+                        }
+                    }
+                }
+                LRESULT(0)
+            }
+            WM_MOUSELEAVE => {
+                if !ptr.is_null() {
+                    if let Some(ref mut chrome) = (*ptr).chrome {
+                        if chrome.update_hover(ChromeHitResult::None) {
+                            let _ = InvalidateRect(hwnd, None, false);
+                        }
+                    }
+                }
+                LRESULT(0)
+            }
             WM_LBUTTONDOWN => {
                 if !ptr.is_null() {
                     let x = (lparam.0 & 0xffff) as i16 as i32;
                     let y = ((lparam.0 >> 16) & 0xffff) as i16 as i32;
 
-                    if y <= TAB_BAR_HEIGHT {
-                        let hit = if let Some(ref chrome) = (*ptr).chrome {
-                            let tabs = (*ptr).tab_manager.borrow();
-                            chrome.hit_test(x, y, &(*ptr).layout, tabs.tabs())
-                        } else {
-                            ChromeHitResult::None
-                        };
+                    let hit = if let Some(ref chrome) = (*ptr).chrome {
+                        let tabs = (*ptr).tab_manager.borrow();
+                        chrome.hit_test(x, y, &(*ptr).layout, tabs.tabs())
+                    } else {
+                        ChromeHitResult::None
+                    };
 
-                        match hit {
-                            ChromeHitResult::Tab(id) => {
-                                let mut tabs = (*ptr).tab_manager.borrow_mut();
-                                let was_suspended = tabs.get_tab(id).map(|t| t.is_suspended()).unwrap_or(false);
-                                if tabs.switch_tab(id) {
-                                    if let Some(active) = tabs.get_active_tab() {
-                                        let url = active.url.clone();
-                                        drop(tabs);
-                                        if was_suspended {
-                                            log::info!("Waking suspended/lazy tab #{} and navigating to {}", id, url);
-                                        }
-                                        if let Some(ref webview) = (*ptr).webview {
-                                            let _ = webview.navigate(&url);
-                                        }
-                                        if let Some(ref chrome) = (*ptr).chrome {
-                                            chrome.set_omnibox_text(&url);
-                                        }
-                                        let _ = InvalidateRect(hwnd, None, false);
-                                    }
-                                }
-                            }
-                            ChromeHitResult::TabClose(id) => {
-                                let mut tabs = (*ptr).tab_manager.borrow_mut();
-                                let new_active = tabs.close_tab(id);
-                                let maybe_url = new_active.and_then(|new_id| tabs.get_tab(new_id).map(|t| t.url.clone()));
-                                drop(tabs);
-
-                                if let Some(url) = maybe_url {
-                                    if let Some(ref webview) = (*ptr).webview {
-                                        let _ = webview.navigate(&url);
-                                    }
-                                    if let Some(ref chrome) = (*ptr).chrome {
-                                        chrome.set_omnibox_text(&url);
-                                    }
-                                }
-
-                                if let Some(ref chrome) = (*ptr).chrome {
-                                    let count = (*ptr).tab_manager.borrow().tab_count();
-                                    chrome.layout_controls(&(*ptr).layout, count);
-                                }
-                                let _ = InvalidateRect(hwnd, None, false);
-                            }
-                            ChromeHitResult::NewTab => {
-                                let homepage = (*ptr).homepage.clone();
-                                let mut tabs = (*ptr).tab_manager.borrow_mut();
-                                let _ = tabs.create_tab(&homepage, Some("New Tab"));
-                                drop(tabs);
-                                if let Some(ref webview) = (*ptr).webview {
-                                    let _ = webview.navigate(&homepage);
-                                }
-                                if let Some(ref chrome) = (*ptr).chrome {
-                                    chrome.set_omnibox_text(&homepage);
-                                    let count = (*ptr).tab_manager.borrow().tab_count();
-                                    chrome.layout_controls(&(*ptr).layout, count);
-                                }
-                                let _ = InvalidateRect(hwnd, None, false);
-                            }
-                            ChromeHitResult::None => {}
+                    match hit {
+                        ChromeHitResult::CaptionMinimize => {
+                            let _ = ShowWindow(hwnd, SW_MINIMIZE);
                         }
-                    }
-                }
-                DefWindowProcW(hwnd, msg, wparam, lparam)
-            }
-            WM_COMMAND => {
-                if !ptr.is_null() {
-                    let ctrl_id = (wparam.0 & 0xffff) as usize;
-                    match ctrl_id {
-                        IDC_BTN_BACK => {
+                        ChromeHitResult::CaptionMaximize => {
+                            let is_zoomed = IsZoomed(hwnd).as_bool();
+                            if is_zoomed {
+                                let _ = ShowWindow(hwnd, SW_RESTORE);
+                            } else {
+                                let _ = ShowWindow(hwnd, SW_MAXIMIZE);
+                            }
+                            let _ = InvalidateRect(hwnd, None, false);
+                        }
+                        ChromeHitResult::CaptionClose => {
+                            let _ = SendMessageW(hwnd, WM_CLOSE, WPARAM(0), LPARAM(0));
+                        }
+                        ChromeHitResult::TitleBarDrag => {
+                            let _ = ReleaseCapture();
+                            let _ = SendMessageW(
+                                hwnd,
+                                WM_NCLBUTTONDOWN,
+                                WPARAM(HTCAPTION as usize),
+                                LPARAM(0),
+                            );
+                        }
+                        ChromeHitResult::BtnBack => {
                             if let Some(ref webview) = (*ptr).webview {
                                 let _ = webview.go_back();
                             }
                         }
-                        IDC_BTN_FORWARD => {
+                        ChromeHitResult::BtnForward => {
                             if let Some(ref webview) = (*ptr).webview {
                                 let _ = webview.go_forward();
                             }
                         }
-                        IDC_BTN_RELOAD => {
+                        ChromeHitResult::BtnReload => {
                             if let Some(ref webview) = (*ptr).webview {
                                 let _ = webview.reload();
                             }
                         }
-                        IDC_BTN_HOME => {
+                        ChromeHitResult::BtnHome => {
                             let homepage = (*ptr).homepage.clone();
                             if let Some(ref webview) = (*ptr).webview {
                                 let _ = webview.navigate(&homepage);
@@ -426,22 +486,7 @@ impl HostWindow {
                                 chrome.set_omnibox_text(&homepage);
                             }
                         }
-                        IDC_BTN_NEW_TAB => {
-                            let homepage = (*ptr).homepage.clone();
-                            let mut tabs = (*ptr).tab_manager.borrow_mut();
-                            let _ = tabs.create_tab(&homepage, Some("New Tab"));
-                            drop(tabs);
-                            if let Some(ref webview) = (*ptr).webview {
-                                let _ = webview.navigate(&homepage);
-                            }
-                            if let Some(ref chrome) = (*ptr).chrome {
-                                chrome.set_omnibox_text(&homepage);
-                                let count = (*ptr).tab_manager.borrow().tab_count();
-                                chrome.layout_controls(&(*ptr).layout, count);
-                            }
-                            let _ = InvalidateRect(hwnd, None, false);
-                        }
-                        IDC_BTN_MENU => {
+                        ChromeHitResult::BtnMenu => {
                             log::info!("Toolbar Menu clicked. Navigating to nexora://settings");
                             if let Some(ref webview) = (*ptr).webview {
                                 let _ = webview.navigate("nexora://settings");
@@ -456,10 +501,102 @@ impl HostWindow {
                             }
                             let _ = InvalidateRect(hwnd, None, false);
                         }
-                        _ => {}
+                        ChromeHitResult::Tab(id) => {
+                            let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            let was_suspended = tabs.get_tab(id).map(|t| t.is_suspended()).unwrap_or(false);
+                            if tabs.switch_tab(id) {
+                                if let Some(active) = tabs.get_active_tab() {
+                                    let url = active.url.clone();
+                                    drop(tabs);
+                                    if was_suspended {
+                                        log::info!("Waking suspended/lazy tab #{} and navigating to {}", id, url);
+                                    }
+                                    if let Some(ref webview) = (*ptr).webview {
+                                        let _ = webview.navigate(&url);
+                                    }
+                                    if let Some(ref chrome) = (*ptr).chrome {
+                                        chrome.set_omnibox_text(&url);
+                                    }
+                                    let _ = InvalidateRect(hwnd, None, false);
+                                }
+                            }
+                        }
+                        ChromeHitResult::TabClose(id) => {
+                            let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            let new_active = tabs.close_tab(id);
+                            let maybe_url = new_active.and_then(|new_id| tabs.get_tab(new_id).map(|t| t.url.clone()));
+                            drop(tabs);
+
+                            if let Some(url) = maybe_url {
+                                if let Some(ref webview) = (*ptr).webview {
+                                    let _ = webview.navigate(&url);
+                                }
+                                if let Some(ref chrome) = (*ptr).chrome {
+                                    chrome.set_omnibox_text(&url);
+                                }
+                            }
+
+                            if let Some(ref chrome) = (*ptr).chrome {
+                                let count = (*ptr).tab_manager.borrow().tab_count();
+                                chrome.layout_controls(&(*ptr).layout, count);
+                            }
+                            let _ = InvalidateRect(hwnd, None, false);
+                        }
+                        ChromeHitResult::NewTab => {
+                            let homepage = (*ptr).homepage.clone();
+                            let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            let _ = tabs.create_tab(&homepage, Some("New Tab"));
+                            drop(tabs);
+                            if let Some(ref webview) = (*ptr).webview {
+                                let _ = webview.navigate(&homepage);
+                            }
+                            if let Some(ref chrome) = (*ptr).chrome {
+                                chrome.set_omnibox_text(&homepage);
+                                let count = (*ptr).tab_manager.borrow().tab_count();
+                                chrome.layout_controls(&(*ptr).layout, count);
+                            }
+                            let _ = InvalidateRect(hwnd, None, false);
+                        }
+                        ChromeHitResult::None => {}
                     }
                 }
                 LRESULT(0)
+            }
+            WM_LBUTTONDBLCLK => {
+                if !ptr.is_null() {
+                    let x = (lparam.0 & 0xffff) as i16 as i32;
+                    let y = ((lparam.0 >> 16) & 0xffff) as i16 as i32;
+
+                    if y <= TAB_BAR_HEIGHT {
+                        let hit = if let Some(ref chrome) = (*ptr).chrome {
+                            let tabs = (*ptr).tab_manager.borrow();
+                            chrome.hit_test(x, y, &(*ptr).layout, tabs.tabs())
+                        } else {
+                            ChromeHitResult::None
+                        };
+
+                        if hit == ChromeHitResult::TitleBarDrag || hit == ChromeHitResult::None {
+                            let is_zoomed = IsZoomed(hwnd).as_bool();
+                            if is_zoomed {
+                                let _ = ShowWindow(hwnd, SW_RESTORE);
+                            } else {
+                                let _ = ShowWindow(hwnd, SW_MAXIMIZE);
+                            }
+                            let _ = InvalidateRect(hwnd, None, false);
+                        }
+                    }
+                }
+                LRESULT(0)
+            }
+            WM_CTLCOLOREDIT | WM_CTLCOLORSTATIC => {
+                if !ptr.is_null() {
+                    let hdc = HDC(wparam.0 as *mut core::ffi::c_void);
+                    let theme = (*ptr).theme;
+                    let _ = SetTextColor(hdc, theme.omnibox_text);
+                    let _ = SetBkColor(hdc, theme.omnibox_bg);
+                    return LRESULT((*ptr).omnibox_brush.0 as isize);
+                }
+                DefWindowProcW(hwnd, msg, wparam, lparam)
             }
             WM_DPICHANGED => {
                 let suggested_rect = *(lparam.0 as *const RECT);
@@ -519,7 +656,8 @@ impl HostWindow {
             WM_DESTROY => {
                 let _ = KillTimer(hwnd, IDT_SUSPENSION_TIMER);
                 if !ptr.is_null() {
-                    let _ = Box::from_raw(ptr);
+                    let ctx = Box::from_raw(ptr);
+                    let _ = DeleteObject(ctx.omnibox_brush);
                     SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
                 }
                 PostQuitMessage(0);

@@ -10,41 +10,38 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::VK_RETURN;
 use windows::Win32::UI::WindowsAndMessaging::{
     CallWindowProcW, CreateWindowExW, GetWindowLongPtrW, GetWindowTextLengthW, GetWindowTextW,
-    MoveWindow, SendMessageW, SetWindowLongPtrW, SetWindowTextW, GWLP_USERDATA, GWLP_WNDPROC,
-    HMENU, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CHAR, WM_KEYDOWN, WM_SETFONT, WNDPROC, WS_CHILD,
-    WS_TABSTOP, WS_VISIBLE,
+    MoveWindow, SendMessageW, SetWindowLongPtrW, SetWindowTextW, GWLP_USERDATA, GWLP_WNDPROC, HMENU,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WM_CHAR, WM_KEYDOWN, WM_SETFONT, WNDPROC, WS_CHILD, WS_TABSTOP, WS_VISIBLE,
 };
 
 use crate::core::error::{NexoraError, Result};
 use crate::tabs::Tab;
-use crate::ui::layout::{BrowserLayout, BUTTON_GAP, BUTTON_HEIGHT, BUTTON_WIDTH, OMNIBOX_HEIGHT, TAB_BAR_HEIGHT, TOP_CHROME_HEIGHT};
+use crate::ui::layout::{BrowserLayout, OMNIBOX_HEIGHT, TAB_BAR_HEIGHT, TOP_CHROME_HEIGHT};
 use crate::ui::theme::{rgb, ThemePalette};
 
-pub const IDC_BTN_BACK: usize = 1001;
-pub const IDC_BTN_FORWARD: usize = 1002;
-pub const IDC_BTN_RELOAD: usize = 1003;
-pub const IDC_BTN_HOME: usize = 1004;
 pub const IDC_OMNIBOX: usize = 1005;
-pub const IDC_BTN_NEW_TAB: usize = 1006;
-pub const IDC_BTN_MENU: usize = 1007;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChromeHitResult {
     Tab(usize),
     TabClose(usize),
     NewTab,
+    BtnBack,
+    BtnForward,
+    BtnReload,
+    BtnHome,
+    BtnMenu,
+    CaptionMinimize,
+    CaptionMaximize,
+    CaptionClose,
+    TitleBarDrag,
     None,
 }
 
 pub struct BrowserChrome {
     pub hwnd_parent: HWND,
-    pub hwnd_back: HWND,
-    pub hwnd_forward: HWND,
-    pub hwnd_reload: HWND,
-    pub hwnd_home: HWND,
     pub hwnd_omnibox: HWND,
-    pub hwnd_new_tab: HWND,
-    pub hwnd_menu: HWND,
+    pub hovered_item: ChromeHitResult,
     font: HFONT,
     pub theme: ThemePalette,
 }
@@ -85,132 +82,52 @@ impl BrowserChrome {
                 w!("Segoe UI"),
             );
 
-            let btn_style = WINDOW_STYLE((WS_CHILD.0 | WS_VISIBLE.0 | WS_TABSTOP.0) as u32);
             let edit_style = WINDOW_STYLE((WS_CHILD.0 | WS_VISIBLE.0 | WS_TABSTOP.0 | 0x0080) as u32); // ES_AUTOHSCROLL = 0x0080
 
-            // 1. Back button
-            let hwnd_back = CreateWindowExW(
-                WINDOW_EX_STYLE(0),
-                w!("BUTTON"),
-                w!(" \u{25C0} "),
-                btn_style,
-                8, 38, BUTTON_WIDTH, BUTTON_HEIGHT,
-                parent,
-                HMENU(IDC_BTN_BACK as *mut core::ffi::c_void),
-                hinstance,
-                None,
-            ).map_err(|e| NexoraError::Win32(format!("Failed to create Back button: {}", e)))?;
-
-            // 2. Forward button
-            let hwnd_forward = CreateWindowExW(
-                WINDOW_EX_STYLE(0),
-                w!("BUTTON"),
-                w!(" \u{25B6} "),
-                btn_style,
-                8 + BUTTON_WIDTH + BUTTON_GAP, 38, BUTTON_WIDTH, BUTTON_HEIGHT,
-                parent,
-                HMENU(IDC_BTN_FORWARD as *mut core::ffi::c_void),
-                hinstance,
-                None,
-            ).map_err(|e| NexoraError::Win32(format!("Failed to create Forward button: {}", e)))?;
-
-            // 3. Reload button
-            let hwnd_reload = CreateWindowExW(
-                WINDOW_EX_STYLE(0),
-                w!("BUTTON"),
-                w!(" \u{21BB} "),
-                btn_style,
-                8 + (BUTTON_WIDTH + BUTTON_GAP) * 2, 38, BUTTON_WIDTH, BUTTON_HEIGHT,
-                parent,
-                HMENU(IDC_BTN_RELOAD as *mut core::ffi::c_void),
-                hinstance,
-                None,
-            ).map_err(|e| NexoraError::Win32(format!("Failed to create Reload button: {}", e)))?;
-
-            // 4. Home button
-            let hwnd_home = CreateWindowExW(
-                WINDOW_EX_STYLE(0),
-                w!("BUTTON"),
-                w!(" \u{2302} "),
-                btn_style,
-                8 + (BUTTON_WIDTH + BUTTON_GAP) * 3, 38, BUTTON_WIDTH, BUTTON_HEIGHT,
-                parent,
-                HMENU(IDC_BTN_HOME as *mut core::ffi::c_void),
-                hinstance,
-                None,
-            ).map_err(|e| NexoraError::Win32(format!("Failed to create Home button: {}", e)))?;
-
-            // 5. New Tab button in tab bar
-            let hwnd_new_tab = CreateWindowExW(
-                WINDOW_EX_STYLE(0),
-                w!("BUTTON"),
-                w!("+"),
-                btn_style,
-                240, 5, 26, 28,
-                parent,
-                HMENU(IDC_BTN_NEW_TAB as *mut core::ffi::c_void),
-                hinstance,
-                None,
-            ).map_err(|e| NexoraError::Win32(format!("Failed to create New Tab button: {}", e)))?;
-
-            // 6. Omnibox Edit control
+            // Omnibox URL / search input field
             let hwnd_omnibox = CreateWindowExW(
-                WINDOW_EX_STYLE(0x00000200), // WS_EX_CLIENTEDGE
+                WINDOW_EX_STYLE(0),
                 w!("EDIT"),
-                PCWSTR::null(),
+                w!(""),
                 edit_style,
-                160, 42, 600, OMNIBOX_HEIGHT,
+                144, 40, 600, OMNIBOX_HEIGHT,
                 parent,
                 HMENU(IDC_OMNIBOX as *mut core::ffi::c_void),
                 hinstance,
                 None,
-            ).map_err(|e| NexoraError::Win32(format!("Failed to create Omnibox edit: {}", e)))?;
+            ).map_err(|e| NexoraError::Win32(format!("Failed to create Omnibox: {}", e)))?;
 
-            // 7. Menu / Diagnostics button
-            let hwnd_menu = CreateWindowExW(
-                WINDOW_EX_STYLE(0),
-                w!("BUTTON"),
-                w!(" \u{2630} "),
-                btn_style,
-                770, 38, BUTTON_WIDTH, BUTTON_HEIGHT,
-                parent,
-                HMENU(IDC_BTN_MENU as *mut core::ffi::c_void),
-                hinstance,
-                None,
-            ).map_err(|e| NexoraError::Win32(format!("Failed to create Menu button: {}", e)))?;
+            let _ = SendMessageW(
+                hwnd_omnibox,
+                WM_SETFONT,
+                WPARAM(font.0 as usize),
+                LPARAM(1),
+            );
 
-            // Set Segoe UI font on all child controls
-            let wparam_font = WPARAM(font.0 as usize);
-            let lparam_redraw = LPARAM(1);
-            let _ = SendMessageW(hwnd_back, WM_SETFONT, wparam_font, lparam_redraw);
-            let _ = SendMessageW(hwnd_forward, WM_SETFONT, wparam_font, lparam_redraw);
-            let _ = SendMessageW(hwnd_reload, WM_SETFONT, wparam_font, lparam_redraw);
-            let _ = SendMessageW(hwnd_home, WM_SETFONT, wparam_font, lparam_redraw);
-            let _ = SendMessageW(hwnd_new_tab, WM_SETFONT, wparam_font, lparam_redraw);
-            let _ = SendMessageW(hwnd_omnibox, WM_SETFONT, wparam_font, lparam_redraw);
-            let _ = SendMessageW(hwnd_menu, WM_SETFONT, wparam_font, lparam_redraw);
-
-            // Subclass the Omnibox to intercept Enter key (VK_RETURN)
-            let orig_proc = GetWindowLongPtrW(hwnd_omnibox, GWLP_WNDPROC);
-            let ctx = Box::new(OmniboxSubclassContext {
-                orig_proc: std::mem::transmute(orig_proc),
+            // Subclass the Omnibox to intercept Enter key
+            let context = Box::new(OmniboxSubclassContext {
+                orig_proc: std::mem::transmute(GetWindowLongPtrW(hwnd_omnibox, GWLP_WNDPROC)),
                 on_enter: Box::new(on_navigate),
             });
-            SetWindowLongPtrW(hwnd_omnibox, GWLP_USERDATA, Box::into_raw(ctx) as isize);
+            SetWindowLongPtrW(hwnd_omnibox, GWLP_USERDATA, Box::into_raw(context) as isize);
             SetWindowLongPtrW(hwnd_omnibox, GWLP_WNDPROC, Self::omnibox_subclass_proc as *const () as isize);
 
             Ok(Self {
                 hwnd_parent: parent,
-                hwnd_back,
-                hwnd_forward,
-                hwnd_reload,
-                hwnd_home,
                 hwnd_omnibox,
-                hwnd_new_tab,
-                hwnd_menu,
+                hovered_item: ChromeHitResult::None,
                 font,
                 theme,
             })
+        }
+    }
+
+    pub fn update_hover(&mut self, new_hover: ChromeHitResult) -> bool {
+        if self.hovered_item != new_hover {
+            self.hovered_item = new_hover;
+            true
+        } else {
+            false
         }
     }
 
@@ -237,28 +154,18 @@ impl BrowserChrome {
         }
     }
 
-    pub fn layout_controls(&self, layout: &BrowserLayout, tab_count: usize) {
+    pub fn layout_controls(&self, layout: &BrowserLayout, _tab_count: usize) {
         unsafe {
-            let back = layout.back_button_rect();
-            let _ = MoveWindow(self.hwnd_back, back.0, back.1, back.2, back.3, true);
-
-            let fwd = layout.forward_button_rect();
-            let _ = MoveWindow(self.hwnd_forward, fwd.0, fwd.1, fwd.2, fwd.3, true);
-
-            let reload = layout.reload_button_rect();
-            let _ = MoveWindow(self.hwnd_reload, reload.0, reload.1, reload.2, reload.3, true);
-
-            let home = layout.home_button_rect();
-            let _ = MoveWindow(self.hwnd_home, home.0, home.1, home.2, home.3, true);
-
-            let menu = layout.menu_button_rect();
-            let _ = MoveWindow(self.hwnd_menu, menu.0, menu.1, menu.2, menu.3, true);
-
             let omnibox = layout.omnibox_rect();
-            let _ = MoveWindow(self.hwnd_omnibox, omnibox.0, omnibox.1, omnibox.2, omnibox.3, true);
-
-            let new_tab = layout.new_tab_button_rect(tab_count);
-            let _ = MoveWindow(self.hwnd_new_tab, new_tab.0, new_tab.1, new_tab.2, new_tab.3, true);
+            // Inset edit control slightly inside the rendered omnibox container frame
+            let _ = MoveWindow(
+                self.hwnd_omnibox,
+                omnibox.0 + 8,
+                omnibox.1 + 4,
+                omnibox.2 - 16,
+                omnibox.3 - 8,
+                true,
+            );
         }
     }
 
@@ -269,28 +176,75 @@ impl BrowserChrome {
         layout: &BrowserLayout,
         tabs: &[Tab],
     ) -> ChromeHitResult {
-        if y < 0 || y > TAB_BAR_HEIGHT {
-            return ChromeHitResult::None;
-        }
+        // 1. Top Title Bar & Tab Strip
+        if y >= 0 && y <= TAB_BAR_HEIGHT {
+            // Caption Buttons on Top-Right
+            let close_rect = layout.caption_close_rect();
+            if x >= close_rect.0 && x < close_rect.0 + close_rect.2 {
+                return ChromeHitResult::CaptionClose;
+            }
+            let max_rect = layout.caption_maximize_rect();
+            if x >= max_rect.0 && x < max_rect.0 + max_rect.2 {
+                return ChromeHitResult::CaptionMaximize;
+            }
+            let min_rect = layout.caption_minimize_rect();
+            if x >= min_rect.0 && x < min_rect.0 + min_rect.2 {
+                return ChromeHitResult::CaptionMinimize;
+            }
 
-        let rects = layout.calculate_tab_rects(tabs.len());
-        for (i, (tx, ty, tw, th)) in rects.iter().enumerate() {
-            if x >= *tx && x <= tx + tw && y >= *ty && y <= ty + th {
-                let tab_id = tabs[i].id;
-                // Close button is in rightmost 22px
-                if x >= (tx + tw - 22) {
-                    return ChromeHitResult::TabClose(tab_id);
+            // Tabs
+            let rects = layout.calculate_tab_rects(tabs.len());
+            for (i, (tx, ty, tw, th)) in rects.iter().enumerate() {
+                if x >= *tx && x < tx + tw && y >= *ty && y < ty + th {
+                    let tab_id = tabs[i].id;
+                    // Close button is in rightmost 24px of tab
+                    if x >= (tx + tw - 24) {
+                        return ChromeHitResult::TabClose(tab_id);
+                    }
+                    return ChromeHitResult::Tab(tab_id);
                 }
-                return ChromeHitResult::Tab(tab_id);
+            }
+
+            // New Tab button hit
+            let new_tab_rect = layout.new_tab_button_rect(tabs.len());
+            if x >= new_tab_rect.0 && x < new_tab_rect.0 + new_tab_rect.2
+                && y >= new_tab_rect.1 && y < new_tab_rect.1 + new_tab_rect.3
+            {
+                return ChromeHitResult::NewTab;
+            }
+
+            // Empty space in tab bar / title bar -> draggable area
+            if x < min_rect.0 {
+                return ChromeHitResult::TitleBarDrag;
             }
         }
 
-        // New tab button hit
-        let new_tab_rect = layout.new_tab_button_rect(tabs.len());
-        if x >= new_tab_rect.0 && x <= new_tab_rect.0 + new_tab_rect.2
-            && y >= new_tab_rect.1 && y <= new_tab_rect.1 + new_tab_rect.3
-        {
-            return ChromeHitResult::NewTab;
+        // 2. Navigation Toolbar
+        if y > TAB_BAR_HEIGHT && y <= TOP_CHROME_HEIGHT {
+            let back = layout.back_button_rect();
+            if x >= back.0 && x < back.0 + back.2 && y >= back.1 && y < back.1 + back.3 {
+                return ChromeHitResult::BtnBack;
+            }
+
+            let fwd = layout.forward_button_rect();
+            if x >= fwd.0 && x < fwd.0 + fwd.2 && y >= fwd.1 && y < fwd.1 + fwd.3 {
+                return ChromeHitResult::BtnForward;
+            }
+
+            let reload = layout.reload_button_rect();
+            if x >= reload.0 && x < reload.0 + reload.2 && y >= reload.1 && y < reload.1 + reload.3 {
+                return ChromeHitResult::BtnReload;
+            }
+
+            let home = layout.home_button_rect();
+            if x >= home.0 && x < home.0 + home.2 && y >= home.1 && y < home.1 + home.3 {
+                return ChromeHitResult::BtnHome;
+            }
+
+            let menu = layout.menu_button_rect();
+            if x >= menu.0 && x < menu.0 + menu.2 && y >= menu.1 && y < menu.1 + menu.3 {
+                return ChromeHitResult::BtnMenu;
+            }
         }
 
         ChromeHitResult::None
@@ -302,6 +256,7 @@ impl BrowserChrome {
         layout: &BrowserLayout,
         tabs: &[Tab],
         active_tab_id: Option<usize>,
+        is_maximized: bool,
     ) {
         unsafe {
             let mem_dc = CreateCompatibleDC(hdc);
@@ -331,13 +286,13 @@ impl BrowserChrome {
             FillRect(mem_dc, &toolbar_rect, toolbar_brush);
             let _ = DeleteObject(toolbar_brush);
 
-            // 3. Draw Divider Line
+            // 3. Draw Divider Line below toolbar
             let div_pen = CreatePen(PS_SOLID, 1, self.theme.divider_color);
             let old_pen = SelectObject(mem_dc, div_pen);
             let _ = MoveToEx(mem_dc, 0, TOP_CHROME_HEIGHT - 1, None);
             let _ = LineTo(mem_dc, layout.window_width, TOP_CHROME_HEIGHT - 1);
 
-            // 4. Draw Tabs
+            // 4. Render Tabs
             let tab_rects = layout.calculate_tab_rects(tabs.len());
             SetBkMode(mem_dc, TRANSPARENT);
 
@@ -347,9 +302,12 @@ impl BrowserChrome {
                 }
                 let (tx, ty, tw, th) = tab_rects[i];
                 let is_active = Some(tab.id) == active_tab_id;
+                let is_hovered = self.hovered_item == ChromeHitResult::Tab(tab.id);
 
                 let tab_bg = if is_active {
                     self.theme.tab_active_bg
+                } else if is_hovered {
+                    self.theme.tab_hover_bg
                 } else {
                     self.theme.tab_inactive_bg
                 };
@@ -391,7 +349,7 @@ impl BrowserChrome {
 
                 let mut wide_title: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
                 let mut text_rect = RECT {
-                    left: tx + 8,
+                    left: tx + 10,
                     top: ty,
                     right: tx + tw - 24, // Space for close button
                     bottom: ty + th,
@@ -404,15 +362,23 @@ impl BrowserChrome {
                     DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS,
                 );
 
-                // Close Button ("\u{00D7}" = ×)
+                // Close Button ("×")
+                let is_close_hovered = self.hovered_item == ChromeHitResult::TabClose(tab.id);
                 let mut close_str: [u16; 2] = [0x00D7, 0];
                 let mut close_rect = RECT {
-                    left: tx + tw - 20,
+                    left: tx + tw - 22,
                     top: ty,
                     right: tx + tw - 4,
                     bottom: ty + th,
                 };
-                SetTextColor(mem_dc, if is_active { rgb(180, 180, 180) } else { rgb(120, 120, 120) });
+                let close_color = if is_close_hovered {
+                    rgb(255, 80, 80)
+                } else if is_active {
+                    rgb(180, 180, 180)
+                } else {
+                    rgb(120, 120, 120)
+                };
+                SetTextColor(mem_dc, close_color);
                 DrawTextW(
                     mem_dc,
                     &mut close_str[..1],
@@ -420,6 +386,112 @@ impl BrowserChrome {
                     DT_CENTER | DT_VCENTER | DT_SINGLELINE,
                 );
             }
+
+            // 5. Render New Tab "+" Button
+            let new_tab = layout.new_tab_button_rect(tabs.len());
+            let is_new_tab_hovered = self.hovered_item == ChromeHitResult::NewTab;
+            if is_new_tab_hovered {
+                let hover_brush = CreateSolidBrush(self.theme.button_hover_bg);
+                let r = RECT {
+                    left: new_tab.0,
+                    top: new_tab.1,
+                    right: new_tab.0 + new_tab.2,
+                    bottom: new_tab.1 + new_tab.3,
+                };
+                FillRect(mem_dc, &r, hover_brush);
+                let _ = DeleteObject(hover_brush);
+            }
+            let plus_cx = new_tab.0 + new_tab.2 / 2;
+            let plus_cy = new_tab.1 + new_tab.3 / 2;
+            let plus_color = if is_new_tab_hovered { rgb(0, 229, 255) } else { rgb(180, 190, 205) };
+            Self::draw_vector_plus(mem_dc, plus_cx, plus_cy, plus_color);
+
+            // 6. Render Custom Caption Buttons on Top-Right
+            let min_rect = layout.caption_minimize_rect();
+            let max_rect = layout.caption_maximize_rect();
+            let close_rect = layout.caption_close_rect();
+
+            // Minimize
+            if self.hovered_item == ChromeHitResult::CaptionMinimize {
+                let h_brush = CreateSolidBrush(self.theme.button_hover_bg);
+                let r = RECT { left: min_rect.0, top: min_rect.1, right: min_rect.0 + min_rect.2, bottom: min_rect.1 + min_rect.3 };
+                FillRect(mem_dc, &r, h_brush);
+                let _ = DeleteObject(h_brush);
+            }
+            Self::draw_caption_minimize(mem_dc, min_rect.0 + min_rect.2 / 2, min_rect.1 + min_rect.3 / 2, rgb(200, 210, 225));
+
+            // Maximize
+            if self.hovered_item == ChromeHitResult::CaptionMaximize {
+                let h_brush = CreateSolidBrush(self.theme.button_hover_bg);
+                let r = RECT { left: max_rect.0, top: max_rect.1, right: max_rect.0 + max_rect.2, bottom: max_rect.1 + max_rect.3 };
+                FillRect(mem_dc, &r, h_brush);
+                let _ = DeleteObject(h_brush);
+            }
+            Self::draw_caption_maximize(mem_dc, max_rect.0 + max_rect.2 / 2, max_rect.1 + max_rect.3 / 2, is_maximized, rgb(200, 210, 225));
+
+            // Close
+            let is_close_hover = self.hovered_item == ChromeHitResult::CaptionClose;
+            if is_close_hover {
+                let red_brush = CreateSolidBrush(rgb(232, 17, 35)); // Windows red
+                let r = RECT { left: close_rect.0, top: close_rect.1, right: close_rect.0 + close_rect.2, bottom: close_rect.1 + close_rect.3 };
+                FillRect(mem_dc, &r, red_brush);
+                let _ = DeleteObject(red_brush);
+            }
+            let close_icon_color = if is_close_hover { rgb(255, 255, 255) } else { rgb(200, 210, 225) };
+            Self::draw_caption_close(mem_dc, close_rect.0 + close_rect.2 / 2, close_rect.1 + close_rect.3 / 2, close_icon_color);
+
+            // 7. Render Navigation Toolbar Buttons with Clean Vector Icons
+            // Back Button
+            let back = layout.back_button_rect();
+            Self::render_nav_button(mem_dc, back, self.hovered_item == ChromeHitResult::BtnBack, self.theme.button_hover_bg, |dc, cx, cy, col| {
+                Self::draw_vector_back(dc, cx, cy, col);
+            });
+
+            // Forward Button
+            let fwd = layout.forward_button_rect();
+            Self::render_nav_button(mem_dc, fwd, self.hovered_item == ChromeHitResult::BtnForward, self.theme.button_hover_bg, |dc, cx, cy, col| {
+                Self::draw_vector_forward(dc, cx, cy, col);
+            });
+
+            // Reload Button
+            let reload = layout.reload_button_rect();
+            Self::render_nav_button(mem_dc, reload, self.hovered_item == ChromeHitResult::BtnReload, self.theme.button_hover_bg, |dc, cx, cy, col| {
+                Self::draw_vector_reload(dc, cx, cy, col);
+            });
+
+            // Home Button
+            let home = layout.home_button_rect();
+            Self::render_nav_button(mem_dc, home, self.hovered_item == ChromeHitResult::BtnHome, self.theme.button_hover_bg, |dc, cx, cy, col| {
+                Self::draw_vector_home(dc, cx, cy, col);
+            });
+
+            // Menu Button
+            let menu = layout.menu_button_rect();
+            Self::render_nav_button(mem_dc, menu, self.hovered_item == ChromeHitResult::BtnMenu, self.theme.button_hover_bg, |dc, cx, cy, col| {
+                Self::draw_vector_menu(dc, cx, cy, col);
+            });
+
+            // 8. Render Omnibox Container Frame
+            let omnibox = layout.omnibox_rect();
+            let omni_bg_brush = CreateSolidBrush(self.theme.omnibox_bg);
+            let omni_rect = RECT {
+                left: omnibox.0,
+                top: omnibox.1,
+                right: omnibox.0 + omnibox.2,
+                bottom: omnibox.1 + omnibox.3,
+            };
+            FillRect(mem_dc, &omni_rect, omni_bg_brush);
+            let _ = DeleteObject(omni_bg_brush);
+
+            let border_pen = CreatePen(PS_SOLID, 1, self.theme.omnibox_border);
+            let _ = SelectObject(mem_dc, border_pen);
+            let _ = MoveToEx(mem_dc, omnibox.0, omnibox.1, None);
+            let _ = LineTo(mem_dc, omnibox.0 + omnibox.2, omnibox.1);
+            let _ = LineTo(mem_dc, omnibox.0 + omnibox.2, omnibox.1 + omnibox.3);
+            let _ = LineTo(mem_dc, omnibox.0, omnibox.1 + omnibox.3);
+            let _ = LineTo(mem_dc, omnibox.0, omnibox.1);
+            let _ = SelectObject(mem_dc, div_pen);
+            let _ = DeleteObject(border_pen);
 
             // Clean up GDI objects
             let _ = SelectObject(mem_dc, old_pen);
@@ -443,6 +515,200 @@ impl BrowserChrome {
             let _ = DeleteObject(mem_bmp);
             let _ = DeleteDC(mem_dc);
         }
+    }
+
+    // --- Vector Drawing Helpers ---
+
+    unsafe fn render_nav_button<F>(hdc: HDC, rect: (i32, i32, i32, i32), is_hovered: bool, hover_bg: windows::Win32::Foundation::COLORREF, draw_icon: F)
+    where
+        F: FnOnce(HDC, i32, i32, windows::Win32::Foundation::COLORREF),
+    {
+        if is_hovered {
+            let h_brush = CreateSolidBrush(hover_bg);
+            let r = RECT { left: rect.0, top: rect.1, right: rect.0 + rect.2, bottom: rect.1 + rect.3 };
+            FillRect(hdc, &r, h_brush);
+            let _ = DeleteObject(h_brush);
+        }
+
+        let cx = rect.0 + rect.2 / 2;
+        let cy = rect.1 + rect.3 / 2;
+        let icon_color = if is_hovered { rgb(0, 229, 255) } else { rgb(200, 210, 225) };
+        draw_icon(hdc, cx, cy, icon_color);
+    }
+
+    unsafe fn draw_vector_back(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
+        let pen = CreatePen(PS_SOLID, 2, color);
+        let old_pen = SelectObject(hdc, pen);
+
+        // Horizontal stem: right to left
+        let _ = MoveToEx(hdc, cx + 5, cy, None);
+        let _ = LineTo(hdc, cx - 5, cy);
+
+        // Left arrowhead wings
+        let _ = MoveToEx(hdc, cx, cy - 5, None);
+        let _ = LineTo(hdc, cx - 5, cy);
+        let _ = LineTo(hdc, cx, cy + 5);
+
+        let _ = SelectObject(hdc, old_pen);
+        let _ = DeleteObject(pen);
+    }
+
+    unsafe fn draw_vector_forward(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
+        let pen = CreatePen(PS_SOLID, 2, color);
+        let old_pen = SelectObject(hdc, pen);
+
+        // Horizontal stem: left to right
+        let _ = MoveToEx(hdc, cx - 5, cy, None);
+        let _ = LineTo(hdc, cx + 5, cy);
+
+        // Right arrowhead wings
+        let _ = MoveToEx(hdc, cx, cy - 5, None);
+        let _ = LineTo(hdc, cx + 5, cy);
+        let _ = LineTo(hdc, cx, cy + 5);
+
+        let _ = SelectObject(hdc, old_pen);
+        let _ = DeleteObject(pen);
+    }
+
+    unsafe fn draw_vector_reload(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
+        let pen = CreatePen(PS_SOLID, 2, color);
+        let old_pen = SelectObject(hdc, pen);
+
+        // Circular arc from 7 points
+        let pts = [
+            (cx, cy - 6),
+            (cx - 4, cy - 4),
+            (cx - 6, cy),
+            (cx - 4, cy + 4),
+            (cx, cy + 6),
+            (cx + 4, cy + 4),
+            (cx + 6, cy),
+        ];
+
+        let _ = MoveToEx(hdc, pts[0].0, pts[0].1, None);
+        for pt in &pts[1..] {
+            let _ = LineTo(hdc, pt.0, pt.1);
+        }
+
+        // Arrow tip at top
+        let _ = MoveToEx(hdc, cx + 1, cy - 7, None);
+        let _ = LineTo(hdc, cx + 4, cy - 4);
+        let _ = LineTo(hdc, cx + 1, cy - 1);
+
+        let _ = SelectObject(hdc, old_pen);
+        let _ = DeleteObject(pen);
+    }
+
+    unsafe fn draw_vector_home(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
+        let pen = CreatePen(PS_SOLID, 2, color);
+        let old_pen = SelectObject(hdc, pen);
+
+        // Gable roof
+        let _ = MoveToEx(hdc, cx - 7, cy, None);
+        let _ = LineTo(hdc, cx, cy - 6);
+        let _ = LineTo(hdc, cx + 7, cy);
+
+        // House walls & floor
+        let _ = MoveToEx(hdc, cx - 5, cy, None);
+        let _ = LineTo(hdc, cx - 5, cy + 6);
+        let _ = LineTo(hdc, cx + 5, cy + 6);
+        let _ = LineTo(hdc, cx + 5, cy);
+
+        // Door notch
+        let _ = MoveToEx(hdc, cx - 2, cy + 6, None);
+        let _ = LineTo(hdc, cx - 2, cy + 2);
+        let _ = LineTo(hdc, cx + 2, cy + 2);
+        let _ = LineTo(hdc, cx + 2, cy + 6);
+
+        let _ = SelectObject(hdc, old_pen);
+        let _ = DeleteObject(pen);
+    }
+
+    unsafe fn draw_vector_menu(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
+        let pen = CreatePen(PS_SOLID, 2, color);
+        let old_pen = SelectObject(hdc, pen);
+
+        // Three clean horizontal lines
+        let _ = MoveToEx(hdc, cx - 6, cy - 4, None);
+        let _ = LineTo(hdc, cx + 6, cy - 4);
+
+        let _ = MoveToEx(hdc, cx - 6, cy, None);
+        let _ = LineTo(hdc, cx + 6, cy);
+
+        let _ = MoveToEx(hdc, cx - 6, cy + 4, None);
+        let _ = LineTo(hdc, cx + 6, cy + 4);
+
+        let _ = SelectObject(hdc, old_pen);
+        let _ = DeleteObject(pen);
+    }
+
+    unsafe fn draw_vector_plus(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
+        let pen = CreatePen(PS_SOLID, 2, color);
+        let old_pen = SelectObject(hdc, pen);
+
+        let _ = MoveToEx(hdc, cx, cy - 5, None);
+        let _ = LineTo(hdc, cx, cy + 5);
+
+        let _ = MoveToEx(hdc, cx - 5, cy, None);
+        let _ = LineTo(hdc, cx + 5, cy);
+
+        let _ = SelectObject(hdc, old_pen);
+        let _ = DeleteObject(pen);
+    }
+
+    unsafe fn draw_caption_minimize(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
+        let pen = CreatePen(PS_SOLID, 1, color);
+        let old_pen = SelectObject(hdc, pen);
+
+        let _ = MoveToEx(hdc, cx - 5, cy, None);
+        let _ = LineTo(hdc, cx + 5, cy);
+
+        let _ = SelectObject(hdc, old_pen);
+        let _ = DeleteObject(pen);
+    }
+
+    unsafe fn draw_caption_maximize(hdc: HDC, cx: i32, cy: i32, is_maximized: bool, color: windows::Win32::Foundation::COLORREF) {
+        let pen = CreatePen(PS_SOLID, 1, color);
+        let old_pen = SelectObject(hdc, pen);
+
+        if !is_maximized {
+            // Single square box
+            let _ = MoveToEx(hdc, cx - 5, cy - 5, None);
+            let _ = LineTo(hdc, cx + 5, cy - 5);
+            let _ = LineTo(hdc, cx + 5, cy + 5);
+            let _ = LineTo(hdc, cx - 5, cy + 5);
+            let _ = LineTo(hdc, cx - 5, cy - 5);
+        } else {
+            // Restore overlapping squares
+            // Back square
+            let _ = MoveToEx(hdc, cx - 2, cy - 5, None);
+            let _ = LineTo(hdc, cx + 5, cy - 5);
+            let _ = LineTo(hdc, cx + 5, cy + 2);
+
+            // Front square
+            let _ = MoveToEx(hdc, cx - 5, cy - 2, None);
+            let _ = LineTo(hdc, cx + 2, cy - 2);
+            let _ = LineTo(hdc, cx + 2, cy + 5);
+            let _ = LineTo(hdc, cx - 5, cy + 5);
+            let _ = LineTo(hdc, cx - 5, cy - 2);
+        }
+
+        let _ = SelectObject(hdc, old_pen);
+        let _ = DeleteObject(pen);
+    }
+
+    unsafe fn draw_caption_close(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
+        let pen = CreatePen(PS_SOLID, 1, color);
+        let old_pen = SelectObject(hdc, pen);
+
+        let _ = MoveToEx(hdc, cx - 5, cy - 5, None);
+        let _ = LineTo(hdc, cx + 5, cy + 5);
+
+        let _ = MoveToEx(hdc, cx + 5, cy - 5, None);
+        let _ = LineTo(hdc, cx - 5, cy + 5);
+
+        let _ = SelectObject(hdc, old_pen);
+        let _ = DeleteObject(pen);
     }
 
     unsafe extern "system" fn omnibox_subclass_proc(
@@ -496,4 +762,3 @@ impl Drop for BrowserChrome {
         }
     }
 }
-

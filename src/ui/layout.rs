@@ -40,8 +40,8 @@ impl BrowserLayout {
             return Vec::new();
         }
 
-        // Available space for tabs leaving room for "+" button (32px) and margins (8px)
-        let available_width = (self.window_width - 50).max(100);
+        // Available space for tabs leaving room for "+" button and caption buttons (138px)
+        let available_width = (self.window_width - 150 - 50).max(100);
         let ideal_width = available_width / (tab_count as i32);
         let tab_width = ideal_width.clamp(TAB_MIN_WIDTH, TAB_MAX_WIDTH);
 
@@ -55,6 +55,18 @@ impl BrowserLayout {
         }
 
         rects
+    }
+
+    pub fn caption_minimize_rect(&self) -> (i32, i32, i32, i32) {
+        (self.window_width - 138, 0, 46, TAB_BAR_HEIGHT)
+    }
+
+    pub fn caption_maximize_rect(&self) -> (i32, i32, i32, i32) {
+        (self.window_width - 92, 0, 46, TAB_BAR_HEIGHT)
+    }
+
+    pub fn caption_close_rect(&self) -> (i32, i32, i32, i32) {
+        (self.window_width - 46, 0, 46, TAB_BAR_HEIGHT)
     }
 
     pub fn new_tab_button_rect(&self, tab_count: usize) -> (i32, i32, i32, i32) {
