@@ -43,12 +43,12 @@ impl GpuCapabilities {
         }
 
         let mut switches = vec![
-            "--enable-features=VaapiVideoDecoder,D3D11VideoDecoder",
+            "--enable-features=VaapiVideoDecoder,D3D11VideoDecoder,NetworkServiceInProcess",
             "--enable-gpu-rasterization",
             "--enable-zero-copy",
             "--ignore-gpu-blocklist",
             "--enable-accelerated-video-decode",
-            "--disable-features=Translate,OptimizationHints,MediaRouter,CalculateNativeWinOcclusion",
+            "--disable-features=Translate,OptimizationHints,MediaRouter,CalculateNativeWinOcclusion,AudioServiceOutOfProcess,SpareRendererForSitePerProcess",
             "--disable-background-networking",
             "--disable-sync",
             "--disable-breakpad",
@@ -58,10 +58,12 @@ impl GpuCapabilities {
             "--renderer-process-limit=1",
             "--process-per-site",
             "--enable-low-end-device-mode",
-            "--js-flags=--max-old-space-size=128",
+            "--js-flags=--max-old-space-size=96",
             "--enable-low-res-tiling",
             "--num-raster-threads=1",
             "--disable-extensions",
+            "--disable-gpu-shader-disk-cache",
+            "--aggressive-cache-discard",
         ];
 
         // Kepler / older GPU compatibility: force D3D11 video decoding

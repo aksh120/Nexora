@@ -29,8 +29,8 @@ impl WebViewEngine {
         // Hardware video acceleration and low-overhead flags via GPU capabilities
         let gpu_caps = crate::media::GpuCapabilities::detect(true);
         let mut browser_args_vec = gpu_caps.build_browser_switches();
-        browser_args_vec.push("--disk-cache-size=33554432"); // 32 MB disk cache cap
-        browser_args_vec.push("--media-cache-size=16777216"); // 16 MB media cache cap
+        browser_args_vec.push("--disk-cache-size=16777216"); // 16 MB disk cache cap
+        browser_args_vec.push("--media-cache-size=8388608"); // 8 MB media cache cap
         let browser_args = browser_args_vec.join(" ");
 
         log::info!("Configuring Microsoft WebView2 Environment:");
@@ -183,6 +183,7 @@ impl WebViewEngine {
             || target_url.starts_with("https://")
             || target_url.starts_with("edge://")
             || target_url.starts_with("about:")
+            || target_url.starts_with("data:")
         {
             target_url.to_string()
         } else {
@@ -292,8 +293,8 @@ impl WebViewEngine {
                         let url_str = string_from_pcwstr(&PCWSTR(uri.0));
                         log::info!("[WebView2] Navigation Starting: {}", url_str);
 
-                        // Strict Guard: Never overwrite omnibox or tab state with about:blank
-                        if url_str.is_empty() || url_str == "about:blank" {
+                        // Strict Guard: Never overwrite omnibox or tab state with about:blank or data: URIs
+                        if url_str.is_empty() || url_str == "about:blank" || url_str.starts_with("data:") {
                             return Ok(());
                         }
 
@@ -302,13 +303,16 @@ impl WebViewEngine {
                             windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
                         ) as *mut crate::browser::host_window::WindowContext;
                         if !ptr.is_null() {
-                            if let Some(ref chrome) = (*ptr).chrome {
-                                chrome.set_omnibox_text(&url_str);
-                            }
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             if let Some(active) = tabs.get_active_tab_mut() {
-                                active.url = url_str.clone();
-                                active.push_history(&url_str);
+                                // Guard: Never allow an external navigation to overwrite an internal page
+                                if !active.url.starts_with("nexora://") {
+                                    active.url = url_str.clone();
+                                    active.push_history(&url_str);
+                                    if let Some(ref chrome) = (*ptr).chrome {
+                                        chrome.set_omnibox_text(&url_str);
+                                    }
+                                }
                             }
                             drop(tabs);
                             let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
@@ -332,8 +336,8 @@ impl WebViewEngine {
                         let url_str = string_from_pcwstr(&PCWSTR(uri.0));
                         log::info!("[WebView2] Source Changed: {}", url_str);
 
-                        // Strict Guard: Never overwrite omnibox or tab state with about:blank
-                        if url_str.is_empty() || url_str == "about:blank" {
+                        // Strict Guard: Never overwrite omnibox or tab state with about:blank or data: URIs
+                        if url_str.is_empty() || url_str == "about:blank" || url_str.starts_with("data:") {
                             return Ok(());
                         }
 
@@ -342,13 +346,16 @@ impl WebViewEngine {
                             windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
                         ) as *mut crate::browser::host_window::WindowContext;
                         if !ptr.is_null() {
-                            if let Some(ref chrome) = (*ptr).chrome {
-                                chrome.set_omnibox_text(&url_str);
-                            }
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             if let Some(active) = tabs.get_active_tab_mut() {
-                                active.url = url_str.clone();
-                                active.push_history(&url_str);
+                                // Guard: Never allow an external source change to overwrite an internal page
+                                if !active.url.starts_with("nexora://") {
+                                    active.url = url_str.clone();
+                                    active.push_history(&url_str);
+                                    if let Some(ref chrome) = (*ptr).chrome {
+                                        chrome.set_omnibox_text(&url_str);
+                                    }
+                                }
                             }
                             drop(tabs);
                             let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
@@ -372,8 +379,8 @@ impl WebViewEngine {
                         let title_str = string_from_pcwstr(&PCWSTR(title.0));
                         log::info!("[WebView2] Document Title Changed: {}", title_str);
 
-                        // Guard: Do not overwrite titles with blank or about:blank
-                        if title_str.trim().is_empty() || title_str == "about:blank" {
+                        // Guard: Do not overwrite titles with blank, about:blank, or data:
+                        if title_str.trim().is_empty() || title_str == "about:blank" || title_str.starts_with("data:") {
                             return Ok(());
                         }
 
@@ -384,17 +391,18 @@ impl WebViewEngine {
                         if !ptr.is_null() {
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             if let Some(active) = tabs.get_active_tab_mut() {
-                                active.title = title_str.clone();
+                                // Guard: Never allow an external page title to overwrite an internal page
+                                if !active.url.starts_with("nexora://") {
+                                    active.title = title_str.clone();
+                                    let full_title = format!("{} - Nexora", title_str);
+                                    let wide_title: Vec<u16> = full_title.encode_utf16().chain(std::iter::once(0)).collect();
+                                    let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
+                                        hwnd_parent,
+                                        windows::core::PCWSTR(wide_title.as_ptr()),
+                                    );
+                                }
                             }
                             drop(tabs);
-
-                            let full_title = format!("{} - Nexora", title_str);
-                            let wide_title: Vec<u16> = full_title.encode_utf16().chain(std::iter::once(0)).collect();
-                            let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
-                                hwnd_parent,
-                                windows::core::PCWSTR(wide_title.as_ptr()),
-                            );
-
                             let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
                         }
                     }
@@ -429,13 +437,28 @@ impl WebViewEngine {
                                     String::new()
                                 };
 
-                                // Guard: Never record or sync about:blank
-                                if !url_str.is_empty() && url_str != "about:blank" {
+                                // Guard: Never record or sync about:blank or data: URIs
+                                if !url_str.is_empty() && url_str != "about:blank" && !url_str.starts_with("data:") {
                                     let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
                                         hwnd_parent,
                                         windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
                                     ) as *mut crate::browser::host_window::WindowContext;
                                     if !ptr.is_null() {
+                                        let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                        if let Some(active) = tabs.get_active_tab_mut() {
+                                            // Guard: Never allow an external navigation to overwrite an internal page
+                                            if !active.url.starts_with("nexora://") {
+                                                active.url = url_str.clone();
+                                                active.push_history(&url_str);
+                                                if !title_str.trim().is_empty() && title_str != "about:blank" && !title_str.starts_with("data:") {
+                                                    active.title = title_str.clone();
+                                                }
+                                                if let Some(ref chrome) = (*ptr).chrome {
+                                                    chrome.set_omnibox_text(&url_str);
+                                                }
+                                            }
+                                        }
+
                                         let is_bm = if !url_str.starts_with("nexora://") {
                                             if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
                                                 let db_path = paths.data_dir.join("nexora.db");
@@ -447,17 +470,9 @@ impl WebViewEngine {
                                         } else { false };
 
                                         if let Some(ref mut chrome) = (*ptr).chrome {
-                                            chrome.set_omnibox_text(&url_str);
                                             chrome.set_is_bookmarked(is_bm);
                                         }
-                                        let mut tabs = (*ptr).tab_manager.borrow_mut();
-                                        if let Some(active) = tabs.get_active_tab_mut() {
-                                            active.url = url_str.clone();
-                                            active.push_history(&url_str);
-                                            if !title_str.trim().is_empty() && title_str != "about:blank" {
-                                                active.title = title_str.clone();
-                                            }
-                                        }
+
                                         drop(tabs);
                                         let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
                                     }
@@ -471,6 +486,9 @@ impl WebViewEngine {
                                             }
                                         }
                                     }
+
+                                    // Trim working sets to keep memory tightly bounded below 200MB
+                                    let _ = crate::performance::memory::trim_child_processes();
                                 }
                             }
                         }
@@ -647,6 +665,10 @@ impl WebViewEngine {
                             let mut is_audio = BOOL(0);
                             if wv8_sender.IsDocumentPlayingAudio(&mut is_audio).is_ok() {
                                 log::info!("[Media Engine] Document audio playback changed: {}", is_audio.as_bool());
+                                if is_audio.as_bool() {
+                                    // Video/Audio playback detected -> trim working set immediately
+                                    let _ = crate::performance::memory::trim_child_processes();
+                                }
                             }
                         }
                     }

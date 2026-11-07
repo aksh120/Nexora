@@ -181,8 +181,8 @@ impl HostWindow {
 
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(context) as isize);
 
-            // Start 30-second periodic timer for memory pressure & smart tab suspension
-            let _ = SetTimer(hwnd, IDT_SUSPENSION_TIMER, 30_000, None);
+            // Start 5-second periodic timer for memory pressure, working set trimming & smart tab suspension
+            let _ = SetTimer(hwnd, IDT_SUSPENSION_TIMER, 5_000, None);
 
             log::info!("Native Win32 Host Window created (HWND: {:?}, size: {}x{})", hwnd.0, width, height);
 
@@ -678,10 +678,16 @@ impl HostWindow {
                         }
                         ChromeHitResult::Tab(id) => {
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            let current_active = tabs.active_tab_id();
+                            if current_active == Some(id) {
+                                drop(tabs);
+                                return LRESULT(0);
+                            }
                             let was_suspended = tabs.get_tab(id).map(|t| t.is_suspended()).unwrap_or(false);
                             if tabs.switch_tab(id) {
                                 if let Some(active) = tabs.get_active_tab() {
                                     let url = active.url.clone();
+                                    let title = active.title.clone();
                                     drop(tabs);
                                     if was_suspended {
                                         log::info!("Waking suspended/lazy tab #{} and navigating to {}", id, url);
@@ -702,9 +708,22 @@ impl HostWindow {
                                         chrome.set_omnibox_text(&url);
                                         chrome.set_is_bookmarked(is_bm);
                                     }
+
+                                    // Update window title immediately to this tab's own title
+                                    let full_title = format!("{} - Nexora", title);
+                                    let wide_title: Vec<u16> = full_title.encode_utf16().chain(std::iter::once(0)).collect();
+                                    let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
+                                        hwnd,
+                                        windows::core::PCWSTR(wide_title.as_ptr()),
+                                    );
+
+                                    // STOP in-flight navigation from the old tab and navigate to this tab's own URL
                                     if let Some(ref webview) = (*ptr).webview {
+                                        let _ = webview.stop();
                                         let _ = webview.navigate(&url);
                                     }
+
+                                    let _ = crate::performance::memory::trim_child_processes();
                                     let _ = InvalidateRect(hwnd, None, false);
                                 }
                             }
@@ -712,10 +731,10 @@ impl HostWindow {
                         ChromeHitResult::TabClose(id) => {
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             let new_active = tabs.close_tab(id);
-                            let maybe_url = new_active.and_then(|new_id| tabs.get_tab(new_id).map(|t| t.url.clone()));
+                            let maybe_tab_info = new_active.and_then(|new_id| tabs.get_tab(new_id).map(|t| (t.url.clone(), t.title.clone())));
                             drop(tabs);
 
-                            if let Some(url) = maybe_url {
+                            if let Some((url, title)) = maybe_tab_info {
                                 let is_bm = if !url.starts_with("nexora://") && url != "about:blank" && !url.is_empty() {
                                     if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
                                         let db_path = paths.data_dir.join("nexora.db");
@@ -730,7 +749,16 @@ impl HostWindow {
                                     chrome.set_omnibox_text(&url);
                                     chrome.set_is_bookmarked(is_bm);
                                 }
+
+                                let full_title = format!("{} - Nexora", title);
+                                let wide_title: Vec<u16> = full_title.encode_utf16().chain(std::iter::once(0)).collect();
+                                let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
+                                    hwnd,
+                                    windows::core::PCWSTR(wide_title.as_ptr()),
+                                );
+
                                 if let Some(ref webview) = (*ptr).webview {
+                                    let _ = webview.stop();
                                     let _ = webview.navigate(&url);
                                 }
                             }
@@ -746,14 +774,20 @@ impl HostWindow {
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             let _ = tabs.create_tab(&homepage, Some("New Tab"));
                             drop(tabs);
-                            if let Some(ref webview) = (*ptr).webview {
-                                let _ = webview.navigate(&homepage);
-                            }
-                            if let Some(ref chrome) = (*ptr).chrome {
+
+                            if let Some(ref mut chrome) = (*ptr).chrome {
                                 chrome.set_omnibox_text(&homepage);
+                                chrome.set_is_bookmarked(false);
                                 let count = (*ptr).tab_manager.borrow().tab_count();
                                 chrome.layout_controls(&(*ptr).layout, count);
                             }
+
+                            if let Some(ref webview) = (*ptr).webview {
+                                let _ = webview.stop();
+                                let _ = webview.navigate(&homepage);
+                            }
+
+                            let _ = crate::performance::memory::trim_child_processes();
                             let _ = InvalidateRect(hwnd, None, false);
                         }
                         ChromeHitResult::None => {}
@@ -894,13 +928,24 @@ impl HostWindow {
                                 if tabs.switch_tab(target_id) {
                                     if let Some(active) = tabs.get_active_tab() {
                                         let url = active.url.clone();
+                                        let title = active.title.clone();
                                         drop(tabs);
+
+                                        let full_title = format!("{} - Nexora", title);
+                                        let wide_title: Vec<u16> = full_title.encode_utf16().chain(std::iter::once(0)).collect();
+                                        let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
+                                            hwnd,
+                                            windows::core::PCWSTR(wide_title.as_ptr()),
+                                        );
+
                                         if let Some(ref webview) = (*ptr).webview {
+                                            let _ = webview.stop();
                                             let _ = webview.navigate(&url);
                                         }
                                         if let Some(ref chrome) = (*ptr).chrome {
                                             chrome.set_omnibox_text(&url);
                                         }
+                                        let _ = crate::performance::memory::trim_child_processes();
                                         let _ = InvalidateRect(hwnd, None, false);
                                     }
                                 }
