@@ -85,6 +85,7 @@ use crate::ui::theme::ThemePalette;
 
 pub const IDT_SUSPENSION_TIMER: usize = 1001;
 pub const IDT_TAB_HOVER_PREVIEW: usize = 1002;
+pub const IDT_PAGE_LOADER: usize = 1003;
 
 const ZOOM_LEVELS: [f64; 11] = [0.50, 0.67, 0.75, 0.80, 0.90, 1.00, 1.10, 1.25, 1.50, 1.75, 2.00];
 
@@ -115,6 +116,59 @@ pub struct WindowContext {
 impl WindowContext {
     pub fn current_webview_rect(&self) -> (i32, i32, i32, i32) {
         self.layout.webview_rect_for(self.fullscreen.is_fullscreen())
+    }
+
+    pub fn start_loader_timer(&mut self, hwnd: HWND) {
+        if let Some(ref mut chrome) = self.chrome {
+            chrome.start_loading();
+        }
+        unsafe {
+            let _ = windows::Win32::UI::WindowsAndMessaging::SetTimer(
+                hwnd,
+                IDT_PAGE_LOADER,
+                16,
+                None,
+            );
+        }
+    }
+
+    pub fn stop_loader_timer(&mut self, hwnd: HWND) {
+        if let Some(ref mut chrome) = self.chrome {
+            chrome.finish_loading();
+        }
+        unsafe {
+            let _ = windows::Win32::UI::WindowsAndMessaging::SetTimer(
+                hwnd,
+                IDT_PAGE_LOADER,
+                16,
+                None,
+            );
+        }
+    }
+
+    pub fn reset_loader(&mut self, hwnd: HWND) {
+        if let Some(ref mut chrome) = self.chrome {
+            chrome.reset_loader();
+        }
+        unsafe {
+            let _ = windows::Win32::UI::WindowsAndMessaging::KillTimer(hwnd, IDT_PAGE_LOADER);
+            let rect = RECT {
+                left: 0,
+                top: crate::ui::layout::TOP_CHROME_HEIGHT - 4,
+                right: self.layout.window_width,
+                bottom: crate::ui::layout::TOP_CHROME_HEIGHT,
+            };
+            let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd, Some(&rect), false);
+        }
+    }
+
+    pub fn sync_tab_loader(&mut self, hwnd: HWND, tab_id: usize) {
+        let is_loading = self.tab_manager.borrow().get_tab(tab_id).map(|t| t.is_loading).unwrap_or(false);
+        if is_loading {
+            self.start_loader_timer(hwnd);
+        } else {
+            self.reset_loader(hwnd);
+        }
     }
 }
 
@@ -350,6 +404,9 @@ impl HostWindow {
                         }
 
                         let active_id = (*ptr).tab_manager.borrow().active_tab_id().unwrap_or(1);
+                        if !dest_url.starts_with("nexora://") {
+                            (*ptr).start_loader_timer(hwnd_parent);
+                        }
                         if let Some(ref webview) = (*ptr).webview {
                             let _ = webview.navigate_tab(active_id, &dest_url);
                         }
@@ -734,6 +791,9 @@ impl HostWindow {
                                 let active_id = active.id;
                                 if let Some(prev_url) = active.go_back() {
                                     drop(tabs);
+                                    if !prev_url.starts_with("nexora://") {
+                                        (*ptr).start_loader_timer(hwnd);
+                                    }
                                     if let Some(ref webview) = (*ptr).webview {
                                         let _ = webview.navigate_tab(active_id, &prev_url);
                                     }
@@ -750,6 +810,9 @@ impl HostWindow {
                                 let active_id = active.id;
                                 if let Some(next_url) = active.go_forward() {
                                     drop(tabs);
+                                    if !next_url.starts_with("nexora://") {
+                                        (*ptr).start_loader_timer(hwnd);
+                                    }
                                     if let Some(ref webview) = (*ptr).webview {
                                         let _ = webview.navigate_tab(active_id, &next_url);
                                     }
@@ -762,6 +825,7 @@ impl HostWindow {
                         }
                         ChromeHitResult::BtnReload => {
                             let active_id = (*ptr).tab_manager.borrow().active_tab_id().unwrap_or(1);
+                            (*ptr).start_loader_timer(hwnd);
                             if let Some(ref webview) = (*ptr).webview {
                                 let _ = webview.reload_tab(active_id);
                             }
@@ -780,6 +844,11 @@ impl HostWindow {
                                 active.title = title.to_string();
                                 active.push_history(&homepage);
                                 drop(tabs);
+                                if !homepage.starts_with("nexora://") {
+                                    (*ptr).start_loader_timer(hwnd);
+                                } else {
+                                    (*ptr).reset_loader(hwnd);
+                                }
                                 if let Some(ref webview) = (*ptr).webview {
                                     let _ = webview.navigate_tab(active_id, &homepage);
                                 }
@@ -1010,6 +1079,7 @@ impl HostWindow {
                                         chrome.set_omnibox_text(&url);
                                         chrome.set_is_bookmarked(is_bm);
                                     }
+                                    (*ptr).sync_tab_loader(hwnd, id);
 
                                     // Update window title immediately to this tab's own title
                                     let full_title = format!("{} - Nexora", title);
@@ -1124,6 +1194,7 @@ impl HostWindow {
                                 let count = (*ptr).tab_manager.borrow().tab_count();
                                 chrome.layout_controls(&(*ptr).layout, count);
                             }
+                            (*ptr).reset_loader(hwnd);
 
                             if let Some(ref webview) = (*ptr).webview {
                                 let _ = webview.create_tab_view(new_id, &homepage, bounds, true);
@@ -1632,12 +1703,28 @@ impl HostWindow {
                             log::debug!("[Tab Preview Card] Hovered Tab #{}: '{}' ({})", t.id, t.title, t.url);
                         }
                     }
+                } else if !ptr.is_null() && wparam.0 == IDT_PAGE_LOADER {
+                    let mut should_continue = false;
+                    if let Some(ref mut chrome) = (*ptr).chrome {
+                        should_continue = chrome.step_loader_animation();
+                    }
+                    if !should_continue {
+                        let _ = KillTimer(hwnd, IDT_PAGE_LOADER);
+                    }
+                    let rect = RECT {
+                        left: 0,
+                        top: crate::ui::layout::TOP_CHROME_HEIGHT - 4,
+                        right: (*ptr).layout.window_width,
+                        bottom: crate::ui::layout::TOP_CHROME_HEIGHT,
+                    };
+                    let _ = InvalidateRect(hwnd, Some(&rect), false);
                 }
                 LRESULT(0)
             }
             WM_CLOSE => {
                 let _ = KillTimer(hwnd, IDT_SUSPENSION_TIMER);
                 let _ = KillTimer(hwnd, IDT_TAB_HOVER_PREVIEW);
+                let _ = KillTimer(hwnd, IDT_PAGE_LOADER);
                 if !ptr.is_null() {
                     (*ptr).is_closing.store(true, Ordering::SeqCst);
 
@@ -1657,6 +1744,7 @@ impl HostWindow {
             WM_DESTROY => {
                 let _ = KillTimer(hwnd, IDT_SUSPENSION_TIMER);
                 let _ = KillTimer(hwnd, IDT_TAB_HOVER_PREVIEW);
+                let _ = KillTimer(hwnd, IDT_PAGE_LOADER);
                 if !ptr.is_null() {
                     let ctx = Box::from_raw(ptr);
                     let _ = DeleteObject(ctx.omnibox_brush);

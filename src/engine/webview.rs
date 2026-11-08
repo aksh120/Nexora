@@ -332,6 +332,21 @@ impl WebViewEngine {
             || clean_url.is_empty();
 
         if is_internal {
+            unsafe {
+                let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                    self.hwnd,
+                    windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                ) as *mut crate::browser::host_window::WindowContext;
+                if !ptr.is_null() {
+                    let mut tabs = (*ptr).tab_manager.borrow_mut();
+                    tabs.set_loading(tab_id, false);
+                    let is_active = tabs.active_tab_id() == Some(tab_id);
+                    drop(tabs);
+                    if is_active {
+                        (*ptr).reset_loader(self.hwnd);
+                    }
+                }
+            }
             let html = self.render_internal_page(clean_url);
             let views = self.tab_views.borrow();
             if let Some(view) = views.get(&tab_id) {
@@ -705,6 +720,7 @@ impl WebViewEngine {
 
                             let is_active = (*ptr).tab_manager.borrow().active_tab_id() == Some(tab_id);
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            tabs.set_loading(tab_id, true);
                             if let Some(tab) = tabs.get_tab_mut(tab_id) {
                                 if !tab.url.starts_with("nexora://") {
                                     tab.url = url_str.clone();
@@ -717,6 +733,9 @@ impl WebViewEngine {
                                 }
                             }
                             drop(tabs);
+                            if is_active {
+                                (*ptr).start_loader_timer(hwnd_parent);
+                            }
                             let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
                         }
                     }
@@ -750,6 +769,7 @@ impl WebViewEngine {
                         if !ptr.is_null() {
                             let is_active = (*ptr).tab_manager.borrow().active_tab_id() == Some(tab_id);
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            tabs.set_loading(tab_id, true);
                             if let Some(tab) = tabs.get_tab_mut(tab_id) {
                                 if !tab.url.starts_with("nexora://") {
                                     tab.url = url_str.clone();
@@ -762,6 +782,9 @@ impl WebViewEngine {
                                 }
                             }
                             drop(tabs);
+                            if is_active {
+                                (*ptr).start_loader_timer(hwnd_parent);
+                            }
                             let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
                         }
                     }
@@ -843,6 +866,7 @@ impl WebViewEngine {
                             if !ptr.is_null() {
                                 let is_active = (*ptr).tab_manager.borrow().active_tab_id() == Some(tab_id);
                                 let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                tabs.set_loading(tab_id, false);
                                 if let Some(tab) = tabs.get_tab_mut(tab_id) {
                                     if !tab.url.starts_with("nexora://") {
                                         tab.url = url_str.clone();
@@ -875,6 +899,9 @@ impl WebViewEngine {
                                 }
 
                                 drop(tabs);
+                                if is_active {
+                                    (*ptr).stop_loader_timer(hwnd_parent);
+                                }
                                 let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
                             }
 
@@ -959,6 +986,20 @@ impl WebViewEngine {
                         let mut uri = PWSTR::null();
                         if s.Source(&mut uri).is_ok() {
                             uri_str = string_from_pcwstr(&PCWSTR(uri.0));
+                        }
+                    }
+
+                    let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                        hwnd_parent,
+                        windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                    ) as *mut crate::browser::host_window::WindowContext;
+                    if !ptr.is_null() {
+                        let mut tabs = (*ptr).tab_manager.borrow_mut();
+                        tabs.set_loading(tab_id, false);
+                        let is_active = tabs.active_tab_id() == Some(tab_id);
+                        drop(tabs);
+                        if is_active {
+                            (*ptr).stop_loader_timer(hwnd_parent);
                         }
                     }
 

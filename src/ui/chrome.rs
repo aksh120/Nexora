@@ -102,6 +102,10 @@ pub struct BrowserChrome {
     atlas_bmp: HBITMAP,
     pub drag_source_idx: Option<usize>,
     pub drag_insert_idx: Option<usize>,
+    pub is_loading: bool,
+    pub loader_progress: f32,
+    pub loader_anim_tick: u32,
+    pub loader_completed_fade: u8,
 }
 
 struct OmniboxSubclassContext {
@@ -215,6 +219,10 @@ impl BrowserChrome {
                 atlas_bmp,
                 drag_source_idx: None,
                 drag_insert_idx: None,
+                is_loading: false,
+                loader_progress: 0.0,
+                loader_anim_tick: 0,
+                loader_completed_fade: 0,
             })
         }
     }
@@ -227,6 +235,42 @@ impl BrowserChrome {
         if self.hovered_item != new_hover {
             self.hovered_item = new_hover;
             true
+        } else {
+            false
+        }
+    }
+
+    pub fn start_loading(&mut self) {
+        self.is_loading = true;
+        self.loader_progress = 0.15;
+        self.loader_anim_tick = 0;
+        self.loader_completed_fade = 0;
+    }
+
+    pub fn finish_loading(&mut self) {
+        self.is_loading = false;
+        self.loader_progress = 1.0;
+        self.loader_completed_fade = 15; // ~250ms completion flash
+    }
+
+    pub fn reset_loader(&mut self) {
+        self.is_loading = false;
+        self.loader_progress = 0.0;
+        self.loader_anim_tick = 0;
+        self.loader_completed_fade = 0;
+    }
+
+    pub fn step_loader_animation(&mut self) -> bool {
+        if self.is_loading {
+            self.loader_anim_tick = (self.loader_anim_tick + 1) % 180;
+            if self.loader_progress < 0.90 {
+                self.loader_progress += 0.006;
+            }
+            true
+        } else if self.loader_completed_fade > 0 {
+            self.loader_completed_fade = self.loader_completed_fade.saturating_sub(1);
+            self.loader_progress = 1.0;
+            self.loader_completed_fade > 0
         } else {
             false
         }
@@ -439,11 +483,70 @@ impl BrowserChrome {
             FillRect(mem_dc, &toolbar_rect, toolbar_brush);
             let _ = DeleteObject(toolbar_brush);
 
-            // 3. Draw Divider Line below toolbar
+            // 3. Draw Divider Line / Sliding Page Loader below toolbar
+            let is_active_loading = self.is_loading
+                || tabs.iter().find(|t| Some(t.id) == active_tab_id).map(|t| t.is_loading).unwrap_or(false);
+            let show_loader = is_active_loading || self.loader_completed_fade > 0;
             let div_pen = CreatePen(PS_SOLID, 1, self.theme.divider_color);
             let old_pen = SelectObject(mem_dc, div_pen);
-            let _ = MoveToEx(mem_dc, 0, TOP_CHROME_HEIGHT - 1, None);
-            let _ = LineTo(mem_dc, layout.window_width, TOP_CHROME_HEIGHT - 1);
+
+            if show_loader {
+                let loader_top = TOP_CHROME_HEIGHT - 3;
+                let loader_bottom = TOP_CHROME_HEIGHT;
+                let track_brush = CreateSolidBrush(rgb(24, 24, 30));
+                let track_rect = RECT {
+                    left: 0,
+                    top: loader_top,
+                    right: layout.window_width,
+                    bottom: loader_bottom,
+                };
+                FillRect(mem_dc, &track_rect, track_brush);
+                let _ = DeleteObject(track_brush);
+
+                if self.loader_completed_fade > 0 && !is_active_loading {
+                    let done_brush = CreateSolidBrush(self.theme.accent_color);
+                    let done_rect = RECT {
+                        left: 0,
+                        top: loader_top,
+                        right: layout.window_width,
+                        bottom: loader_bottom,
+                    };
+                    FillRect(mem_dc, &done_rect, done_brush);
+                    let _ = DeleteObject(done_brush);
+                } else {
+                    let width_f = layout.window_width as f32;
+                    let prog_w = ((width_f * self.loader_progress.clamp(0.08, 0.95)) as i32).max(40);
+                    let base_brush = CreateSolidBrush(self.theme.accent_color);
+                    let base_rect = RECT {
+                        left: 0,
+                        top: loader_top,
+                        right: prog_w,
+                        bottom: loader_bottom,
+                    };
+                    FillRect(mem_dc, &base_rect, base_brush);
+                    let _ = DeleteObject(base_brush);
+
+                    let shimmer_len = (width_f * 0.28).max(90.0);
+                    let cycle = (self.loader_anim_tick % 90) as f32 / 90.0;
+                    let sweep_start = -shimmer_len + (width_f + shimmer_len) * cycle;
+                    let s_left = sweep_start.clamp(0.0, prog_w as f32) as i32;
+                    let s_right = (sweep_start + shimmer_len).clamp(0.0, prog_w as f32) as i32;
+                    if s_right > s_left {
+                        let shimmer_brush = CreateSolidBrush(rgb(251, 113, 133));
+                        let shimmer_rect = RECT {
+                            left: s_left,
+                            top: loader_top,
+                            right: s_right,
+                            bottom: loader_bottom,
+                        };
+                        FillRect(mem_dc, &shimmer_rect, shimmer_brush);
+                        let _ = DeleteObject(shimmer_brush);
+                    }
+                }
+            } else {
+                let _ = MoveToEx(mem_dc, 0, TOP_CHROME_HEIGHT - 1, None);
+                let _ = LineTo(mem_dc, layout.window_width, TOP_CHROME_HEIGHT - 1);
+            }
 
             // 4. Render Brand Logo (Official Orbital Ribbon N from Master Vector Atlas)
             let logo = layout.brand_logo_rect();
@@ -926,5 +1029,54 @@ impl Drop for BrowserChrome {
             let _ = DeleteObject(self.atlas_bmp);
             let _ = DeleteObject(self.font);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_loader_animation_lifecycle() {
+        // Start loading
+        let mut is_loading = true;
+        let mut loader_progress = 0.15f32;
+        let mut loader_anim_tick = 0u32;
+        let mut loader_completed_fade = 0u8;
+
+        assert!(is_loading);
+        assert_eq!(loader_progress, 0.15);
+        assert_eq!(loader_completed_fade, 0);
+
+        // Step ticks
+        for _ in 0..10 {
+            loader_anim_tick = (loader_anim_tick + 1) % 180;
+            if loader_progress < 0.90 {
+                loader_progress += 0.008;
+            }
+        }
+        assert!(loader_progress > 0.15);
+        assert_eq!(loader_anim_tick, 10);
+
+        // Finish loading
+        is_loading = false;
+        loader_progress = 1.0;
+        loader_completed_fade = 15;
+
+        let mut continuing = true;
+        while continuing {
+            if is_loading {
+                loader_anim_tick = (loader_anim_tick + 1) % 180;
+                if loader_progress < 0.90 {
+                    loader_progress += 0.008;
+                }
+            } else if loader_completed_fade > 0 {
+                loader_completed_fade = loader_completed_fade.saturating_sub(1);
+                loader_progress = 1.0;
+                continuing = loader_completed_fade > 0;
+            } else {
+                continuing = false;
+            }
+        }
+        assert_eq!(loader_completed_fade, 0);
+        assert!(!continuing);
     }
 }
