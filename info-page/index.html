@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexora — Technical Architecture & Specifications</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/png" href="app_icon.png">
+  <!-- Official Lucide Icons Library -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+  <!-- Global Header & Navigation -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="#overview" class="brand-wrap">
+        <img src="app_icon.png" alt="Nexora Logo" class="brand-icon">
+        <span>Nexora</span>
+        <span class="brand-version">v0.1.0</span>
+      </a>
+
+      <ul class="nav-menu">
+        <li><a href="#overview" class="nav-link">Overview</a></li>
+        <li><a href="#architecture" class="nav-link">Architecture</a></li>
+        <li><a href="#benchmarks" class="nav-link">Benchmarks</a></li>
+        <li><a href="#capabilities" class="nav-link">Capabilities</a></li>
+        <li><a href="#pages" class="nav-link">Internal Pages</a></li>
+        <li><a href="#shortcuts" class="nav-link">Shortcuts</a></li>
+        <li><a href="#install" class="nav-link">Installation</a></li>
+      </ul>
+
+      <div class="header-actions">
+        <a href="https://github.com/Nexora/Nexora" target="_blank" rel="noreferrer" class="btn btn-ghost" title="GitHub Repository">
+          <i data-lucide="github" class="lucide" style="width:17px; height:17px;"></i>
+          <span style="font-size:0.84rem;">GitHub</span>
+        </a>
+        <a href="#install" class="btn btn-primary">
+          <i data-lucide="download" class="lucide" style="width:16px; height:16px;"></i>
+          <span>Download</span>
+        </a>
+        <button class="mobile-toggle" aria-label="Toggle navigation menu">
+          <i data-lucide="menu" class="lucide" style="width:20px; height:20px;"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section id="overview" class="hero-section">
+    <div class="container">
+      <div class="hero-main">
+        <h1 class="hero-title">Nexora. A browser built around <span class="accent-text">performance</span>.</h1>
+        <p class="hero-desc">
+          A lightweight, streaming-focused desktop browser for Windows, built with native Rust, Win32 and WebView2.
+        </p>
+
+        <div class="hero-buttons">
+          <a href="#install" class="btn btn-primary" style="padding: 10px 18px; font-size: 0.92rem;">
+            <i data-lucide="download" class="lucide" style="width:18px; height:18px;"></i>
+            Download Nexora (v0.1.0)
+          </a>
+          <a href="https://github.com/Nexora/Nexora" target="_blank" rel="noreferrer" class="btn btn-secondary" style="padding: 10px 18px; font-size: 0.92rem;">
+            <i data-lucide="github" class="lucide" style="width:18px; height:18px;"></i>
+            View Source Code
+          </a>
+        </div>
+      </div>
+
+      <!-- Horizontal Performance Statistics -->
+      <div class="stats-strip">
+        <div class="stat-item">
+          <span class="stat-value">1.46 MB</span>
+          <span class="stat-label">Executable Size</span>
+          <span class="stat-caption">Compiled native Rust binary, stripped of Chromium shell bloat</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value highlight">4.8 – 18 MB</span>
+          <span class="stat-label">Host Process Working Set</span>
+          <span class="stat-caption">Dedicated Win32 & GDI memory with zero garbage collection</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">263 MB</span>
+          <span class="stat-label">YouTube 1080p60 Total</span>
+          <span class="stat-caption">Host + WebView2 runtime combined (vs ~420 MB in Chrome)</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value highlight">14 ms</span>
+          <span class="stat-label">Tab Switch Latency</span>
+          <span class="stat-caption">Instant Win32 SetIsVisible visibility toggling</span>
+        </div>
+      </div>
+
+      <div class="stats-disclosure">
+        <i data-lucide="gauge" class="lucide" style="width:14px; height:14px;"></i>
+        <span>Benchmarked on Intel Core i7-3770 @ 3.4 GHz, 16 GB DDR3, NVIDIA GT 730 on Windows 11 (Build 22631). Performance varies with hardware and content.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Process Architecture Section -->
+  <section id="architecture" class="section">
+    <div class="container">
+      <div class="section-head">
+        <h2 class="section-title">Two-Tier Process Model</h2>
+        <p class="section-lead">
+          Nexora eliminates the multi-hundred-megabyte footprint of standard browsers by strictly separating desktop application management from web content rendering.
+        </p>
+      </div>
+
+      <!-- Technical Architecture Flowchart -->
+      <div class="arch-diagram-wrap">
+        <div class="arch-flow">
+          <!-- Host Process -->
+          <div class="arch-node">
+            <div class="arch-node-title host">
+              <i data-lucide="cpu" class="lucide" style="width:18px; height:18px; stroke:var(--accent);"></i>
+              <span>Nexora.exe (Native Host)</span>
+            </div>
+            <ul class="arch-bullets">
+              <li><span class="bullet">•</span> <strong>Win32 Message Loop</strong>: Frameless DWM window geometry, native aero snap, and double-buffered GDI toolbar.</li>
+              <li><span class="bullet">•</span> <strong>Tab Manager</strong>: Persistent resident controller pool, drag-and-drop tab reordering, and hover preview cards.</li>
+              <li><span class="bullet">•</span> <strong>Audio Controller Sync</strong>: Per-tab volume state tracking and muting via COM <code>IsMuted</code> API.</li>
+              <li><span class="bullet">•</span> <strong>Suspension Engine</strong>: Inactive tabs unmapped from RAM (~1.5 KB kept in Rust); automated working set trimming.</li>
+              <li><span class="bullet">•</span> <strong>Embedded SQLite (WAL Mode)</strong>: Atomic storage for bookmarks, history, and per-site zoom factors.</li>
+              <li><span class="bullet">•</span> <strong>In-Memory Bloom AdBlock</strong>: Pre-dispatch network filter permanently blocking trackers and telemetry.</li>
+            </ul>
+          </div>
+
+          <!-- COM Boundary Connector -->
+          <div class="arch-connector">
+            <span class="connector-pill">
+              <i data-lucide="network" class="lucide" style="width:13px; height:13px;"></i>
+              ICoreWebView2Controller
+            </span>
+            <div class="connector-line"></div>
+            <span style="font-size:0.75rem; font-family:var(--font-mono); color:var(--text-muted);">COM Interface</span>
+          </div>
+
+          <!-- Render Runtime -->
+          <div class="arch-node">
+            <div class="arch-node-title runtime">
+              <i data-lucide="globe" class="lucide" style="width:18px; height:18px; stroke:var(--blue);"></i>
+              <span>msedgewebview2.exe (Render Runtime)</span>
+            </div>
+            <ul class="arch-bullets">
+              <li><span class="bullet">•</span> <strong>W3C Web Standards Execution</strong>: HTML5 layout, CSS Flexbox/Grid, V8 JavaScript, WebAssembly, and WebAudio.</li>
+              <li><span class="bullet">•</span> <strong>Certified Widevine CDM</strong>: Hardware decryption for Netflix, Spotify, Disney+, and YouTube Premium.</li>
+              <li><span class="bullet">•</span> <strong>Direct3D 11 & NVDEC Offload</strong>: Zero-copy texture sharing directly between GPU decoder and compositor.</li>
+              <li><span class="bullet">•</span> <strong>Automated CVE Patching</strong>: Bi-weekly zero-day security updates delivered directly by Windows OS component.</li>
+              <li><span class="bullet">•</span> <strong>Child Process Sandboxing</strong>: Renderer memory scales dynamically with webpage content and video buffers.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Architectural Deep-Dive Grid -->
+      <div class="arch-details-grid">
+        <div class="arch-detail-item">
+          <h4>
+            <i data-lucide="shield-check" class="lucide" style="width:16px; height:16px; stroke:var(--accent);"></i>
+            Why WebView2?
+          </h4>
+          <p>
+            Building a web engine from scratch cannot satisfy modern web specifications (>35M lines of code) or commercial Widevine DRM. Bundling Chromium requires 200 MB disk space and frequent manual updates. Nexora's hybrid model leverages the Windows Evergreen runtime, delivering full web compatibility, DRM compliance, and Direct3D 11 acceleration in a 1.46 MB binary.
+          </p>
+        </div>
+
+        <div class="arch-detail-item">
+          <h4>
+            <i data-lucide="video" class="lucide" style="width:16px; height:16px; stroke:var(--accent);"></i>
+            YouTube Memory Reality
+          </h4>
+          <p>
+            Modern YouTube is a heavy single-page application. Its Polymer component tree, comments, and recommendations require 90–130 MB of V8 heap memory. Maintaining smooth 60 FPS playback requires 80–150 MB of uncompressed decoded frame buffers. Nexora maintains video playback at 263 MB total memory—a 37% reduction compared to Chrome.
+          </p>
+        </div>
+
+        <div class="arch-detail-item">
+          <h4>
+            <i data-lucide="layers" class="lucide" style="width:16px; height:16px; stroke:var(--accent);"></i>
+            Multi-Controller Isolation
+          </h4>
+          <p>
+            Nexora maintains resident <code>ICoreWebView2Controller</code> handles for background tabs. Tab switching executes native Win32 <code>SetIsVisible(false)</code> and <code>SetIsVisible(true)</code> calls in 14 ms without page reloads, preserving video playback timestamps, audio continuity, and form inputs.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Benchmark Section -->
+  <section id="benchmarks" class="section">
+    <div class="container">
+      <div class="section-head">
+        <h2 class="section-title">Performance Benchmarks</h2>
+        <p class="section-lead">
+          Measured Committed Working Set (<code>WorkingSet64</code>) and CPU utilization across 12 standardized desktop scenarios. Nexora measurements account for both the host process and all runtime subprocesses.
+        </p>
+      </div>
+
+      <!-- Category Filter Tabs -->
+      <div class="bench-filter-bar">
+        <div class="bench-tabs">
+          <button class="bench-tab-btn active" data-filter="all">All Scenarios (12)</button>
+          <button class="bench-tab-btn" data-filter="media">Streaming & Media</button>
+          <button class="bench-tab-btn" data-filter="tabs">Multi-Tab Sessions</button>
+          <button class="bench-tab-btn" data-filter="latency">Startup & Latency</button>
+        </div>
+        <span style="font-size:0.76rem; font-family:var(--font-mono); color:var(--text-muted);">Committed Working Set</span>
+      </div>
+
+      <!-- Data Table -->
+      <div class="data-table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width:65px;">ID</th>
+              <th>Test Scenario</th>
+              <th>Nexora (Host + Webview)</th>
+              <th>Chrome 124</th>
+              <th>Savings</th>
+              <th>Primary Technical Factor</th>
+            </tr>
+          </thead>
+          <tbody id="benchmarkTableBody">
+            <!-- Populated dynamically by app.js -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Side-by-Side Comparative Visualizer -->
+      <div class="visualizer-box">
+        <div class="visualizer-top">
+          <div class="visualizer-info">
+            <h4>Workload Comparison Visualizer</h4>
+            <p id="visualizerSavings">Nexora consumes 37% less memory than Google Chrome in this workload.</p>
+          </div>
+          <select id="scenarioSelect" class="scenario-dropdown" aria-label="Select benchmark scenario">
+            <!-- Populated dynamically by app.js -->
+          </select>
+        </div>
+
+        <div class="chart-rows">
+          <!-- Nexora -->
+          <div class="chart-row">
+            <span class="chart-label">Nexora Total</span>
+            <div class="chart-track">
+              <div id="barNexoraHost" class="chart-fill fill-host" title="Nexora.exe Host">Host</div>
+              <div id="barNexoraWebview" class="chart-fill fill-webview" title="WebView2 Runtime">WebView2</div>
+            </div>
+            <span id="numNexora" class="chart-val">263.2 MB</span>
+          </div>
+
+          <!-- Chrome -->
+          <div class="chart-row">
+            <span class="chart-label">Chrome 124</span>
+            <div class="chart-track">
+              <div id="barChrome" class="chart-fill fill-chrome">Chrome Full Tree</div>
+            </div>
+            <span id="numChrome" class="chart-val">420.0 MB</span>
+          </div>
+
+          <!-- Edge -->
+          <div class="chart-row">
+            <span class="chart-label">Edge 124</span>
+            <div class="chart-track">
+              <div id="barEdge" class="chart-fill fill-edge">Edge Full Tree</div>
+            </div>
+            <span id="numEdge" class="chart-val">390.0 MB</span>
+          </div>
+        </div>
+
+        <div class="chart-legend">
+          <div class="legend-item"><span class="legend-swatch" style="background:var(--accent);"></span> Nexora Host Process</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#9f1239;"></span> WebView2 Runtime Process</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#3f3f4e;"></span> Google Chrome 124 (Full Process Tree)</div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#272733;"></span> Microsoft Edge 124 (Full Process Tree)</div>
+        </div>
+      </div>
+
+      <!-- Expandable Methodology -->
+      <details class="methodology-details">
+        <summary class="methodology-summary">
+          <span>Benchmark Methodology & Test Environment Specifications</span>
+          <i data-lucide="chevron-down" class="lucide" style="width:16px; height:16px;"></i>
+        </summary>
+        <div class="methodology-body">
+          <p>
+            <strong>Test Rig:</strong> Intel Core i7-3770 CPU @ 3.40 GHz (4 cores / 8 threads), 16.0 GB DDR3 @ 1600 MHz, NVIDIA GeForce GT 730 (Driver 474.11), Windows 11 Pro 64-bit (Build 22631).<br>
+            <strong>Measurement Method:</strong> Captured via Windows Performance Counters and PowerShell management APIs (<code>Get-Process -IncludeUserName | Measure-Object -Property WorkingSet64 -Sum</code>). All background browser processes (browser coordinator, GPU process, network utility, and renderer workers) are summed for Chrome, Edge, and Nexora.<br>
+            <strong>Run Count:</strong> Each scenario is executed 5 times; reported values reflect median measurements taken 30 seconds after navigation stabilization.
+          </p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- Engineered Capabilities Section -->
+  <section id="capabilities" class="section">
+    <div class="container">
+      <div class="section-head">
+        <h2 class="section-title">Engineered Capabilities</h2>
+        <p class="section-lead">
+          Features implemented natively in Rust and Win32, organized into four primary functional domains.
+        </p>
+      </div>
+
+      <!-- Domain 1: Fundamentals -->
+      <div class="capabilities-group">
+        <h3 class="capabilities-group-title">
+          <i data-lucide="layers" class="lucide" style="width:18px; height:18px; stroke:var(--accent);"></i>
+          Browser Fundamentals
+        </h3>
+        <div class="capabilities-list">
+          <!-- Find in Page -->
+          <div class="capability-entry">
+            <div class="capability-top">
+              <span class="capability-heading">
+                <i data-lucide="search" class="lucide" style="width:16px; height:16px; stroke:var(--text-muted);"></i>
+                Find in Page
+              </span>
+              <span class="capability-badge">Ctrl + F</span>
+            </div>
+            <p class="capability-desc">
+              Floating search toolbar positioned at the upper right. Features non-destructive DOM matching, live match counter (<code>current / total</code>), Enter/Shift+Enter navigation, and Escape dismissal.
+            </p>
+          </div>
+
+          <!-- Tab Audio Controls -->
+          <div class="capability-entry">
+            <div class="capability-top">
+              <span class="capability-heading">
+                <i data-lucide="volume-2" class="lucide" style="width:16px; height:16px; stroke:var(--text-muted);"></i>
+                Tab Audio Controls
+              </span>
+              <span class="capability-badge">Per-Tab Muting</span>
+            </div>
+            <p class="capability-desc">
+              Visual audio state indicators on every tab. Clicking the audio glyph toggles mute immediately without switching active tab focus. Context menu provides "Mute other tabs" and "Unmute all tabs".
+            </p>
+          </div>
+
+          <!-- Drag and Drop Tabs -->
+          <div class="capability-entry">
+            <div class="capability-top">
+              <span class="capability-heading">
+                <i data-lucide="arrow-right" class="lucide" style="width:16px; height:16px; stroke:var(--text-muted);"></i>
+                Drag-and-Drop Tab Rearrangement
+              </span>
+              <span class="capability-badge">Mouse Drag</span>
+            </div>
+            <p class="capability-desc">
+              Reorder tabs smoothly with mouse drag. A 5-pixel drag threshold prevents accidental activation, and a vertical insertion indicator shows the drop target without reloading controllers.
+            </p>
+          </div>
+
+          <!-- Pinned Tabs -->
+          <div class="capability-entry">
+            <div class="capability-top">
+              <span class="capability-heading">
+                <i data-lucide="tag" class="lucide" style="width:16px; height:16px; stroke:var(--text-muted);"></i>
+                Pinned Tabs Strip
+              </span>
+              <span class="capability-badge">Context Menu</span>
+            </div>
+            <p class="capability-desc">
+              Compact 36px favicon-only tab pins locked to the left. Pinned tabs are protected from automated memory suspension and persist across browser restarts in SQLite.
+            </p>
+          </div>
+
+          <!-- Per-Site Zoom -->
+          <div class="capability-entry">
+            <div class="capability-top">
+              <span class="capability-heading">
+                <i data-lucide="gauge" class="lucide" style="width:16px; height:16px; stroke:var(--text-muted);"></i>
+                Per-Site Persistent Zoom
+              </span>
+              <span class="capability-badge">Ctrl + / - / 0</span>
+            </div>
+            <p class="capability-desc">
+              Independent zoom scaling from 50% to 200% keyed to website origins. Zoom levels are saved in local SQLite storage and automatically reapplied on return visits.
+            </p>
+          </div>
+
+          <!-- Tab Hover Previews -->
+          <div class="capability-entry">
+            <div class="capability-top">
+              <span class="capability-heading">
+                <i data-lucide="globe" class="lucide" style="width:16px; height:16px; stroke:var(--text-muted);"></i>
+                Tab Hover Previews
+              </span>
+              <span class="capability-badge">450 ms Hover</span>
+            </div>
+            <p class="capability-desc">
+              Non-blocking 450 ms hover preview card showing website favicon, page title, URL, rendered thumbnail, and audio/pin/suspension state badges without activating background tabs.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Domain 2: Media Experience -->
+      <div class="capabilities-group">
+        <h3 class="capabilities-group-title">
+          <i data-lucide="play" class="lucide" style="width:18px; height:18px; stroke:var(--accent);"></i>
+          Media Experience
+        </h3>
+        <div class="capabilities-list">
+          <!-- Picture-in-Picture -->
+          <div class="capability-entry">
+            <div class="capability-top">
+              <span class="capability-heading">
+                <i data-lucide="video" class="lucide" style="width:16px; height:16px; stroke:var(--text-muted);"></i>
+                Advanced Picture-in-Picture
+              </span>
+              <span class="capability-badge">Ctrl + Shift + P</span>
+            </div>
+            <p class="capability-desc">
+              Floating always-on-top video window with hover media controls, volume mute, and return-to-tab navigation. Playback continues uninterrupted when switching tabs or minimizing the browser.
+            </p>
+          </div>
+
+          <!-- Hardware Video Decode -->
+          <div class="capability-entry">
+            <div class="capability-top">
+              <span class="capability-heading">
+                <i data-lucide="monitor" class="lucide" style="width:16px; height:16px; stroke:var(--text-muted);"></i>
+                Direct3D 11 & NVDEC Acceleration
+              </span>
+              <span class="capability-badge">GPU Decode</span>
+            </div>
+            <p class="capability-desc">
+              Hardware-accelerated video decoding for H.264, VP9, and AV1 video streams via native GPU bitstream pipelines, reducing host CPU usage to under 3.5% during 1080p60 playback.
+            </p>
+          </div>
+
+          <!-- DRM Subsystem -->
+          <div class="capability-entry">
+            <div class="capability-top">
+              <span class="capability-heading">
+                <i data-lucide="lock" class="lucide" style="width:16px; height:16px; stroke:var(--text-muted);"></i>
+                Certified Widevine CDM Pipeline
+              </span>
+              <span class="capability-badge">Commercial DRM</span>
+            </div>
+            <p class="capability-desc">
+              Hardware-backed decryption pipeline supporting Netflix, Spotify, YouTube Premium, Disney+, and Amazon Prime Video without HDCP renegotiation errors.
+            </p>
+          </div>
+
+          <!-- Fullscreen -->
+          <div class="capability-entry">
+            <div class="capability-top">
+              <span class="capability-heading">
+                <i data-lucide="monitor" class="lucide" style="width:16px; height:16px; stroke:var(--text-muted);"></i>
+                Borderless Fullscreen
+              </span>
+              <span class="capability-badge">F11</span>
+            </div>
+            <p class="capability-desc">
+              True full-display presentation that expands across the entire monitor canvas without title bar or taskbar intrusion.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Domain 3: Privacy & Security -->
+      <div class="capabilities-group">
+        <h3 class="capabilities-group-title">
+          <i data-lucide="shield-check" class="lucide" style="width:18px; height:18px; stroke:var(--accent);"></i>
+          Privacy & Security
+        </h3>
+        <div class="capabilities-list">
+          <!-- Permissions Panel -->
+          <div class="capability-entry">
+            <div class="capability-top">
+              <span class="capability-heading">
+                <i data-lucide="shield-check" class="lucide" style="width:16px; height:16px; stroke:var(--text-muted);"></i>
+                Website Permissions Panel
+              </span>
+              <span class="capability-badge">Omnibox Shield</span>
+            </div>
+            <p class="capability-desc">
+              Shield icon dropdown in the address bar displaying active permissions (Camera, Microphone, Geolocation, Notifications, Autoplay) with instant toggles saved per-origin in SQLite.
+            </p>
+          </div>
+
+          <!-- AdBlock -->
+          <div class="capability-entry">
+            <div class="capability-top">
+              <span class="capability-heading">
+                <i data-lucide="lock" class="lucide" style="width:16px; height:16px; stroke:var(--text-muted);"></i>
+                Bloom Filter AdBlock
+              </span>
+              <span class="capability-badge">In-Memory</span>
+            </div>
+            <p class="capability-desc">
+              Outgoing network requests are intercepted before dispatch against an in-memory Bloom filter. Tracker pixels, cryptominers, and advertising domains are blocked without browser extensions.
+            </p>
+          </div>
+
+          <!-- Zero Telemetry -->
+          <div class="capability-entry">
+            <div class="capability-top">
+              <span class="capability-heading">
+                <i data-lucide="shield-check" class="lucide" style="width:16px; height:16px; stroke:var(--text-muted);"></i>
+                Zero Telemetry Firewall
+              </span>
+              <span class="capability-badge">Blocked</span>
+            </div>
+            <p class="capability-desc">
+              All Microsoft, Google, and third-party analytical, diagnostic, and reporting telemetry endpoints are permanently blocked at the request interceptor level.
+            </p>
+          </div>
+
+          <!-- SQLite WAL Mode -->
+          <div class="capability-entry">
+            <div class="capability-top">
+              <span class="capability-heading">
+                <i data-lucide="package" class="lucide" style="width:16px; height:16px; stroke:var(--text-muted);"></i>
+                Local SQLite (WAL Mode)
+              </span>
+              <span class="capability-badge">Embedded DB</span>
+            </div>
+            <p class="capability-desc">
+              All user bookmarks, history, and permission entries are stored in an embedded SQLite database using Write-Ahead Logging for high-concurrency atomic transactions.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Domain 4: Performance & Persistence -->
+      <div class="capabilities-group">
+        <h3 class="capabilities-group-title">
+          <i data-lucide="gauge" class="lucide" style="width:18px; height:18px; stroke:var(--accent);"></i>
+          Performance & Persistence
+        </h3>
+        <div class="capabilities-list">
+          <!-- Smart Suspension -->
+          <div class="capability-entry">
+            <div class="capability-top">
+              <span class="capability-heading">
+                <i data-lucide="gauge" class="lucide" style="width:16px; height:16px; stroke:var(--text-muted);"></i>
+                Smart Tab Suspension
+              </span>
+              <span class="capability-badge">Automated</span>
+            </div>
+            <p class="capability-desc">
+              Background tabs inactive past the configured timeout (default: 10 minutes) automatically release their WebView2 controllers, reducing memory consumption by up to 75%.
+            </p>
+          </div>
+
+          <!-- Working Set Trimming -->
+          <div class="capability-entry">
+            <div class="capability-top">
+              <span class="capability-heading">
+                <i data-lucide="memory-stick" class="lucide" style="width:16px; height:16px; stroke:var(--text-muted);"></i>
+                Working Set Memory Trimming
+              </span>
+              <span class="capability-badge">Win32 API</span>
+            </div>
+            <p class="capability-desc">
+              Periodic system memory pressure evaluations invoke Win32 working set trims, returning unused physical memory to the operating system immediately.
+            </p>
+          </div>
+
+          <!-- Session Checkpointing -->
+          <div class="capability-entry">
+            <div class="capability-top">
+              <span class="capability-heading">
+                <i data-lucide="hammer" class="lucide" style="width:16px; height:16px; stroke:var(--text-muted);"></i>
+                Crash Recovery Checkpointing
+              </span>
+              <span class="capability-badge">Atomic State</span>
+            </div>
+            <p class="capability-desc">
+              Session state is serialized atomically to disk upon navigation events, offering instant tab and scroll position recovery after abnormal shutdowns.
+            </p>
+          </div>
+
+          <!-- Standalone Installer -->
+          <div class="capability-entry">
+            <div class="capability-top">
+              <span class="capability-heading">
+                <i data-lucide="package" class="lucide" style="width:16px; height:16px; stroke:var(--text-muted);"></i>
+                Native Setup Installer
+              </span>
+              <span class="capability-badge">Win32 Binary</span>
+            </div>
+            <p class="capability-desc">
+              Standalone native installer (<code>Nexora-Setup-v0.1.0.exe</code>) with dark GDI GUI, silent installation mode (<code>/S</code>), COM shell links, and clean uninstaller.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Built-in Browser Pages Section -->
+  <section id="pages" class="section">
+    <div class="container">
+      <div class="section-head">
+        <h2 class="section-title">Built-in Browser Pages</h2>
+        <p class="section-lead">
+          Internal utility pages rendered directly by the host process via custom scheme routing with zero external network dependencies.
+        </p>
+      </div>
+
+      <div class="internal-pages-wrapper">
+        <div class="internal-pages-nav">
+          <button class="internal-page-tab active" data-page="home">nexora://home</button>
+          <button class="internal-page-tab" data-page="settings">nexora://settings</button>
+          <button class="internal-page-tab" data-page="diagnostics">nexora://diagnostics</button>
+          <button class="internal-page-tab" data-page="bookmarks">nexora://bookmarks</button>
+          <button class="internal-page-tab" data-page="history">nexora://history</button>
+        </div>
+
+        <div class="internal-page-display">
+          <!-- Home -->
+          <div id="pane-home" class="page-display-pane active">
+            <div class="omnibox-simulation">
+              <i data-lucide="lock" class="lucide" style="width:14px; height:14px;"></i>
+              <span>nexora://home</span>
+            </div>
+            <div class="page-doc-content">
+              <h4>Start & Quick Access Dashboard</h4>
+              <p>
+                Minimal start page providing web search engine selection, customizable quick-launch shortcuts, and recent bookmarks with zero news feeds, sponsored shopping banners, or analytics.
+              </p>
+              <div class="page-feature-tags">
+                <span class="page-feature-tag">Custom Shortcuts</span>
+                <span class="page-feature-tag">Multi-Engine Search</span>
+                <span class="page-feature-tag">Zero Telemetry</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Settings -->
+          <div id="pane-settings" class="page-display-pane">
+            <div class="omnibox-simulation">
+              <i data-lucide="lock" class="lucide" style="width:14px; height:14px;"></i>
+              <span>nexora://settings</span>
+            </div>
+            <div class="page-doc-content">
+              <h4>Browser Preferences & Tuning</h4>
+              <p>
+                Two-column configuration panel for dark theme, default search provider, smart tab suspension timeouts (3 to 30 minutes), hardware acceleration switches, and AdBlock rule management.
+              </p>
+              <div class="page-feature-tags">
+                <span class="page-feature-tag">Suspension Timeout</span>
+                <span class="page-feature-tag">GPU Switches</span>
+                <span class="page-feature-tag">AdBlock Rules</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Diagnostics -->
+          <div id="pane-diagnostics" class="page-display-pane">
+            <div class="omnibox-simulation">
+              <i data-lucide="lock" class="lucide" style="width:14px; height:14px;"></i>
+              <span>nexora://diagnostics</span>
+            </div>
+            <div class="page-doc-content">
+              <h4>Real-Time System & Engine Monitor</h4>
+              <p>
+                Displays live memory usage for <code>Nexora.exe</code> and <code>msedgewebview2.exe</code>, GPU video decoder vendor (NVDEC, QuickSync, AMF), active tab lifecycle states, and SQLite database integrity.
+              </p>
+              <div class="page-feature-tags">
+                <span class="page-feature-tag">Working Set Monitor</span>
+                <span class="page-feature-tag">GPU Vendor Probe</span>
+                <span class="page-feature-tag">Tab Controller Table</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bookmarks -->
+          <div id="pane-bookmarks" class="page-display-pane">
+            <div class="omnibox-simulation">
+              <i data-lucide="lock" class="lucide" style="width:14px; height:14px;"></i>
+              <span>nexora://bookmarks</span>
+            </div>
+            <div class="page-doc-content">
+              <h4>Searchable Bookmark Repository</h4>
+              <p>
+                Fast search and organization interface for saved bookmarks. Stores titles, URLs, and creation dates directly in local SQLite storage with instant search indexing.
+              </p>
+              <div class="page-feature-tags">
+                <span class="page-feature-tag">SQLite Backed</span>
+                <span class="page-feature-tag">Instant Filtering</span>
+                <span class="page-feature-tag">Folder Organization</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- History -->
+          <div id="pane-history" class="page-display-pane">
+            <div class="omnibox-simulation">
+              <i data-lucide="lock" class="lucide" style="width:14px; height:14px;"></i>
+              <span>nexora://history</span>
+            </div>
+            <div class="page-doc-content">
+              <h4>Chronological Browsing Timeline</h4>
+              <p>
+                Chronological browsing history viewer with visit timestamps, search filter, and individual or date-range deletion controls. All history remains strictly local.
+              </p>
+              <div class="page-feature-tags">
+                <span class="page-feature-tag">Date Filtering</span>
+                <span class="page-feature-tag">Zero Cloud Sync</span>
+                <span class="page-feature-tag">Atomic Deletion</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Keyboard Shortcuts Section -->
+  <section id="shortcuts" class="section">
+    <div class="container">
+      <div class="section-head">
+        <h2 class="section-title">Keyboard Shortcuts</h2>
+        <p class="section-lead">
+          Keyboard-driven navigation for tabs, in-page search, zoom, and window management.
+        </p>
+      </div>
+
+      <div class="shortcuts-filter-wrap">
+        <input type="text" id="shortcutSearch" class="shortcuts-input" placeholder="Search shortcuts (e.g., zoom, tab, find)..." aria-label="Search shortcuts">
+      </div>
+
+      <!-- Navigation & Tabs -->
+      <div class="shortcuts-category">
+        <h4 class="shortcuts-category-title">Navigation & Tabs</h4>
+        <table class="shortcuts-table">
+          <tbody>
+            <tr>
+              <td>Open New Tab</td>
+              <td class="key-col"><kbd>Ctrl</kbd> + <kbd>T</kbd></td>
+            </tr>
+            <tr>
+              <td>Close Active Tab</td>
+              <td class="key-col"><kbd>Ctrl</kbd> + <kbd>W</kbd></td>
+            </tr>
+            <tr>
+              <td>Switch to Next Tab</td>
+              <td class="key-col"><kbd>Ctrl</kbd> + <kbd>Tab</kbd></td>
+            </tr>
+            <tr>
+              <td>Switch to Previous Tab</td>
+              <td class="key-col"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Tab</kbd></td>
+            </tr>
+            <tr>
+              <td>Focus Address Bar</td>
+              <td class="key-col"><kbd>Ctrl</kbd> + <kbd>L</kbd> / <kbd>Alt</kbd> + <kbd>D</kbd></td>
+            </tr>
+            <tr>
+              <td>Reload Current Page</td>
+              <td class="key-col"><kbd>Ctrl</kbd> + <kbd>R</kbd> / <kbd>F5</kbd></td>
+            </tr>
+            <tr>
+              <td>Navigate Back</td>
+              <td class="key-col"><kbd>Alt</kbd> + <kbd>Left</kbd></td>
+            </tr>
+            <tr>
+              <td>Navigate Forward</td>
+              <td class="key-col"><kbd>Alt</kbd> + <kbd>Right</kbd></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- In-Page Search & Zoom -->
+      <div class="shortcuts-category">
+        <h4 class="shortcuts-category-title">Search & Zoom</h4>
+        <table class="shortcuts-table">
+          <tbody>
+            <tr>
+              <td>Open Find in Page</td>
+              <td class="key-col"><kbd>Ctrl</kbd> + <kbd>F</kbd></td>
+            </tr>
+            <tr>
+              <td>Next Search Match</td>
+              <td class="key-col"><kbd>Enter</kbd></td>
+            </tr>
+            <tr>
+              <td>Previous Search Match</td>
+              <td class="key-col"><kbd>Shift</kbd> + <kbd>Enter</kbd></td>
+            </tr>
+            <tr>
+              <td>Zoom In (+10%)</td>
+              <td class="key-col"><kbd>Ctrl</kbd> + <kbd>+</kbd></td>
+            </tr>
+            <tr>
+              <td>Zoom Out (-10%)</td>
+              <td class="key-col"><kbd>Ctrl</kbd> + <kbd>-</kbd></td>
+            </tr>
+            <tr>
+              <td>Reset Zoom (100%)</td>
+              <td class="key-col"><kbd>Ctrl</kbd> + <kbd>0</kbd></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Media & Windows -->
+      <div class="shortcuts-category">
+        <h4 class="shortcuts-category-title">Media & Internal Endpoints</h4>
+        <table class="shortcuts-table">
+          <tbody>
+            <tr>
+              <td>Toggle Picture-in-Picture</td>
+              <td class="key-col"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd></td>
+            </tr>
+            <tr>
+              <td>Toggle Fullscreen</td>
+              <td class="key-col"><kbd>F11</kbd></td>
+            </tr>
+            <tr>
+              <td>Bookmark Current Page</td>
+              <td class="key-col"><kbd>Ctrl</kbd> + <kbd>D</kbd></td>
+            </tr>
+            <tr>
+              <td>Open Bookmarks Manager</td>
+              <td class="key-col"><kbd>Ctrl</kbd> + <kbd>B</kbd></td>
+            </tr>
+            <tr>
+              <td>Open History Timeline</td>
+              <td class="key-col"><kbd>Ctrl</kbd> + <kbd>H</kbd></td>
+            </tr>
+            <tr>
+              <td>Open Settings</td>
+              <td class="key-col"><kbd>Ctrl</kbd> + <kbd>,</kbd></td>
+            </tr>
+            <tr>
+              <td>Open Diagnostics Monitor</td>
+              <td class="key-col"><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>D</kbd></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Installation & Build Instructions -->
+  <section id="install" class="section">
+    <div class="container">
+      <div class="section-head">
+        <h2 class="section-title">Installation & Build Options</h2>
+        <p class="section-lead">
+          Choose between an automated Windows installer, a zero-install portable zip archive, or building from source with the standard Rust toolchain.
+        </p>
+      </div>
+
+      <div class="install-options">
+        <!-- Windows Setup Executable -->
+        <div class="install-card">
+          <div class="install-card-title">
+            <i data-lucide="package" class="lucide" style="width:18px; height:18px; stroke:var(--accent);"></i>
+            Windows Installer (.exe)
+          </div>
+          <p class="install-card-desc">
+            Installs Nexora into <code>%LOCALAPPDATA%\Programs\Nexora</code>, creates Desktop and Start Menu shortcuts, and registers a clean uninstaller in Windows Settings.
+          </p>
+          <div class="terminal-block">
+            <button class="terminal-copy" title="Copy command">
+              <i data-lucide="copy" class="lucide" style="width:12px; height:12px;"></i>
+              Copy
+            </button>
+            <code># Run silent installation without wizard:
+Nexora-Setup-v0.1.0.exe /S</code>
+          </div>
+          <div class="install-card-action">
+            <a href="https://github.com/Nexora/Nexora/releases" class="btn btn-secondary" style="width:100%;">
+              <i data-lucide="download" class="lucide" style="width:15px; height:15px;"></i>
+              Download Setup (.exe)
+            </a>
+          </div>
+        </div>
+
+        <!-- Portable ZIP -->
+        <div class="install-card">
+          <div class="install-card-title">
+            <i data-lucide="download" class="lucide" style="width:18px; height:18px; stroke:var(--accent);"></i>
+            Portable Archive (.zip)
+          </div>
+          <p class="install-card-desc">
+            Standalone 1.32 MB zip archive. Extract to any directory or USB stick and run <code>Nexora.exe</code>. Requires no administrator permissions or registry modification.
+          </p>
+          <div class="terminal-block">
+            <button class="terminal-copy" title="Copy command">
+              <i data-lucide="copy" class="lucide" style="width:12px; height:12px;"></i>
+              Copy
+            </button>
+            <code># Extract and execute immediately:
+Expand-Archive Nexora-portable.zip -DestinationPath .\Nexora
+.\Nexora\Nexora.exe</code>
+          </div>
+          <div class="install-card-action">
+            <a href="https://github.com/Nexora/Nexora/releases" class="btn btn-secondary" style="width:100%;">
+              <i data-lucide="download" class="lucide" style="width:15px; height:15px;"></i>
+              Download Portable (.zip)
+            </a>
+          </div>
+        </div>
+
+        <!-- Build from Source -->
+        <div class="install-card">
+          <div class="install-card-title">
+            <i data-lucide="code-2" class="lucide" style="width:18px; height:18px; stroke:var(--accent);"></i>
+            Building from Source
+          </div>
+          <p class="install-card-desc">
+            Prerequisites: Windows 10/11 x64, Rust toolchain (1.80+), and WebView2 Evergreen runtime. Build with Cargo:
+          </p>
+          <div class="terminal-block">
+            <button class="terminal-copy" title="Copy command">
+              <i data-lucide="copy" class="lucide" style="width:12px; height:12px;"></i>
+              Copy
+            </button>
+            <code>git clone https://github.com/Nexora/Nexora.git
+cd Nexora
+cargo build --release
+cargo test</code>
+          </div>
+          <div class="install-card-action">
+            <a href="https://github.com/Nexora/Nexora" target="_blank" rel="noreferrer" class="btn btn-secondary" style="width:100%;">
+              <i data-lucide="github" class="lucide" style="width:15px; height:15px;"></i>
+              GitHub Repository
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Technical Specification Summary -->
+  <section id="specs" class="section" style="border-bottom:none;">
+    <div class="container">
+      <div class="section-head">
+        <h2 class="section-title">Technical Specification Summary</h2>
+        <p class="section-lead">
+          Verified platform, runtime, storage, and rendering specifications supported by the current release.
+        </p>
+      </div>
+
+      <div class="data-table-container">
+        <table class="data-table">
+          <tbody>
+            <tr>
+              <td class="scenario-name" style="width:260px;">Application Language & Framework</td>
+              <td>Pure Rust (1.80+), native Win32 API, GDI double-buffered graphics, Direct3D 11 hardware hooks</td>
+            </tr>
+            <tr>
+              <td class="scenario-name">Web Rendering Engine</td>
+              <td>Microsoft Edge WebView2 Evergreen Runtime (Chromium 124+ platform)</td>
+            </tr>
+            <tr>
+              <td class="scenario-name">On-Disk Executable Size</td>
+              <td class="mono">1,533,952 bytes (1.46 MB)</td>
+            </tr>
+            <tr>
+              <td class="scenario-name">Process Memory Baseline</td>
+              <td class="mono">4.8 MB – 18 MB RAM (Host) • 48.0 MB (Webview cold start)</td>
+            </tr>
+            <tr>
+              <td class="scenario-name">Operating System Support</td>
+              <td>Windows 10 (Build 1809+) and Windows 11 (64-bit)</td>
+            </tr>
+            <tr>
+              <td class="scenario-name">Local Storage Architecture</td>
+              <td>Embedded SQLite 3 with Write-Ahead Logging (WAL) mode and atomic session checkpointing</td>
+            </tr>
+            <tr>
+              <td class="scenario-name">Hardware Video Acceleration</td>
+              <td>Direct3D 11 / NVDEC / QuickSync / AMF zero-copy GPU video bitstream decoding</td>
+            </tr>
+            <tr>
+              <td class="scenario-name">DRM Decryption Subsystem</td>
+              <td>Google Widevine CDM & Microsoft PlayReady hardware decryption</td>
+            </tr>
+            <tr>
+              <td class="scenario-name">Network Request Filtering</td>
+              <td>In-memory Bloom filter with domain pattern matching (Zero browser extension overhead)</td>
+            </tr>
+            <tr>
+              <td class="scenario-name">Automated Unit Test Suite</td>
+              <td class="diff-positive">72 / 72 passing (100% pass rate, 0 warnings)</td>
+            </tr>
+            <tr>
+              <td class="scenario-name">Developer & Publisher</td>
+              <td>Akshat Apoorv</td>
+            </tr>
+            <tr>
+              <td class="scenario-name">Licensing</td>
+              <td>MIT License (Open Source Software)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Global Footer -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-main">
+        <div class="footer-info">
+          <div class="brand-wrap" style="margin-bottom:6px;">
+            <img src="app_icon.png" alt="Nexora Logo" class="brand-icon">
+            <strong>Nexora</strong>
+          </div>
+          <p>
+            A lightweight, streaming-focused desktop browser for Windows, built with native Rust, Win32 and WebView2.
+          </p>
+        </div>
+
+        <div class="footer-links">
+          <a href="#overview">Overview</a>
+          <a href="#architecture">Architecture</a>
+          <a href="#benchmarks">Benchmarks</a>
+          <a href="#capabilities">Capabilities</a>
+          <a href="#shortcuts">Shortcuts</a>
+          <a href="#install">Installation</a>
+          <a href="https://github.com/Nexora/Nexora" target="_blank" rel="noreferrer">GitHub</a>
+        </div>
+      </div>
+
+      <div class="footer-legal">
+        <span>&copy; 2026 Akshat Apoorv. Licensed under the MIT License.</span>
+        <span>Built for Windows 10 & 11 (x64)</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

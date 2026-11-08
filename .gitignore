@@ -24,9 +24,6 @@ EngineData/
 *.db-shm
 *.log
 
-# Local documentation & info page (kept out of git commits)
-info-page/
-
 
 # Environment
 .env

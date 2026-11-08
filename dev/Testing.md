@@ -91,4 +91,19 @@ All 65 automated tests across core subsystems execute and pass:
 - **DEF-001 (Resolved)**: Single-controller navigation reload bottleneck during tab switching. Resolved via multi-controller `ICoreWebView2Controller` persistent views architecture (`ADR-008`). Switching latency reduced from ~1,000 ms to 8–18 ms.
 - **DEF-002 (Resolved)**: Address bar displaying `about:blank` or data URIs upon internal navigation or tab switching. Resolved via strict URL filtering guards in `NavigationStarting`, `SourceChanged`, and `DocumentTitleChanged`.
 
+---
+
+### 8. Information Page Redesign Validation Suite
+
+| Test ID | Area | Verification Target | Criteria | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| `TEST-INFO-001` | Semantics & Contrast | WCAG 2.1 AA Contrast (>= 4.5:1) & Semantic Elements | Clean heading hierarchy, `<header>`, `<main>`, `<section>`, `<footer>`, readable typography | **Passed** |
+| `TEST-INFO-002` | Responsive Design | Fluid layout across 320px, 768px, 1024px, 1440px | No horizontal overflow, readable tables, responsive mobile navigation menu | **Passed** |
+| `TEST-INFO-003` | Benchmark Visualizer | Interactive 12-scenario table & comparison bars | Category filtering (All/Media/Tabs/Latency) and reactive bar chart scaling | **Passed** |
+| `TEST-INFO-004` | Shortcut Search | Real-time keyboard shortcut filter | Instant keystroke filtering across 21 shortcuts | **Passed** |
+| `TEST-INFO-005` | Internal Pages Tabs | Interactive `nexora://` page previewer | Smooth switching between Home, Settings, Diagnostics, Bookmarks, and History | **Passed** |
+| `TEST-INFO-006` | Clipboard Actions | Terminal code block copy buttons | Single-click copy with subtle "Copied!" feedback and auto-reset | **Passed** |
+| `TEST-INFO-007` | Icon Consistency | Official Lucide SVG icons across all controls | Stroke width 1.75–2px, visual weight alignment, text parity, zero mixed libraries | **Passed** |
+
+
 
