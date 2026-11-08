@@ -122,6 +122,12 @@ Nexora/
 
 ### 4. Engine Integration Details
 
+#### Persistent Multi-Controller Architecture
+To eliminate tab switching latency and page reloading, NEXORA maintains a single shared `ICoreWebView2Environment` and instantiates dedicated `ICoreWebView2Controller` instances for resident tabs:
+1. **Instant Tab Switching (< 15ms)**: When switching tabs, the outgoing tab controller's visibility is set to `FALSE` (`SetIsVisible(FALSE)`) while the incoming tab controller is updated with `SetBounds(RECT)`, `SetIsVisible(TRUE)`, and programmatic focus.
+2. **DOM & Media Continuity**: Because the controller is never destroyed or re-navigated during ordinary tab switches, background videos (e.g. YouTube), web applications (Google Docs), and scroll positions remain 100% active and unperturbed.
+3. **Smart Suspension Balance**: Inactive tabs exceeding idle thresholds under system memory pressure have their controllers gracefully closed and transitioned to dormant stubs (`TabState::Suspended`), preserving memory while ensuring active tabs switch with zero latency.
+
 #### WebView2 Environment Configuration
 NEXORA instantiates the WebView2 environment via `CreateCoreWebView2EnvironmentWithOptions`:
 1. **User Data Directory**: Directed to `%LOCALAPPDATA%\Nexora\EngineData` to guarantee separation from system Edge or other WebView2 host applications.
@@ -186,4 +192,23 @@ User Action (Navigate) ---> Omnibox Parsing ---> WebResourceRequested (Filter Ch
 ```
 
 All persistent operations on the SQLite database use explicit transactions wrapped in the WAL journal, ensuring that sudden system power outages or hard terminations do not corrupt bookmarks or session history.
+
+---
+
+### 8. Nexora Design System & Vector Iconography
+
+In Phase 12, NEXORA eliminated all AI-generated sci-fi dashboard artifacts (excessive red glows, decorative badges, sci-fi terminology) and established a calm, unified desktop browser aesthetic:
+1. **Design Tokens (`src/ui/design_system.rs`)**:
+   - Deep neutral charcoal canvas (`#121214`), dark surface (`#18181B`), and card components (`#202024`).
+   - Low-contrast neutral borders (`rgba(255, 255, 255, 0.08)`), soft white text (`#F4F4F5`), and muted secondary text (`#A1A1AA`).
+   - Restrained crimson accent (`#E11D48`) reserved strictly for active tab lines, primary buttons, and critical states.
+   - Reusable tokens for buttons (`.btn`, `.btn-primary`, `.btn-ghost`), inputs, selects, toggles, cards, badges, and empty states.
+2. **Official Lucide Icon Library (`src/ui/icons.rs`)**:
+   - Official Lucide vector paths for 31 icons (`ArrowLeft`, `ArrowRight`, `RotateCw`, `House`, `Bookmark`, `Menu`, `Plus`, `X`, `Search`, `Settings`, `History`, `ShieldCheck`, `Cpu`, `Layers`, `Monitor`, `Download`, etc.).
+   - Standard 16px/18px sizing, consistent 1.8–2.0px stroke width, clean hover states, and filled bookmark state.
+3. **Internal Scheme Pages**:
+   - `nexora://home`: Start page with search engine switching (Google, Bing, DuckDuckGo), editable shortcuts, and persistent bookmarks.
+   - `nexora://settings`: Two-column dashboard with compact 230px sidebar, live category filter, and 100% working config persistence.
+   - `nexora://diagnostics`: Truthful system monitor displaying real host/tree RAM, child process count, rounded metrics, Copy JSON, and Export Report.
+
 

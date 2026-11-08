@@ -327,3 +327,34 @@
 #### Completion Criteria
 - Verified, single-click installable production distribution ready for end-user deployment.
 
+---
+
+### Phase 12: UI/UX Refinement & Instant Tab Performance
+
+#### Objectives
+- Eliminate all AI-generated sci-fi dashboard artifacts (excessive red glows, decorative badges, futuristic terminology).
+- Establish the unified Nexora Design System (`src/ui/design_system.rs`) with charcoal base, soft white text, and restrained crimson accents.
+- Integrate official Lucide vector icons (`src/ui/icons.rs`) consistently across top toolbar and all internal schemes.
+- Transition from single-controller navigation to persistent multi-controller browser views (`tab_views: RefCell<HashMap<usize, TabView>>`).
+- Achieve instant tab switching (< 15–50 ms) with zero page reloads, zero DOM teardown, and preserved background video playback.
+- Redesign `nexora://home`, `nexora://settings`, and `nexora://diagnostics` into professional desktop browser interfaces.
+- Protect omnibox and tab title synchronization against `about:blank` and data URIs.
+
+#### Features & Deliverables
+- `src/ui/design_system.rs`: Shared design tokens and CSS components.
+- `src/ui/icons.rs`: Official Lucide SVG vector icon renderer (31 icons).
+- `src/engine/webview.rs`: Multi-controller persistent views, visibility toggles, and omnibox URI guards.
+- `src/home/home_ui.rs`: Modern start page with search engine switcher, shortcuts modal, and bookmarks.
+- `src/settings/settings_ui.rs`: Two-column settings dashboard with 100% working IPC config persistence.
+- `src/diagnostics/diagnostics_ui.rs`: Truthful system monitor displaying real host/tree RAM via `get_tree_memory()`, rounded values, Copy JSON, and Export Report.
+- `tests/benchmark.ps1`: SC-12 automated tab switching latency benchmark (< 25 ms target).
+
+#### Testing Requirements
+- Unit test suite: 65 passing tests including Lucide icon generation, settings rendering, and diagnostics.
+- Benchmarking: SC-12 instant tab-switching validation.
+- Video continuity: YouTube 1080p playback preservation across tab switches.
+
+#### Completion Criteria
+- Instant tab switching (< 20 ms resident switch).
+- 100% passing tests and complete elimination of AI-generated dashboard artifacts.
+

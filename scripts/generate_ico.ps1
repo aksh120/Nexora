@@ -156,3 +156,4 @@ $icoMs.Dispose()
 [System.IO.File]::WriteAllBytes("assets/icons/nexora.ico", $icoBytes)
 
 Write-Host "Successfully generated Quantum Prism .ico files ($($icoBytes.Length) bytes, 7 resolutions: 16 to 256px)"
+

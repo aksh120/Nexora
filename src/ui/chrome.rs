@@ -169,12 +169,12 @@ impl BrowserChrome {
     pub fn layout_controls(&self, layout: &BrowserLayout, _tab_count: usize) {
         unsafe {
             let omnibox = layout.omnibox_rect();
-            // Inset edit control slightly inside the rendered omnibox container frame
+            // Inset edit control inside the rendered omnibox container frame, leaving 28px on left for ShieldCheck
             let _ = MoveWindow(
                 self.hwnd_omnibox,
-                omnibox.0 + 8,
+                omnibox.0 + 28,
                 omnibox.1 + 4,
-                omnibox.2 - 16,
+                omnibox.2 - 36,
                 omnibox.3 - 8,
                 true,
             );
@@ -392,29 +392,29 @@ impl BrowserChrome {
                     DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS,
                 );
 
-                // Close Button ("×")
+                // Close Button (Lucide X)
                 let is_close_hovered = self.hovered_item == ChromeHitResult::TabClose(tab.id);
-                let mut close_str: [u16; 2] = [0x00D7, 0];
-                let mut close_rect = RECT {
-                    left: tx + tw - 22,
-                    top: ty,
-                    right: tx + tw - 4,
-                    bottom: ty + th,
-                };
+                let close_cx = tx + tw - 13;
+                let close_cy = ty + th / 2;
+                if is_close_hovered {
+                    let hover_brush = CreateSolidBrush(self.theme.button_hover_bg);
+                    let r = RECT {
+                        left: close_cx - 8,
+                        top: close_cy - 8,
+                        right: close_cx + 8,
+                        bottom: close_cy + 8,
+                    };
+                    FillRect(mem_dc, &r, hover_brush);
+                    let _ = DeleteObject(hover_brush);
+                }
                 let close_color = if is_close_hovered {
-                    rgb(255, 80, 80)
+                    self.theme.accent_color
                 } else if is_active {
                     rgb(180, 180, 180)
                 } else {
                     rgb(120, 120, 120)
                 };
-                SetTextColor(mem_dc, close_color);
-                DrawTextW(
-                    mem_dc,
-                    &mut close_str[..1],
-                    &mut close_rect,
-                    DT_CENTER | DT_VCENTER | DT_SINGLELINE,
-                );
+                Self::draw_vector_x(mem_dc, close_cx, close_cy, close_color);
             }
 
             // 5. Render New Tab "+" Button
@@ -495,19 +495,19 @@ impl BrowserChrome {
                 Self::draw_vector_home(dc, cx, cy, col);
             });
 
-            // Bookmark Button
+            // Bookmark Button (Lucide Bookmark Ribbon)
             let bm = layout.bookmark_button_rect();
             let is_bm_hovered = self.hovered_item == ChromeHitResult::BtnBookmark;
             let is_bm_filled = self.is_current_page_bookmarked;
             Self::render_nav_button(mem_dc, bm, is_bm_hovered, self.theme.button_hover_bg, |dc, cx, cy, col| {
-                let star_color = if is_bm_hovered {
+                let bm_color = if is_bm_hovered {
                     rgb(244, 63, 94)
                 } else if is_bm_filled {
                     rgb(225, 29, 72)
                 } else {
                     col
                 };
-                Self::draw_vector_star(dc, cx, cy, star_color, is_bm_filled);
+                Self::draw_vector_bookmark(dc, cx, cy, bm_color, is_bm_filled);
             });
 
             // Menu Button
@@ -537,6 +537,14 @@ impl BrowserChrome {
             let _ = LineTo(mem_dc, omnibox.0, omnibox.1);
             let _ = SelectObject(mem_dc, div_pen);
             let _ = DeleteObject(border_pen);
+
+            // Render Lucide ShieldCheck security icon on the left of omnibox
+            Self::draw_vector_shield_check(
+                mem_dc,
+                omnibox.0 + 14,
+                omnibox.1 + omnibox.3 / 2,
+                rgb(16, 185, 129), // Restrained emerald green
+            );
 
             // Clean up GDI objects
             let _ = SelectObject(mem_dc, old_pen);
@@ -667,35 +675,73 @@ impl BrowserChrome {
         let _ = DeleteObject(pen);
     }
 
-    unsafe fn draw_vector_star(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF, is_filled: bool) {
-        let pen = CreatePen(PS_SOLID, 1, color);
-        let old_pen = SelectObject(hdc, pen);
-
+    unsafe fn draw_vector_bookmark(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF, is_filled: bool) {
+        // Lucide Bookmark ribbon icon with bottom notch
         let pts = [
-            POINT { x: cx, y: cy - 7 },
-            POINT { x: cx + 2, y: cy - 2 },
-            POINT { x: cx + 7, y: cy - 2 },
-            POINT { x: cx + 3, y: cy + 1 },
-            POINT { x: cx + 5, y: cy + 6 },
+            POINT { x: cx - 5, y: cy - 7 },
+            POINT { x: cx + 5, y: cy - 7 },
+            POINT { x: cx + 5, y: cy + 7 },
             POINT { x: cx, y: cy + 3 },
-            POINT { x: cx - 5, y: cy + 6 },
-            POINT { x: cx - 3, y: cy + 1 },
-            POINT { x: cx - 7, y: cy - 2 },
-            POINT { x: cx - 2, y: cy - 2 },
+            POINT { x: cx - 5, y: cy + 7 },
         ];
 
         if is_filled {
             let brush = CreateSolidBrush(color);
             let old_brush = SelectObject(hdc, brush);
+            let pen = CreatePen(PS_SOLID, 1, color);
+            let old_pen = SelectObject(hdc, pen);
             let _ = windows::Win32::Graphics::Gdi::Polygon(hdc, &pts);
             let _ = SelectObject(hdc, old_brush);
+            let _ = SelectObject(hdc, old_pen);
             let _ = DeleteObject(brush);
+            let _ = DeleteObject(pen);
         } else {
+            let pen = CreatePen(PS_SOLID, 2, color);
+            let old_pen = SelectObject(hdc, pen);
             let stock_brush = windows::Win32::Graphics::Gdi::GetStockObject(windows::Win32::Graphics::Gdi::HOLLOW_BRUSH);
             let old_brush = SelectObject(hdc, stock_brush);
             let _ = windows::Win32::Graphics::Gdi::Polygon(hdc, &pts);
             let _ = SelectObject(hdc, old_brush);
+            let _ = SelectObject(hdc, old_pen);
+            let _ = DeleteObject(pen);
         }
+    }
+
+    unsafe fn draw_vector_shield_check(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
+        let pen = CreatePen(PS_SOLID, 1, color);
+        let old_pen = SelectObject(hdc, pen);
+
+        // Shield contour
+        let pts = [
+            POINT { x: cx - 5, y: cy - 6 },
+            POINT { x: cx + 5, y: cy - 6 },
+            POINT { x: cx + 5, y: cy + 1 },
+            POINT { x: cx, y: cy + 6 },
+            POINT { x: cx - 5, y: cy + 1 },
+        ];
+        let stock_brush = windows::Win32::Graphics::Gdi::GetStockObject(windows::Win32::Graphics::Gdi::HOLLOW_BRUSH);
+        let old_brush = SelectObject(hdc, stock_brush);
+        let _ = windows::Win32::Graphics::Gdi::Polygon(hdc, &pts);
+        let _ = SelectObject(hdc, old_brush);
+
+        // Checkmark inside shield
+        let _ = MoveToEx(hdc, cx - 3, cy, None);
+        let _ = LineTo(hdc, cx - 1, cy + 2);
+        let _ = LineTo(hdc, cx + 3, cy - 2);
+
+        let _ = SelectObject(hdc, old_pen);
+        let _ = DeleteObject(pen);
+    }
+
+    unsafe fn draw_vector_x(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
+        let pen = CreatePen(PS_SOLID, 1, color);
+        let old_pen = SelectObject(hdc, pen);
+
+        let _ = MoveToEx(hdc, cx - 4, cy - 4, None);
+        let _ = LineTo(hdc, cx + 5, cy + 5);
+
+        let _ = MoveToEx(hdc, cx + 4, cy - 4, None);
+        let _ = LineTo(hdc, cx - 5, cy + 5);
 
         let _ = SelectObject(hdc, old_pen);
         let _ = DeleteObject(pen);

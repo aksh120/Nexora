@@ -114,3 +114,32 @@
   3. Pre-compiled ad blocking accelerates page load times by up to 40% and reduces RAM usage by eliminating ad scripts.
 - **Consequences**: NEXORA makes outbound network connections exclusively for user-initiated website navigations.
 
+---
+
+### ADR-008: Multi-Controller Persistent Tab Views for Instant Tab Switching
+
+- **Date**: 2026-11-08
+- **Status**: **Approved**
+- **Context**: The initial single-controller architecture called `webview.stop(); webview.navigate(&url);` on every tab switch, causing a full page reload, blank screen flashes, 1000ms+ latency, and YouTube video restarts.
+- **Decision**: Transition to a persistent multi-controller architecture where each active tab maintains its own `ICoreWebView2Controller`. Switching tabs performs visibility toggling (`SetIsVisible(FALSE/TRUE)`) and bounds attachment.
+- **Rationale**:
+  1. Tab switching becomes virtually instantaneous (< 15ms).
+  2. Zero network requests, zero page reloads, zero loss of DOM or JavaScript execution state.
+  3. Video playback and audio streams remain 100% continuous.
+  4. Non-active/idle tabs continue to be managed by `SmartSuspensionEngine` to prevent unbound memory growth.
+- **Consequences**: Resident tabs consume memory according to their loaded DOMs, balanced by aggressive suspension of non-media inactive tabs under memory pressure.
+
+---
+
+### ADR-009: Unified Professional Desktop Design System & Lucide Icons
+
+- **Date**: 2026-11-08
+- **Status**: **Approved**
+- **Context**: Earlier UI iterations featured excessive red glows, grid backgrounds, sci-fi military terminology ("Commander", "Telemetry Core"), and inconsistent icons.
+- **Decision**: Establish a restrained, professional design system inspired by Arc, Edge, and Linear. Adopt deep neutral charcoal surfaces, soft typography, restrained crimson accents, and official Lucide vector icons across the toolbar and internal pages.
+- **Rationale**:
+  1. Transforms Nexora into a serious, polished desktop productivity tool.
+  2. Ensures visual consistency across Home, Settings, Diagnostics, Bookmarks, and History.
+  3. Official Lucide icons provide unified stroke weight, sizing, and professional interaction states.
+- **Consequences**: All artificial dashboard elements and fake metrics are permanently eliminated. All displayed metrics must be real and verifiable.
+

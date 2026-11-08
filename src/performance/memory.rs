@@ -176,6 +176,67 @@ pub fn trim_child_processes() -> usize {
     trimmed_count
 }
 
+/// Query memory usage for host process and sum of all child WebView2 processes
+pub fn get_tree_memory() -> (usize, usize, usize) {
+    let host_info = get_process_memory().unwrap_or_default();
+    let parent_pid = unsafe { GetCurrentProcessId() };
+    let mut children_ws = 0;
+    let mut child_count = 0;
+
+    unsafe {
+        if let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
+            let mut entry = PROCESSENTRY32W {
+                dwSize: mem::size_of::<PROCESSENTRY32W>() as u32,
+                ..Default::default()
+            };
+
+            let mut child_pids = Vec::new();
+            if Process32FirstW(snapshot, &mut entry).is_ok() {
+                loop {
+                    if entry.th32ParentProcessID == parent_pid {
+                        child_pids.push(entry.th32ProcessID);
+                    }
+                    if Process32NextW(snapshot, &mut entry).is_err() {
+                        break;
+                    }
+                }
+            }
+
+            // Descendant processes
+            if !child_pids.is_empty() {
+                if Process32FirstW(snapshot, &mut entry).is_ok() {
+                    loop {
+                        if child_pids.contains(&entry.th32ParentProcessID) && !child_pids.contains(&entry.th32ProcessID) {
+                            child_pids.push(entry.th32ProcessID);
+                        }
+                        if Process32NextW(snapshot, &mut entry).is_err() {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            let _ = CloseHandle(snapshot);
+
+            child_count = child_pids.len();
+            for pid in child_pids {
+                if let Ok(h_proc) = OpenProcess(PROCESS_QUERY_INFORMATION, false, pid) {
+                    let mut counters = PROCESS_MEMORY_COUNTERS {
+                        cb: mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
+                        ..Default::default()
+                    };
+                    if GetProcessMemoryInfo(h_proc, &mut counters, mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32).is_ok() {
+                        children_ws += counters.WorkingSetSize;
+                    }
+                    let _ = CloseHandle(h_proc);
+                }
+            }
+        }
+    }
+
+    (host_info.working_set_bytes, children_ws, child_count)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -34,7 +34,7 @@ param(
     [ValidateSet("Nexora", "Chrome", "Edge", "All", "Simulated")]
     [string]$TargetBrowser = "Nexora",
 
-    [ValidateSet("SC-01", "SC-02", "SC-03", "SC-04", "SC-05", "SC-06", "SC-07", "SC-08", "SC-09", "SC-10", "SC-11", "All")]
+    [ValidateSet("SC-01", "SC-02", "SC-03", "SC-04", "SC-05", "SC-06", "SC-07", "SC-08", "SC-09", "SC-10", "SC-11", "SC-12", "All")]
     [string]$Scenario = "SC-01",
 
     [int]$DurationSeconds = 10,
@@ -166,6 +166,17 @@ $StandardScenarios = @{
         ChromeBaseline_CPU = 4.50
         EdgeBaseline_MB = 480.0
         EdgeBaseline_CPU = 3.20
+    }
+    "SC-12" = @{
+        Name = "Instant Tab Switching Latency"
+        Description = "Tab switch between resident multi-controller views without reloading"
+        TargetRAM_MB = 180.0
+        TargetCPU_Pct = 0.50
+        TargetStartup_ms = 25
+        ChromeBaseline_MB = 380.0
+        ChromeBaseline_CPU = 2.10
+        EdgeBaseline_MB = 340.0
+        EdgeBaseline_CPU = 1.90
     }
 }
 

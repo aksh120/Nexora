@@ -1,3 +1,5 @@
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::mpsc::channel;
 use windows::core::{Interface, PCWSTR, PWSTR};
@@ -9,11 +11,21 @@ use webview2_com::*;
 
 use crate::core::error::{NexoraError, Result};
 
+pub struct TabView {
+    pub tab_id: usize,
+    pub controller: ICoreWebView2Controller,
+    pub webview: ICoreWebView2,
+    pub is_internal_page: bool,
+    pub current_url: String,
+    pub current_title: String,
+}
+
 pub struct WebViewEngine {
     pub hwnd: HWND,
-    _environment: ICoreWebView2Environment,
-    controller: ICoreWebView2Controller,
-    webview: ICoreWebView2,
+    environment: ICoreWebView2Environment,
+    active_tab_id: Cell<Option<usize>>,
+    bounds: Cell<RECT>,
+    tab_views: RefCell<HashMap<usize, TabView>>,
 }
 
 impl WebViewEngine {
@@ -68,7 +80,36 @@ impl WebViewEngine {
 
         log::info!("WebView2 Environment created successfully.");
 
-        // 2. Create WebView2 Controller attached to host HWND
+        let default_bounds = RECT {
+            left: 0,
+            top: 78,
+            right: 1280,
+            bottom: 800,
+        };
+
+        let engine = Self {
+            hwnd,
+            environment,
+            active_tab_id: Cell::new(Some(1)),
+            bounds: Cell::new(default_bounds),
+            tab_views: RefCell::new(HashMap::new()),
+        };
+
+        // Create the initial tab view for tab #1
+        engine.create_tab_view(1, initial_url, default_bounds, true)?;
+
+        Ok(engine)
+    }
+
+    /// Creates and configures an independent WebView2 controller for a tab view.
+    pub fn create_tab_view(&self, tab_id: usize, initial_url: &str, bounds: RECT, make_active: bool) -> Result<()> {
+        if self.tab_views.borrow().contains_key(&tab_id) {
+            log::info!("[TabView] Tab #{} already exists, skipping creation.", tab_id);
+            return Ok(());
+        }
+
+        log::info!("[TabView] Creating persistent controller for Tab #{} (make_active: {})...", tab_id, make_active);
+
         let (tx_ctl, rx_ctl) = channel();
         let ctl_handler = CreateCoreWebView2ControllerCompletedHandler::create(Box::new(move |res, ctl| {
             let _ = tx_ctl.send((res, ctl));
@@ -76,25 +117,26 @@ impl WebViewEngine {
         }));
 
         unsafe {
-            environment.CreateCoreWebView2Controller(hwnd, &ctl_handler)
-                .map_err(|e| NexoraError::Engine(format!("Failed to invoke CreateCoreWebView2Controller: {}", e)))?;
+            self.environment.CreateCoreWebView2Controller(self.hwnd, &ctl_handler)
+                .map_err(|e| NexoraError::Engine(format!("Failed to invoke CreateCoreWebView2Controller for tab #{}: {}", tab_id, e)))?;
         }
 
         let (res_ctl, ctl_opt) = wait_with_pump(rx_ctl)
-            .map_err(|e| NexoraError::Engine(format!("Controller pump failed: {}", e)))?;
-        res_ctl.map_err(|e| NexoraError::Engine(format!("Controller creation returned error: {}", e)))?;
-        let controller = ctl_opt.ok_or_else(|| NexoraError::Engine("Null WebView2 Controller returned".into()))?;
-
-        log::info!("WebView2 Controller instantiated and attached to HWND {:?}.", hwnd.0);
+            .map_err(|e| NexoraError::Engine(format!("Controller pump failed for tab #{}: {}", tab_id, e)))?;
+        res_ctl.map_err(|e| NexoraError::Engine(format!("Controller creation returned error for tab #{}: {}", tab_id, e)))?;
+        let controller = ctl_opt.ok_or_else(|| NexoraError::Engine(format!("Null WebView2 Controller returned for tab #{}", tab_id)))?;
 
         let webview = unsafe {
             controller.CoreWebView2()
-                .map_err(|e| NexoraError::Engine(format!("Failed to get CoreWebView2 from controller: {}", e)))?
+                .map_err(|e| NexoraError::Engine(format!("Failed to get CoreWebView2 from controller for tab #{}: {}", tab_id, e)))?
         };
 
-        // 3. Configure initial visibility and settings
         unsafe {
-            let _ = controller.SetIsVisible(true);
+            let _ = controller.SetBounds(bounds);
+            let _ = controller.SetIsVisible(make_active);
+            if make_active {
+                let _ = controller.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+            }
             if let Ok(settings) = webview.Settings() {
                 let _ = settings.SetIsScriptEnabled(true);
                 let _ = settings.SetIsWebMessageEnabled(true);
@@ -104,20 +146,121 @@ impl WebViewEngine {
             }
         }
 
-        let engine = Self {
-            hwnd,
-            _environment: environment,
-            controller,
-            webview,
+        // Hook per-tab event handlers
+        self.setup_tab_event_handlers(tab_id, &controller, &webview, self.hwnd)?;
+
+        let is_internal = initial_url.starts_with("nexora://") || initial_url.is_empty() || initial_url == "about:blank";
+        let initial_title = if is_internal {
+            match initial_url {
+                "nexora://settings" => "Settings",
+                "nexora://diagnostics" => "Diagnostics",
+                "nexora://bookmarks" => "Bookmarks",
+                "nexora://history" => "History",
+                _ => "Nexora Home",
+            }.to_string()
+        } else {
+            "New Tab".to_string()
         };
 
-        // 4. Hook Core Events
-        engine.setup_event_handlers(hwnd)?;
+        let tab_view = TabView {
+            tab_id,
+            controller,
+            webview,
+            is_internal_page: is_internal,
+            current_url: initial_url.to_string(),
+            current_title: initial_title,
+        };
 
-        // 5. Navigate to initial URL
-        engine.navigate(initial_url)?;
+        self.tab_views.borrow_mut().insert(tab_id, tab_view);
 
-        Ok(engine)
+        // Perform initial navigation
+        self.navigate_tab(tab_id, initial_url)?;
+
+        if make_active {
+            self.active_tab_id.set(Some(tab_id));
+        }
+
+        log::info!("[TabView] Tab #{} initialized successfully.", tab_id);
+        Ok(())
+    }
+
+    /// Performs instantaneous tab switching (< 15ms) via `SetIsVisible` toggling.
+    pub fn switch_to_tab(&self, tab_id: usize, bounds: RECT) -> Result<()> {
+        let prev_active_id = self.active_tab_id.get();
+        if prev_active_id == Some(tab_id) {
+            return Ok(());
+        }
+
+        // 1. Hide the previous active tab view controller
+        if let Some(prev_id) = prev_active_id {
+            if let Some(prev_view) = self.tab_views.borrow().get(&prev_id) {
+                unsafe {
+                    let _ = prev_view.controller.SetIsVisible(false);
+                }
+            }
+        }
+
+        // 2. Ensure destination tab view exists (lazy restore if suspended)
+        let exists = self.tab_views.borrow().contains_key(&tab_id);
+        if !exists {
+            let (target_url, _) = unsafe {
+                let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                    self.hwnd,
+                    windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                ) as *mut crate::browser::host_window::WindowContext;
+                if !ptr.is_null() {
+                    let tabs = (*ptr).tab_manager.borrow();
+                    tabs.get_tab(tab_id)
+                        .map(|t| (t.url.clone(), t.title.clone()))
+                        .unwrap_or(("nexora://home".into(), "Nexora Home".into()))
+                } else {
+                    ("nexora://home".into(), "Nexora Home".into())
+                }
+            };
+            self.create_tab_view(tab_id, &target_url, bounds, true)?;
+        } else if let Some(view) = self.tab_views.borrow().get(&tab_id) {
+            unsafe {
+                let _ = view.controller.SetBounds(bounds);
+                let _ = view.controller.SetIsVisible(true);
+                let _ = view.controller.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+            }
+        }
+
+        self.active_tab_id.set(Some(tab_id));
+        Ok(())
+    }
+
+    /// Closes a tab view and releases its WebView2 controller resources.
+    pub fn close_tab_view(&self, tab_id: usize) {
+        if let Some(view) = self.tab_views.borrow_mut().remove(&tab_id) {
+            unsafe {
+                let _ = view.controller.SetIsVisible(false);
+                let _ = view.controller.Close();
+            }
+            log::info!("[TabView] Tab #{} controller closed and dropped.", tab_id);
+        }
+        if self.active_tab_id.get() == Some(tab_id) {
+            self.active_tab_id.set(None);
+        }
+    }
+
+    /// Suspends a tab view under memory pressure, closing controller while tab state remains in TabManager.
+    pub fn suspend_tab_view(&self, tab_id: usize) {
+        if let Some(view) = self.tab_views.borrow_mut().remove(&tab_id) {
+            unsafe {
+                let _ = view.controller.SetIsVisible(false);
+                let _ = view.controller.Close();
+            }
+            log::info!("[TabView] Tab #{} suspended: controller closed to reclaim physical memory.", tab_id);
+        }
+    }
+
+    pub fn has_tab_view(&self, tab_id: usize) -> bool {
+        self.tab_views.borrow().contains_key(&tab_id)
+    }
+
+    pub fn active_tab_id(&self) -> Option<usize> {
+        self.active_tab_id.get()
     }
 
     pub fn set_bounds(&self, x: i32, y: i32, width: i32, height: i32) -> Result<()> {
@@ -127,16 +270,224 @@ impl WebViewEngine {
             right: x + width,
             bottom: y + height,
         };
-        unsafe {
-            self.controller.SetBounds(rect)
-                .map_err(|e| NexoraError::Engine(format!("Failed to set webview bounds: {}", e)))?;
+        self.bounds.set(rect);
+        if let Some(active_id) = self.active_tab_id.get() {
+            if let Some(view) = self.tab_views.borrow().get(&active_id) {
+                unsafe {
+                    self.controller_set_bounds(&view.controller, rect)?;
+                }
+            }
         }
         Ok(())
     }
 
+    unsafe fn controller_set_bounds(&self, controller: &ICoreWebView2Controller, rect: RECT) -> Result<()> {
+        controller.SetBounds(rect)
+            .map_err(|e| NexoraError::Engine(format!("Failed to set webview bounds: {}", e)))?;
+        Ok(())
+    }
+
     pub fn navigate(&self, target_url: &str) -> Result<()> {
+        let active_id = self.active_tab_id.get().unwrap_or(1);
+        self.navigate_tab(active_id, target_url)
+    }
+
+    pub fn navigate_tab(&self, tab_id: usize, target_url: &str) -> Result<()> {
         let clean_url = target_url.trim_end_matches('/');
-        if clean_url == "nexora://home" || clean_url == "nexora://newtab" || clean_url == "nexora:" || clean_url.is_empty() {
+        let is_internal = clean_url == "nexora://home"
+            || clean_url == "nexora://newtab"
+            || clean_url == "nexora:"
+            || clean_url == "nexora://settings"
+            || clean_url == "nexora://diagnostics"
+            || clean_url == "nexora://bookmarks"
+            || clean_url == "nexora://history"
+            || clean_url.is_empty();
+
+        if is_internal {
+            let html = self.render_internal_page(clean_url);
+            let views = self.tab_views.borrow();
+            if let Some(view) = views.get(&tab_id) {
+                log::info!("[TabView] Rendering internal page '{}' for Tab #{} ({} bytes)", clean_url, tab_id, html.len());
+                let wide = pwstr_from_str(&html);
+                unsafe {
+                    view.webview.NavigateToString(PCWSTR(wide.0))
+                        .map_err(|e| NexoraError::Navigation(format!("NavigateToString failed: {}", e)))?;
+                }
+            }
+            drop(views);
+            if let Some(view) = self.tab_views.borrow_mut().get_mut(&tab_id) {
+                view.is_internal_page = true;
+                view.current_url = if clean_url.is_empty() || clean_url == "nexora:" || clean_url == "nexora://newtab" {
+                    "nexora://home".to_string()
+                } else {
+                    clean_url.to_string()
+                };
+            }
+            return Ok(());
+        }
+
+        let normalized = if target_url.starts_with("http://")
+            || target_url.starts_with("https://")
+            || target_url.starts_with("edge://")
+            || target_url.starts_with("about:")
+            || target_url.starts_with("data:")
+        {
+            target_url.to_string()
+        } else {
+            format!("https://{}", target_url)
+        };
+
+        let views = self.tab_views.borrow();
+        if let Some(view) = views.get(&tab_id) {
+            log::info!("[TabView] Navigating tab #{} to: {}", tab_id, normalized);
+            let wide = pwstr_from_str(&normalized);
+            unsafe {
+                view.webview.Navigate(PCWSTR(wide.0))
+                    .map_err(|e| NexoraError::Navigation(format!("Navigation failed for {}: {}", normalized, e)))?;
+            }
+        }
+        drop(views);
+        if let Some(view) = self.tab_views.borrow_mut().get_mut(&tab_id) {
+            view.is_internal_page = false;
+            view.current_url = normalized;
+        }
+        Ok(())
+    }
+
+    pub fn navigate_to_string(&self, html_content: &str) -> Result<()> {
+        if let Some(active_id) = self.active_tab_id.get() {
+            let views = self.tab_views.borrow();
+            if let Some(view) = views.get(&active_id) {
+                let wide = pwstr_from_str(html_content);
+                unsafe {
+                    view.webview.NavigateToString(PCWSTR(wide.0))
+                        .map_err(|e| NexoraError::Navigation(format!("NavigateToString failed: {}", e)))?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn go_back(&self) -> Result<()> {
+        if let Some(active_id) = self.active_tab_id.get() {
+            let views = self.tab_views.borrow();
+            if let Some(view) = views.get(&active_id) {
+                unsafe {
+                    let mut can = BOOL(0);
+                    let _ = view.webview.CanGoBack(&mut can);
+                    if can.as_bool() {
+                        view.webview.GoBack()
+                            .map_err(|e| NexoraError::Engine(format!("GoBack failed: {}", e)))?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn go_forward(&self) -> Result<()> {
+        if let Some(active_id) = self.active_tab_id.get() {
+            let views = self.tab_views.borrow();
+            if let Some(view) = views.get(&active_id) {
+                unsafe {
+                    let mut can = BOOL(0);
+                    let _ = view.webview.CanGoForward(&mut can);
+                    if can.as_bool() {
+                        view.webview.GoForward()
+                            .map_err(|e| NexoraError::Engine(format!("GoForward failed: {}", e)))?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn reload(&self) -> Result<()> {
+        if let Some(active_id) = self.active_tab_id.get() {
+            let views = self.tab_views.borrow();
+            if let Some(view) = views.get(&active_id) {
+                if view.is_internal_page {
+                    let url = view.current_url.clone();
+                    drop(views);
+                    return self.navigate_tab(active_id, &url);
+                }
+                unsafe {
+                    view.webview.Reload()
+                        .map_err(|e| NexoraError::Engine(format!("Reload failed: {}", e)))?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn stop(&self) -> Result<()> {
+        if let Some(active_id) = self.active_tab_id.get() {
+            let views = self.tab_views.borrow();
+            if let Some(view) = views.get(&active_id) {
+                unsafe {
+                    view.webview.Stop()
+                        .map_err(|e| NexoraError::Engine(format!("Stop failed: {}", e)))?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn get_source(&self) -> Result<String> {
+        if let Some(active_id) = self.active_tab_id.get() {
+            let views = self.tab_views.borrow();
+            if let Some(view) = views.get(&active_id) {
+                if view.is_internal_page {
+                    return Ok(view.current_url.clone());
+                }
+                unsafe {
+                    let mut uri = PWSTR::null();
+                    view.webview.Source(&mut uri)
+                        .map_err(|e| NexoraError::Engine(format!("Failed to get source URL: {}", e)))?;
+                    return Ok(string_from_pcwstr(&PCWSTR(uri.0)));
+                }
+            }
+        }
+        Ok(String::new())
+    }
+
+    pub fn get_title(&self) -> Result<String> {
+        if let Some(active_id) = self.active_tab_id.get() {
+            let views = self.tab_views.borrow();
+            if let Some(view) = views.get(&active_id) {
+                unsafe {
+                    let mut title = PWSTR::null();
+                    view.webview.DocumentTitle(&mut title)
+                        .map_err(|e| NexoraError::Engine(format!("Failed to get document title: {}", e)))?;
+                    return Ok(string_from_pcwstr(&PCWSTR(title.0)));
+                }
+            }
+        }
+        Ok(String::new())
+    }
+
+    pub fn execute_script(&self, script: &str) -> Result<()> {
+        if let Some(active_id) = self.active_tab_id.get() {
+            let views = self.tab_views.borrow();
+            if let Some(view) = views.get(&active_id) {
+                let wide = pwstr_from_str(script);
+                unsafe {
+                    view.webview.ExecuteScript(PCWSTR(wide.0), None)
+                        .map_err(|e| NexoraError::Engine(format!("ExecuteScript failed: {}", e)))?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn trigger_pip(&self) -> Result<()> {
+        let script = crate::media::PipWindow::generate_pip_script();
+        self.execute_script(script)
+    }
+
+    fn render_internal_page(&self, clean_url: &str) -> String {
+        let clean = clean_url.trim_end_matches('/');
+        if clean == "nexora://home" || clean == "nexora://newtab" || clean == "nexora:" || clean.is_empty() {
             let app_data_dir = crate::app::application::ApplicationPaths::resolve()
                 .map(|p| p.app_data_dir)
                 .unwrap_or_else(|_| std::env::temp_dir());
@@ -151,16 +502,14 @@ impl WebViewEngine {
             } else {
                 Vec::new()
             };
-            let html = crate::home::HomeUi::render_html(&config, &bookmarks);
-            return self.navigate_to_string(&html);
-        } else if clean_url == "nexora://settings" {
+            crate::home::HomeUi::render_html(&config, &bookmarks)
+        } else if clean == "nexora://settings" {
             let app_data_dir = crate::app::application::ApplicationPaths::resolve()
                 .map(|p| p.app_data_dir)
                 .unwrap_or_else(|_| std::env::temp_dir());
             let config = crate::app::config::NexoraConfig::load_or_default(&app_data_dir);
-            let html = crate::settings::SettingsUi::render_html(&config);
-            return self.navigate_to_string(&html);
-        } else if clean_url == "nexora://diagnostics" {
+            crate::settings::SettingsUi::render_html(&config)
+        } else if clean == "nexora://diagnostics" {
             let (total_tabs, active_title, active_url, suspended_tabs, adblock_stats) = unsafe {
                 let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
                     self.hwnd,
@@ -179,17 +528,18 @@ impl WebViewEngine {
                     (1, "Nexora Diagnostics".to_string(), "nexora://diagnostics".to_string(), 0, Default::default())
                 }
             };
+            let resident_views = self.tab_views.borrow().len();
             let snapshot = crate::diagnostics::DiagnosticsSnapshot::capture(
                 total_tabs,
                 &active_title,
                 &active_url,
                 suspended_tabs,
+                resident_views,
                 adblock_stats,
                 false,
             );
-            let html = crate::diagnostics::DiagnosticsUi::render_html(&snapshot);
-            return self.navigate_to_string(&html);
-        } else if clean_url == "nexora://bookmarks" {
+            crate::diagnostics::DiagnosticsUi::render_html(&snapshot)
+        } else if clean == "nexora://bookmarks" {
             let app_data_dir = crate::app::application::ApplicationPaths::resolve()
                 .map(|p| p.data_dir)
                 .unwrap_or_else(|_| std::env::temp_dir());
@@ -200,9 +550,8 @@ impl WebViewEngine {
             } else {
                 Vec::new()
             };
-            let html = crate::storage::BookmarksUi::render_html(&bookmarks);
-            return self.navigate_to_string(&html);
-        } else if clean_url == "nexora://history" {
+            crate::storage::BookmarksUi::render_html(&bookmarks)
+        } else if clean == "nexora://history" {
             let app_data_dir = crate::app::application::ApplicationPaths::resolve()
                 .map(|p| p.data_dir)
                 .unwrap_or_else(|_| std::env::temp_dir());
@@ -213,123 +562,23 @@ impl WebViewEngine {
             } else {
                 Vec::new()
             };
-            let html = crate::storage::HistoryUi::render_html(&history);
-            return self.navigate_to_string(&html);
-        }
-
-        let normalized = if target_url.starts_with("http://")
-            || target_url.starts_with("https://")
-            || target_url.starts_with("edge://")
-            || target_url.starts_with("about:")
-            || target_url.starts_with("data:")
-        {
-            target_url.to_string()
+            crate::storage::HistoryUi::render_html(&history)
         } else {
-            format!("https://{}", target_url)
-        };
-
-        log::info!("Navigating to: {}", normalized);
-        let wide = pwstr_from_str(&normalized);
-        unsafe {
-            self.webview.Navigate(PCWSTR(wide.0))
-                .map_err(|e| NexoraError::Navigation(format!("Navigation failed for {}: {}", normalized, e)))?;
-        }
-        Ok(())
-    }
-
-    pub fn navigate_to_string(&self, html_content: &str) -> Result<()> {
-        log::info!("Rendering internal page via NavigateToString ({} bytes)", html_content.len());
-        let wide = pwstr_from_str(html_content);
-        unsafe {
-            self.webview.NavigateToString(PCWSTR(wide.0))
-                .map_err(|e| NexoraError::Navigation(format!("NavigateToString failed: {}", e)))?;
-        }
-        Ok(())
-    }
-
-    pub fn go_back(&self) -> Result<()> {
-        unsafe {
-            let mut can_go_back = BOOL(0);
-            let _ = self.webview.CanGoBack(&mut can_go_back);
-            if can_go_back.as_bool() {
-                self.webview.GoBack()
-                    .map_err(|e| NexoraError::Engine(format!("GoBack failed: {}", e)))?;
-            }
-        }
-        Ok(())
-    }
-
-    pub fn go_forward(&self) -> Result<()> {
-        unsafe {
-            let mut can_go_forward = BOOL(0);
-            let _ = self.webview.CanGoForward(&mut can_go_forward);
-            if can_go_forward.as_bool() {
-                self.webview.GoForward()
-                    .map_err(|e| NexoraError::Engine(format!("GoForward failed: {}", e)))?;
-            }
-        }
-        Ok(())
-    }
-
-    pub fn reload(&self) -> Result<()> {
-        unsafe {
-            self.webview.Reload()
-                .map_err(|e| NexoraError::Engine(format!("Reload failed: {}", e)))?;
-        }
-        Ok(())
-    }
-
-    pub fn stop(&self) -> Result<()> {
-        unsafe {
-            self.webview.Stop()
-                .map_err(|e| NexoraError::Engine(format!("Stop failed: {}", e)))?;
-        }
-        Ok(())
-    }
-
-    pub fn get_source(&self) -> Result<String> {
-        unsafe {
-            let mut uri = PWSTR::null();
-            self.webview.Source(&mut uri)
-                .map_err(|e| NexoraError::Engine(format!("Failed to get source URL: {}", e)))?;
-            Ok(string_from_pcwstr(&PCWSTR(uri.0)))
+            format!("<html><body style='background:#121214;color:#f4f4f5;'>Page not found: {}</body></html>", clean)
         }
     }
 
-    pub fn get_title(&self) -> Result<String> {
-        unsafe {
-            let mut title = PWSTR::null();
-            self.webview.DocumentTitle(&mut title)
-                .map_err(|e| NexoraError::Engine(format!("Failed to get document title: {}", e)))?;
-            Ok(string_from_pcwstr(&PCWSTR(title.0)))
-        }
-    }
-
-    pub fn execute_script(&self, script: &str) -> Result<()> {
-        let wide = pwstr_from_str(script);
-        unsafe {
-            self.webview.ExecuteScript(PCWSTR(wide.0), None)
-                .map_err(|e| NexoraError::Engine(format!("ExecuteScript failed: {}", e)))?;
-        }
-        Ok(())
-    }
-
-    pub fn trigger_pip(&self) -> Result<()> {
-        let script = crate::media::PipWindow::generate_pip_script();
-        self.execute_script(script)
-    }
-
-    fn setup_event_handlers(&self, hwnd: HWND) -> Result<()> {
+    fn setup_tab_event_handlers(&self, tab_id: usize, controller: &ICoreWebView2Controller, webview: &ICoreWebView2, hwnd: HWND) -> Result<()> {
         let hwnd_parent = hwnd;
 
-        // 1. NavigationStarting (Immediately show newly navigated URL in omnibox)
+        // 1. NavigationStarting
         let starting_handler = NavigationStartingEventHandler::create(Box::new(move |_sender, args| {
             if let Some(args) = args {
                 unsafe {
                     let mut uri = PWSTR::null();
                     if args.Uri(&mut uri).is_ok() {
                         let url_str = string_from_pcwstr(&PCWSTR(uri.0));
-                        log::info!("[WebView2] Navigation Starting: {}", url_str);
+                        log::info!("[WebView2 Tab #{}] Navigation Starting: {}", tab_id, url_str);
 
                         // Strict Guard: Never overwrite omnibox or tab state with about:blank or data: URIs
                         if url_str.is_empty() || url_str == "about:blank" || url_str.starts_with("data:") {
@@ -341,14 +590,16 @@ impl WebViewEngine {
                             windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
                         ) as *mut crate::browser::host_window::WindowContext;
                         if !ptr.is_null() {
+                            let is_active = (*ptr).tab_manager.borrow().active_tab_id() == Some(tab_id);
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
-                            if let Some(active) = tabs.get_active_tab_mut() {
-                                // Guard: Never allow an external navigation to overwrite an internal page
-                                if !active.url.starts_with("nexora://") {
-                                    active.url = url_str.clone();
-                                    active.push_history(&url_str);
-                                    if let Some(ref chrome) = (*ptr).chrome {
-                                        chrome.set_omnibox_text(&url_str);
+                            if let Some(tab) = tabs.get_tab_mut(tab_id) {
+                                if !tab.url.starts_with("nexora://") {
+                                    tab.url = url_str.clone();
+                                    tab.push_history(&url_str);
+                                    if is_active {
+                                        if let Some(ref chrome) = (*ptr).chrome {
+                                            chrome.set_omnibox_text(&url_str);
+                                        }
                                     }
                                 }
                             }
@@ -362,17 +613,17 @@ impl WebViewEngine {
         }));
         let mut starting_token = EventRegistrationToken::default();
         unsafe {
-            let _ = self.webview.add_NavigationStarting(&starting_handler, &mut starting_token);
+            let _ = webview.add_NavigationStarting(&starting_handler, &mut starting_token);
         }
 
-        // 2. SourceChanged (Guaranteed sync on redirects, SPAs, and deep link navigations)
+        // 2. SourceChanged
         let source_handler = SourceChangedEventHandler::create(Box::new(move |sender, _args| {
             if let Some(sender) = sender {
                 unsafe {
                     let mut uri = PWSTR::null();
                     if sender.Source(&mut uri).is_ok() {
                         let url_str = string_from_pcwstr(&PCWSTR(uri.0));
-                        log::info!("[WebView2] Source Changed: {}", url_str);
+                        log::info!("[WebView2 Tab #{}] Source Changed: {}", tab_id, url_str);
 
                         // Strict Guard: Never overwrite omnibox or tab state with about:blank or data: URIs
                         if url_str.is_empty() || url_str == "about:blank" || url_str.starts_with("data:") {
@@ -384,14 +635,16 @@ impl WebViewEngine {
                             windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
                         ) as *mut crate::browser::host_window::WindowContext;
                         if !ptr.is_null() {
+                            let is_active = (*ptr).tab_manager.borrow().active_tab_id() == Some(tab_id);
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
-                            if let Some(active) = tabs.get_active_tab_mut() {
-                                // Guard: Never allow an external source change to overwrite an internal page
-                                if !active.url.starts_with("nexora://") {
-                                    active.url = url_str.clone();
-                                    active.push_history(&url_str);
-                                    if let Some(ref chrome) = (*ptr).chrome {
-                                        chrome.set_omnibox_text(&url_str);
+                            if let Some(tab) = tabs.get_tab_mut(tab_id) {
+                                if !tab.url.starts_with("nexora://") {
+                                    tab.url = url_str.clone();
+                                    tab.push_history(&url_str);
+                                    if is_active {
+                                        if let Some(ref chrome) = (*ptr).chrome {
+                                            chrome.set_omnibox_text(&url_str);
+                                        }
                                     }
                                 }
                             }
@@ -405,17 +658,17 @@ impl WebViewEngine {
         }));
         let mut source_token = EventRegistrationToken::default();
         unsafe {
-            let _ = self.webview.add_SourceChanged(&source_handler, &mut source_token);
+            let _ = webview.add_SourceChanged(&source_handler, &mut source_token);
         }
 
-        // 3. DocumentTitleChanged (Keep tab header and window title synced with webpage title)
+        // 3. DocumentTitleChanged
         let title_handler = DocumentTitleChangedEventHandler::create(Box::new(move |sender, _args| {
             if let Some(sender) = sender {
                 unsafe {
                     let mut title = PWSTR::null();
                     if sender.DocumentTitle(&mut title).is_ok() {
                         let title_str = string_from_pcwstr(&PCWSTR(title.0));
-                        log::info!("[WebView2] Document Title Changed: {}", title_str);
+                        log::info!("[WebView2 Tab #{}] Document Title Changed: {}", tab_id, title_str);
 
                         // Guard: Do not overwrite titles with blank, about:blank, or data:
                         if title_str.trim().is_empty() || title_str == "about:blank" || title_str.starts_with("data:") {
@@ -427,21 +680,21 @@ impl WebViewEngine {
                             windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
                         ) as *mut crate::browser::host_window::WindowContext;
                         if !ptr.is_null() {
+                            let is_active = (*ptr).tab_manager.borrow().active_tab_id() == Some(tab_id);
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
-                            if let Some(active) = tabs.get_active_tab_mut() {
-                                active.title = title_str.clone();
-                                let full_title = if title_str.ends_with("- Nexora") {
-                                    title_str.clone()
-                                } else {
-                                    format!("{} - Nexora", title_str)
-                                };
+                            if let Some(tab) = tabs.get_tab_mut(tab_id) {
+                                tab.title = title_str.clone();
+                            }
+                            drop(tabs);
+
+                            if is_active {
+                                let full_title = format!("{} - Nexora", title_str);
                                 let wide_title: Vec<u16> = full_title.encode_utf16().chain(std::iter::once(0)).collect();
                                 let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
                                     hwnd_parent,
                                     windows::core::PCWSTR(wide_title.as_ptr()),
                                 );
                             }
-                            drop(tabs);
                             let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
                         }
                     }
@@ -451,85 +704,78 @@ impl WebViewEngine {
         }));
         let mut title_token = EventRegistrationToken::default();
         unsafe {
-            let _ = self.webview.add_DocumentTitleChanged(&title_handler, &mut title_token);
+            let _ = webview.add_DocumentTitleChanged(&title_handler, &mut title_token);
         }
 
-        // 4. NavigationCompleted (Record visit in history and final state sync)
-        let completed_handler = NavigationCompletedEventHandler::create(Box::new(move |sender, args| {
-            if let Some(args) = args {
+        // 4. NavigationCompleted
+        let completed_handler = NavigationCompletedEventHandler::create(Box::new(move |sender, _args| {
+            if let Some(s) = sender {
                 unsafe {
-                    let mut is_success = BOOL(0);
-                    let _ = args.IsSuccess(&mut is_success);
-                    let mut web_error = COREWEBVIEW2_WEB_ERROR_STATUS::default();
-                    let _ = args.WebErrorStatus(&mut web_error);
-                    log::info!("[WebView2] Navigation Completed: success={}, status={:?}", is_success.as_bool(), web_error);
+                    let mut uri = PWSTR::null();
+                    if s.Source(&mut uri).is_ok() {
+                        let url_str = string_from_pcwstr(&PCWSTR(uri.0));
+                        let mut title = PWSTR::null();
+                        let title_str = if s.DocumentTitle(&mut title).is_ok() {
+                            string_from_pcwstr(&PCWSTR(title.0))
+                        } else {
+                            String::new()
+                        };
 
-                    if is_success.as_bool() {
-                        if let Some(ref s) = sender {
-                            let mut uri = PWSTR::null();
-                            if s.Source(&mut uri).is_ok() {
-                                let url_str = string_from_pcwstr(&PCWSTR(uri.0));
-                                let mut title = PWSTR::null();
-                                let title_str = if s.DocumentTitle(&mut title).is_ok() {
-                                    string_from_pcwstr(&PCWSTR(title.0))
-                                } else {
-                                    String::new()
-                                };
-
-                                // Guard: Never record or sync about:blank or data: URIs
-                                if !url_str.is_empty() && url_str != "about:blank" && !url_str.starts_with("data:") {
-                                    let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
-                                        hwnd_parent,
-                                        windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
-                                    ) as *mut crate::browser::host_window::WindowContext;
-                                    if !ptr.is_null() {
-                                        let mut tabs = (*ptr).tab_manager.borrow_mut();
-                                        if let Some(active) = tabs.get_active_tab_mut() {
-                                            // Guard: Never allow an external navigation to overwrite an internal page
-                                            if !active.url.starts_with("nexora://") {
-                                                active.url = url_str.clone();
-                                                active.push_history(&url_str);
-                                                if !title_str.trim().is_empty() && title_str != "about:blank" && !title_str.starts_with("data:") {
-                                                    active.title = title_str.clone();
-                                                }
-                                                if let Some(ref chrome) = (*ptr).chrome {
-                                                    chrome.set_omnibox_text(&url_str);
-                                                }
+                        // Guard: Never record or sync about:blank or data: URIs
+                        if !url_str.is_empty() && url_str != "about:blank" && !url_str.starts_with("data:") {
+                            let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                                hwnd_parent,
+                                windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                            ) as *mut crate::browser::host_window::WindowContext;
+                            if !ptr.is_null() {
+                                let is_active = (*ptr).tab_manager.borrow().active_tab_id() == Some(tab_id);
+                                let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                if let Some(tab) = tabs.get_tab_mut(tab_id) {
+                                    if !tab.url.starts_with("nexora://") {
+                                        tab.url = url_str.clone();
+                                        tab.push_history(&url_str);
+                                        if !title_str.trim().is_empty() && title_str != "about:blank" && !title_str.starts_with("data:") {
+                                            tab.title = title_str.clone();
+                                        }
+                                        if is_active {
+                                            if let Some(ref chrome) = (*ptr).chrome {
+                                                chrome.set_omnibox_text(&url_str);
                                             }
                                         }
-
-                                        let is_bm = if !url_str.starts_with("nexora://") {
-                                            if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
-                                                let db_path = paths.data_dir.join("nexora.db");
-                                                if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
-                                                    let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
-                                                    bm_mgr.is_bookmarked(&url_str).unwrap_or(false)
-                                                } else { false }
-                                            } else { false }
-                                        } else { false };
-
-                                        if let Some(ref mut chrome) = (*ptr).chrome {
-                                            chrome.set_is_bookmarked(is_bm);
-                                        }
-
-                                        drop(tabs);
-                                        let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
                                     }
+                                }
 
-                                    if !url_str.starts_with("nexora://") {
+                                if is_active {
+                                    let is_bm = if !url_str.starts_with("nexora://") {
                                         if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
                                             let db_path = paths.data_dir.join("nexora.db");
                                             if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
-                                                let hist_mgr = crate::storage::HistoryManager::new(std::sync::Arc::new(conn));
-                                                let _ = hist_mgr.add_visit(&url_str, &title_str);
-                                            }
-                                        }
-                                    }
+                                                let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
+                                                bm_mgr.is_bookmarked(&url_str).unwrap_or(false)
+                                            } else { false }
+                                        } else { false }
+                                    } else { false };
 
-                                    // Trim working sets to keep memory tightly bounded below 200MB
-                                    let _ = crate::performance::memory::trim_child_processes();
+                                    if let Some(ref mut chrome) = (*ptr).chrome {
+                                        chrome.set_is_bookmarked(is_bm);
+                                    }
+                                }
+
+                                drop(tabs);
+                                let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
+                            }
+
+                            if !url_str.starts_with("nexora://") {
+                                if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                                    let db_path = paths.data_dir.join("nexora.db");
+                                    if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                                        let hist_mgr = crate::storage::HistoryManager::new(std::sync::Arc::new(conn));
+                                        let _ = hist_mgr.add_visit(&url_str, &title_str);
+                                    }
                                 }
                             }
+
+                            let _ = crate::performance::memory::trim_child_processes();
                         }
                     }
                 }
@@ -538,7 +784,7 @@ impl WebViewEngine {
         }));
         let mut completed_token = EventRegistrationToken::default();
         unsafe {
-            let _ = self.webview.add_NavigationCompleted(&completed_handler, &mut completed_token);
+            let _ = webview.add_NavigationCompleted(&completed_handler, &mut completed_token);
         }
 
         // 5. NewWindowRequested (Intercept target="_blank" and popups -> open as native Nexora tab)
@@ -549,20 +795,27 @@ impl WebViewEngine {
                     let mut uri = PWSTR::null();
                     if args.Uri(&mut uri).is_ok() {
                         let target_url = string_from_pcwstr(&PCWSTR(uri.0));
-                        log::info!("[WebView2] NewWindowRequested for '{}' -> Opening as tab in Nexora", target_url);
+                        log::info!("[WebView2 Tab #{}] NewWindowRequested for '{}' -> Opening as tab in Nexora", tab_id, target_url);
 
                         let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
                             hwnd_parent,
                             windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
                         ) as *mut crate::browser::host_window::WindowContext;
                         if !ptr.is_null() {
-                            let mut tabs = (*ptr).tab_manager.borrow_mut();
-                            let _tab_id = tabs.create_tab(&target_url, None);
-                            let tab_count = tabs.tab_count();
-                            drop(tabs);
+                            let new_tab_id = {
+                                let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                let id = tabs.create_tab(&target_url, None);
+                                tabs.switch_tab(id);
+                                id
+                            };
+                            let tab_count = (*ptr).tab_manager.borrow().tab_count();
 
-                            if let Some(ref webview) = (*ptr).webview {
-                                let _ = webview.navigate(&target_url);
+                            let (x, y, w, h) = (*ptr).layout.webview_rect();
+                            let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
+
+                            if let Some(ref webview_eng) = (*ptr).webview {
+                                let _ = webview_eng.create_tab_view(new_tab_id, &target_url, bounds, true);
+                                let _ = webview_eng.switch_to_tab(new_tab_id, bounds);
                             }
                             if let Some(ref chrome) = (*ptr).chrome {
                                 chrome.set_omnibox_text(&target_url);
@@ -577,13 +830,11 @@ impl WebViewEngine {
         }));
         let mut new_window_token = EventRegistrationToken::default();
         unsafe {
-            let _ = self.webview.add_NewWindowRequested(&new_window_handler, &mut new_window_token);
+            let _ = webview.add_NewWindowRequested(&new_window_handler, &mut new_window_token);
         }
 
-        // ProcessFailed (Crash Recovery Hook - TASK-803)
+        // 6. ProcessFailed (Crash Recovery Hook)
         let crash_controller = std::sync::Arc::new(std::sync::Mutex::new(crate::engine::CrashRecoveryController::default()));
-        let crash_ctrl_clone = crash_controller.clone();
-
         let process_failed_handler = ProcessFailedEventHandler::create(Box::new(move |sender, args| {
             if let Some(args) = args {
                 unsafe {
@@ -598,24 +849,15 @@ impl WebViewEngine {
                         }
                     }
 
-                    let reason = format!("{:?}", kind);
-                    let action = if let Ok(mut ctrl) = crash_ctrl_clone.lock() {
-                        ctrl.handle_failure(&uri_str, &reason)
+                    let should_reload = if let Ok(mut ctrl) = crash_controller.lock() {
+                        matches!(ctrl.handle_failure(&uri_str, &format!("{:?}", kind)), crate::engine::CrashRecoveryAction::SilentReload(_))
                     } else {
-                        crate::engine::CrashRecoveryAction::SilentReload(uri_str.clone())
+                        false
                     };
 
-                    if let Some(s) = sender {
-                        match action {
-                            crate::engine::CrashRecoveryAction::SilentReload(url) => {
-                                log::info!("[CrashRecovery] Auto-respawning crashed renderer for {}", url);
-                                let _ = s.Reload();
-                            }
-                            crate::engine::CrashRecoveryAction::ShowCrashCard(html) => {
-                                log::warn!("[CrashRecovery] Crash limit reached, presenting fallback card");
-                                let wide_html = pwstr_from_str(&html);
-                                let _ = s.NavigateToString(PCWSTR(wide_html.0));
-                            }
+                    if should_reload {
+                        if let Some(ref s) = sender {
+                            let _ = s.Reload();
                         }
                     }
                 }
@@ -624,19 +866,18 @@ impl WebViewEngine {
         }));
         let mut failed_token = EventRegistrationToken::default();
         unsafe {
-            let _ = self.webview.add_ProcessFailed(&process_failed_handler, &mut failed_token);
+            let _ = webview.add_ProcessFailed(&process_failed_handler, &mut failed_token);
         }
 
-        // ContainsFullScreenElementChanged (HTML5 Fullscreen Hook - TASK-505)
-        let hwnd_parent = hwnd;
-        let ctl_for_fs = self.controller.clone();
+        // 7. ContainsFullScreenElementChanged
+        let ctl_for_fs = controller.clone();
         let fs_handler = ContainsFullScreenElementChangedEventHandler::create(Box::new(move |sender, _args| {
             if let Some(sender) = sender {
                 unsafe {
                     let mut is_fs = BOOL(0);
                     if sender.ContainsFullScreenElement(&mut is_fs).is_ok() {
                         let entering_fs = is_fs.as_bool();
-                        log::info!("[Media Engine] HTML5 Fullscreen changed: {}", entering_fs);
+                        log::info!("[Media Engine Tab #{}] HTML5 Fullscreen changed: {}", tab_id, entering_fs);
                         let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
                             hwnd_parent,
                             windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
@@ -653,7 +894,6 @@ impl WebViewEngine {
                                 let rect = RECT { left: wx, top: wy, right: wx + ww, bottom: wy + wh };
                                 let _ = ctl_for_fs.SetBounds(rect);
                             }
-                            let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
                         }
                     }
                 }
@@ -662,51 +902,33 @@ impl WebViewEngine {
         }));
         let mut fs_token = EventRegistrationToken::default();
         unsafe {
-            let _ = self.webview.add_ContainsFullScreenElementChanged(&fs_handler, &mut fs_token);
+            let _ = webview.add_ContainsFullScreenElementChanged(&fs_handler, &mut fs_token);
         }
 
-        // AcceleratorKeyPressed (Forward F11, Escape, F5, Ctrl+shortcuts to host window)
-        let accel_handler = AcceleratorKeyPressedEventHandler::create(Box::new(move |_sender, args| {
-            if let Some(args) = args {
-                unsafe {
-                    let mut kind = COREWEBVIEW2_KEY_EVENT_KIND::default();
-                    let _ = args.KeyEventKind(&mut kind);
-                    if kind == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN || kind == COREWEBVIEW2_KEY_EVENT_KIND_SYSTEM_KEY_DOWN {
-                        let mut vk: u32 = 0;
-                        if args.VirtualKey(&mut vk).is_ok() {
-                            // F11 (0x7A), Escape (0x1B), F5 (0x74)
-                            if vk == 0x7A || vk == 0x1B || vk == 0x74 {
-                                let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
-                                    hwnd_parent,
-                                    windows::Win32::UI::WindowsAndMessaging::WM_KEYDOWN,
-                                    windows::Win32::Foundation::WPARAM(vk as usize),
-                                    windows::Win32::Foundation::LPARAM(0),
-                                );
-                                let _ = args.SetHandled(BOOL(1));
-                            }
-                        }
-                    }
-                }
-            }
-            Ok(())
-        }));
-        let mut accel_token = EventRegistrationToken::default();
-        unsafe {
-            let _ = self.controller.add_AcceleratorKeyPressed(&accel_handler, &mut accel_token);
-        }
-
-        // IsDocumentPlayingAudioChanged (Active Media Detection - TASK-504)
-        if let Ok(wv8) = self.webview.cast::<ICoreWebView2_8>() {
-            let audio_handler = IsDocumentPlayingAudioChangedEventHandler::create(Box::new(|sender, _args| {
+        // 8. IsDocumentPlayingAudioChanged
+        if let Ok(wv8) = webview.cast::<ICoreWebView2_8>() {
+            let audio_handler = IsDocumentPlayingAudioChangedEventHandler::create(Box::new(move |sender, _args| {
                 if let Some(sender) = sender {
                     unsafe {
                         if let Ok(wv8_sender) = sender.cast::<ICoreWebView2_8>() {
                             let mut is_audio = BOOL(0);
                             if wv8_sender.IsDocumentPlayingAudio(&mut is_audio).is_ok() {
-                                log::info!("[Media Engine] Document audio playback changed: {}", is_audio.as_bool());
-                                if is_audio.as_bool() {
-                                    // Video/Audio playback detected -> trim working set immediately
-                                    let _ = crate::performance::memory::trim_child_processes();
+                                let playing_bool = is_audio.as_bool();
+                                log::info!("[WebView2 Tab #{}] Audio playing state changed: {}", tab_id, playing_bool);
+
+                                let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                                    hwnd_parent,
+                                    windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                                ) as *mut crate::browser::host_window::WindowContext;
+                                if !ptr.is_null() {
+                                    let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                    tabs.set_audio_playing(tab_id, playing_bool);
+                                    drop(tabs);
+
+                                    if playing_bool {
+                                        let _ = crate::performance::memory::trim_child_processes();
+                                    }
+                                    let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
                                 }
                             }
                         }
@@ -720,50 +942,55 @@ impl WebViewEngine {
             }
         }
 
-        // PermissionRequested (Per-Site Permissions - TASK-702)
-        let perm_handler = PermissionRequestedEventHandler::create(Box::new(|_sender, args| {
+        // 9. PermissionRequested
+        let perm_handler = PermissionRequestedEventHandler::create(Box::new(move |_sender, args| {
             if let Some(args) = args {
                 unsafe {
                     let mut uri = PWSTR::null();
-                    let _ = args.Uri(&mut uri);
-                    let origin_str = string_from_pcwstr(&PCWSTR(uri.0));
-
                     let mut kind = COREWEBVIEW2_PERMISSION_KIND::default();
-                    let _ = args.PermissionKind(&mut kind);
+                    if args.Uri(&mut uri).is_ok() && args.PermissionKind(&mut kind).is_ok() {
+                        let origin = string_from_pcwstr(&PCWSTR(uri.0));
+                        let maybe_pk = match kind {
+                            COREWEBVIEW2_PERMISSION_KIND_CAMERA => Some(crate::privacy::PermissionKind::Camera),
+                            COREWEBVIEW2_PERMISSION_KIND_MICROPHONE => Some(crate::privacy::PermissionKind::Microphone),
+                            COREWEBVIEW2_PERMISSION_KIND_GEOLOCATION => Some(crate::privacy::PermissionKind::Geolocation),
+                            COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS => Some(crate::privacy::PermissionKind::Notifications),
+                            COREWEBVIEW2_PERMISSION_KIND_CLIPBOARD_READ => Some(crate::privacy::PermissionKind::ClipboardRead),
+                            COREWEBVIEW2_PERMISSION_KIND_AUTOPLAY => Some(crate::privacy::PermissionKind::Autoplay),
+                            _ => None,
+                        };
 
-                    log::info!("[Permissions] Permission requested: {:?} for origin '{}'", kind, origin_str);
+                        if let Some(perm_type) = maybe_pk {
+                            let default_state = match perm_type {
+                                crate::privacy::PermissionKind::Autoplay => crate::privacy::PermissionState::Allow,
+                                crate::privacy::PermissionKind::Notifications => crate::privacy::PermissionState::Block,
+                                _ => crate::privacy::PermissionState::Prompt,
+                            };
 
-                    let norm_origin = crate::privacy::PermissionsManager::normalize_origin(&origin_str);
-                    let maybe_pk = match kind {
-                        COREWEBVIEW2_PERMISSION_KIND_CAMERA => Some(crate::privacy::PermissionKind::Camera),
-                        COREWEBVIEW2_PERMISSION_KIND_MICROPHONE => Some(crate::privacy::PermissionKind::Microphone),
-                        COREWEBVIEW2_PERMISSION_KIND_GEOLOCATION => Some(crate::privacy::PermissionKind::Geolocation),
-                        COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS => Some(crate::privacy::PermissionKind::Notifications),
-                        COREWEBVIEW2_PERMISSION_KIND_CLIPBOARD_READ => Some(crate::privacy::PermissionKind::ClipboardRead),
-                        COREWEBVIEW2_PERMISSION_KIND_AUTOPLAY => Some(crate::privacy::PermissionKind::Autoplay),
-                        _ => None,
-                    };
-
-                    if let Some(pk) = maybe_pk {
-                        let state = if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
-                            let db_path = paths.data_dir.join("nexora.db");
-                            if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
-                                let pm = crate::privacy::PermissionsManager::new(std::sync::Arc::new(conn));
-                                pm.get_permission(&norm_origin, pk).unwrap_or(crate::privacy::PermissionState::Prompt)
+                            let state = if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                                let db_path = paths.data_dir.join("nexora.db");
+                                if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                                    let mgr = crate::privacy::PermissionsManager::new(std::sync::Arc::new(conn));
+                                    mgr.get_permission(&origin, perm_type).unwrap_or(default_state)
+                                } else {
+                                    default_state
+                                }
                             } else {
-                                crate::privacy::PermissionState::Prompt
-                            }
-                        } else {
-                            crate::privacy::PermissionState::Prompt
-                        };
+                                default_state
+                            };
 
-                        let wv_state = match state {
-                            crate::privacy::PermissionState::Allow => COREWEBVIEW2_PERMISSION_STATE_ALLOW,
-                            crate::privacy::PermissionState::Block => COREWEBVIEW2_PERMISSION_STATE_DENY,
-                            crate::privacy::PermissionState::Prompt => COREWEBVIEW2_PERMISSION_STATE_DEFAULT,
-                        };
-                        let _ = args.SetState(wv_state);
-                        log::info!("[Permissions] Enforced permission {:?} for {} -> {:?}", pk, norm_origin, wv_state);
+                            match state {
+                                crate::privacy::permissions::PermissionState::Allow => {
+                                    let _ = args.SetState(COREWEBVIEW2_PERMISSION_STATE_ALLOW);
+                                }
+                                crate::privacy::permissions::PermissionState::Block => {
+                                    let _ = args.SetState(COREWEBVIEW2_PERMISSION_STATE_DENY);
+                                }
+                                crate::privacy::permissions::PermissionState::Prompt => {
+                                    let _ = args.SetState(COREWEBVIEW2_PERMISSION_STATE_DEFAULT);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -771,11 +998,11 @@ impl WebViewEngine {
         }));
         let mut perm_token = EventRegistrationToken::default();
         unsafe {
-            let _ = self.webview.add_PermissionRequested(&perm_handler, &mut perm_token);
+            let _ = webview.add_PermissionRequested(&perm_handler, &mut perm_token);
         }
 
-        // WebResourceRequested (High-Speed Ad & Tracker Blocker - TASK-701)
-        let env_for_adblock = self._environment.clone();
+        // 10. WebResourceRequested (High-Speed Ad & Tracker Blocker)
+        let env_for_adblock = self.environment.clone();
         let adblock = std::sync::Arc::new(crate::privacy::AdBlockEngine::new(true, true));
         let adblock_handler = WebResourceRequestedEventHandler::create(Box::new(move |_sender, args| {
             if let Some(args) = args {
@@ -786,7 +1013,7 @@ impl WebViewEngine {
                             let url_str = string_from_pcwstr(&PCWSTR(uri.0));
                             let (should_block, category) = adblock.should_block(&url_str);
                             if should_block {
-                                log::info!("[AdBlock Intercept] Blocked {:?}: {}", category, url_str);
+                                log::info!("[AdBlock Intercept Tab #{}] Blocked {:?}: {}", tab_id, category, url_str);
                                 let reason = pwstr_from_str("Blocked by Nexora AdBlock");
                                 let headers = pwstr_from_str("Content-Type: text/plain\r\n");
                                 if let Ok(resp) = env_for_adblock.CreateWebResourceResponse(
@@ -807,14 +1034,14 @@ impl WebViewEngine {
         let mut adblock_token = EventRegistrationToken::default();
         unsafe {
             let filter_all = pwstr_from_str("*");
-            let _ = self.webview.AddWebResourceRequestedFilter(
+            let _ = webview.AddWebResourceRequestedFilter(
                 PCWSTR(filter_all.0),
                 COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL,
             );
-            let _ = self.webview.add_WebResourceRequested(&adblock_handler, &mut adblock_token);
+            let _ = webview.add_WebResourceRequested(&adblock_handler, &mut adblock_token);
         }
 
-        // WebMessageReceived (Bidirectional Settings, Bookmarks, History & Engine IPC)
+        // 11. WebMessageReceived (IPC for internal pages)
         let web_message_handler = WebMessageReceivedEventHandler::create(Box::new(move |sender, args| {
             if let Some(args) = args {
                 unsafe {
@@ -832,7 +1059,7 @@ impl WebViewEngine {
                     };
 
                     if !msg_str.is_empty() {
-                        log::info!("[WebView2 IPC] Received WebMessage: {}", msg_str);
+                        log::info!("[WebView2 IPC Tab #{}] Received WebMessage: {}", tab_id, msg_str);
                         Self::handle_ipc_message(hwnd_parent, sender.as_ref(), &msg_str);
                     }
                 }
@@ -841,7 +1068,7 @@ impl WebViewEngine {
         }));
         let mut msg_token = EventRegistrationToken::default();
         unsafe {
-            let _ = self.webview.add_WebMessageReceived(&web_message_handler, &mut msg_token);
+            let _ = webview.add_WebMessageReceived(&web_message_handler, &mut msg_token);
         }
 
         Ok(())
@@ -851,11 +1078,11 @@ impl WebViewEngine {
         #[derive(serde::Deserialize)]
         struct IpcPayload {
             action: String,
+            url: Option<String>,
+            title: Option<String>,
+            id: Option<i64>,
             key: Option<String>,
             value: Option<serde_json::Value>,
-            id: Option<i64>,
-            title: Option<String>,
-            url: Option<String>,
         }
 
         let parsed: std::result::Result<IpcPayload, _> = serde_json::from_str(msg_str);
@@ -864,7 +1091,6 @@ impl WebViewEngine {
                 "navigate" => {
                     if let Some(url) = payload.url {
                         log::info!("[IPC Action] Navigating to '{}'", url);
-                        
                         let ptr = unsafe {
                             windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
                                 hwnd,
@@ -893,87 +1119,8 @@ impl WebViewEngine {
 
                         if let Some(s) = sender {
                             unsafe {
-                                if url == "nexora://home" || url == "nexora://newtab" || url == "nexora:" {
-                                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
-                                        let config = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
-                                        let db_path = paths.data_dir.join("nexora.db");
-                                        let bookmarks = if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
-                                            let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
-                                            bm_mgr.get_all().unwrap_or_default()
-                                        } else {
-                                            Vec::new()
-                                        };
-                                        let html = crate::home::HomeUi::render_html(&config, &bookmarks);
-                                        let wide = pwstr_from_str(&html);
-                                        let _ = s.NavigateToString(PCWSTR(wide.0));
-                                    }
-                                } else if url == "nexora://bookmarks" {
-                                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
-                                        let db_path = paths.data_dir.join("nexora.db");
-                                        let bookmarks = if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
-                                            let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
-                                            bm_mgr.get_all().unwrap_or_default()
-                                        } else {
-                                            Vec::new()
-                                        };
-                                        let html = crate::storage::BookmarksUi::render_html(&bookmarks);
-                                        let wide = pwstr_from_str(&html);
-                                        let _ = s.NavigateToString(PCWSTR(wide.0));
-                                    }
-                                } else if url == "nexora://history" {
-                                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
-                                        let db_path = paths.data_dir.join("nexora.db");
-                                        let history = if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
-                                            let hist_mgr = crate::storage::HistoryManager::new(std::sync::Arc::new(conn));
-                                            hist_mgr.get_recent(200).unwrap_or_default()
-                                        } else {
-                                            Vec::new()
-                                        };
-                                        let html = crate::storage::HistoryUi::render_html(&history);
-                                        let wide = pwstr_from_str(&html);
-                                        let _ = s.NavigateToString(PCWSTR(wide.0));
-                                    }
-                                } else if url == "nexora://settings" {
-                                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
-                                        let config = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
-                                        let html = crate::settings::SettingsUi::render_html(&config);
-                                        let wide = pwstr_from_str(&html);
-                                        let _ = s.NavigateToString(PCWSTR(wide.0));
-                                    }
-                                } else if url == "nexora://diagnostics" {
-                                    let (total_tabs, active_title, active_url, suspended_tabs, adblock_stats) = {
-                                        let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
-                                            hwnd,
-                                            windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
-                                        ) as *mut crate::browser::host_window::WindowContext;
-                                        if !ptr.is_null() {
-                                            let tabs = (*ptr).tab_manager.borrow();
-                                            let total = tabs.tab_count();
-                                            let suspended = tabs.tabs().iter().filter(|t| t.is_suspended()).count();
-                                            let (title, url) = tabs.get_active_tab()
-                                                .map(|t| (t.title.clone(), t.url.clone()))
-                                                .unwrap_or(("Nexora Diagnostics".to_string(), "nexora://diagnostics".to_string()));
-                                            let stats = (*ptr).adblock_engine.get_stats();
-                                            (total, title, url, suspended, stats)
-                                        } else {
-                                            (1, "Nexora Diagnostics".to_string(), "nexora://diagnostics".to_string(), 0, Default::default())
-                                        }
-                                    };
-                                    let snapshot = crate::diagnostics::DiagnosticsSnapshot::capture(
-                                        total_tabs,
-                                        &active_title,
-                                        &active_url,
-                                        suspended_tabs,
-                                        adblock_stats,
-                                        false,
-                                    );
-                                    let html = crate::diagnostics::DiagnosticsUi::render_html(&snapshot);
-                                    let wide = pwstr_from_str(&html);
-                                    let _ = s.NavigateToString(PCWSTR(wide.0));
-                                } else {
-                                    let wide = pwstr_from_str(&url);
-                                    let _ = s.Navigate(PCWSTR(wide.0));
-                                }
+                                let wide = pwstr_from_str(&url);
+                                let _ = s.Navigate(PCWSTR(wide.0));
                             }
                         }
                     }
@@ -1034,11 +1181,7 @@ impl WebViewEngine {
                     if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
                         let db_path = paths.data_dir.join("nexora.db");
                         if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
-                            if let Err(e) = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);") {
-                                log::error!("[IPC Action] WAL checkpoint failed: {}", e);
-                            } else {
-                                log::info!("[IPC Action] SQLite WAL truncated and compacted successfully.");
-                            }
+                            let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);");
                         }
                     }
                 }
@@ -1047,32 +1190,31 @@ impl WebViewEngine {
                     if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
                         let _ = std::fs::remove_dir_all(&paths.engine_data_dir);
                         let _ = std::fs::create_dir_all(&paths.engine_data_dir);
-                        log::info!("[IPC Action] Engine cache directory cleared.");
                     }
                 }
                 "reset_defaults" => {
-                    log::info!("[IPC Action] Resetting all settings to factory defaults...");
+                    log::info!("[IPC Action] Resetting configuration to defaults...");
                     if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
-                        let default_config = crate::app::config::NexoraConfig::default();
-                        let _ = default_config.save(&paths.app_data_dir);
-                        log::info!("[IPC Action] Default configuration saved to {:?}", paths.app_data_dir);
+                        let default_cfg = crate::app::config::NexoraConfig::default();
+                        let _ = default_cfg.save(&paths.app_data_dir);
                     }
                 }
                 other => {
-                    log::warn!("[WebView2 IPC] Unrecognized action: {}", other);
+                    log::warn!("[WebView2 IPC] Unhandled action: {}", other);
                 }
             },
             Err(e) => {
-                log::warn!("[WebView2 IPC] Failed to parse message JSON: {}. Raw: {}", e, msg_str);
+                log::error!("[WebView2 IPC] Failed to parse message JSON: {} (raw: {})", e, msg_str);
             }
         }
     }
 
     fn apply_and_save_setting(hwnd: HWND, key: &str, val: &serde_json::Value) {
+        log::info!("[Settings IPC] Applying setting '{}' = {:?}", key, val);
         let paths = match crate::app::application::ApplicationPaths::resolve() {
             Ok(p) => p,
             Err(e) => {
-                log::error!("[Settings IPC] Could not resolve app paths: {}", e);
+                log::error!("[Settings IPC] Could not resolve paths: {}", e);
                 return;
             }
         };
@@ -1082,7 +1224,7 @@ impl WebViewEngine {
         match key {
             "homepage" => {
                 if let Some(s) = val.as_str() {
-                    config.homepage = s.trim().to_string();
+                    config.homepage = s.to_string();
                 }
             }
             "default_search_engine" => {
@@ -1093,9 +1235,9 @@ impl WebViewEngine {
             "theme" => {
                 if let Some(s) = val.as_str() {
                     config.theme = match s {
-                        "dark" => crate::app::config::ThemeMode::Dark,
                         "light" => crate::app::config::ThemeMode::Light,
-                        _ => crate::app::config::ThemeMode::System,
+                        "system" => crate::app::config::ThemeMode::System,
+                        _ => crate::app::config::ThemeMode::Dark,
                     };
                 }
             }
@@ -1158,11 +1300,9 @@ impl WebViewEngine {
                 match key {
                     "homepage" => {
                         (*ptr).homepage = config.homepage.clone();
-                        log::info!("[Live Settings] Updated HostWindow homepage to '{}'", (*ptr).homepage);
                     }
                     "default_search_engine" => {
                         (*ptr).default_search_engine = config.default_search_engine.clone();
-                        log::info!("[Live Settings] Updated HostWindow default_search_engine to '{}'", (*ptr).default_search_engine);
                     }
                     "smart_suspension" => {
                         (*ptr).suspension_engine.enabled = config.smart_suspension;

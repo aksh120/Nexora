@@ -1,11 +1,13 @@
 use crate::app::config::{NexoraConfig, ThemeMode};
 use crate::ui::branding::BrandIdentity;
+use crate::ui::design_system::DesignTokens;
+use crate::ui::icons::LucideIcon;
 
-/// Professional, high-performance Settings Page Renderer
 pub struct SettingsUi;
 
 impl SettingsUi {
-    /// Generates standalone, zero-overhead HTML5/CSS3 page for `nexora://settings`
+    /// Generates a professional, two-column settings dashboard for `nexora://settings`.
+    /// Follows clean desktop browser aesthetics with zero futuristic AI clichés.
     pub fn render_html(config: &NexoraConfig) -> String {
         let homepage_escaped = html_escape(&config.homepage);
         let default_engine = &config.default_search_engine;
@@ -24,6 +26,15 @@ impl SettingsUi {
         let media_cache = config.media_cache_limit_mb;
         let version = BrandIdentity::version();
 
+        let general_icon_svg = LucideIcon::Sliders.to_svg(16, 2.0, "currentColor");
+        let perf_icon_svg = LucideIcon::Cpu.to_svg(16, 2.0, "currentColor");
+        let privacy_icon_svg = LucideIcon::ShieldCheck.to_svg(16, 2.0, "currentColor");
+        let video_icon_svg = LucideIcon::Volume2.to_svg(16, 2.0, "currentColor");
+        let storage_icon_svg = LucideIcon::HardDrive.to_svg(16, 2.0, "currentColor");
+        let about_icon_svg = LucideIcon::Sparkles.to_svg(16, 2.0, "currentColor");
+        let search_icon_svg = LucideIcon::Search.to_svg(14, 2.0, "currentColor");
+        let shared_css = DesignTokens::shared_css(true);
+
         format!(
             r###"<!DOCTYPE html>
 <html lang="en">
@@ -32,133 +43,72 @@ impl SettingsUi {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Settings - Nexora</title>
     <style>
-        :root {{
-            --bg-base: #000000;
-            --bg-sidebar: #050304;
-            --bg-card: #0C0708;
-            --bg-card-hover: #160D0F;
-            --bg-input: #110A0C;
-            --border: #291518;
-            --border-subtle: #190B0D;
-            --border-focus: #E11D48;
-            --text-primary: #F7F0F1;
-            --text-secondary: #997F83;
-            --text-muted: #665256;
-            --accent: #E11D48;
-            --accent-hover: #F43F5E;
-            --danger: #E11D48;
-            --danger-hover: #BE123C;
-            --success: #10B981;
-            --font-stack: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
-        }}
-
-        @media (prefers-color-scheme: light) {{
-            :root {{
-                --bg-base: #F3F3F3;
-                --bg-sidebar: #EBEBEB;
-                --bg-card: #FFFFFF;
-                --bg-card-hover: #F9F9F9;
-                --bg-input: #FFFFFF;
-                --border: #E0E0E0;
-                --border-subtle: #EEEEEE;
-                --border-focus: #E11D48;
-                --text-primary: #202124;
-                --text-secondary: #5F6368;
-                --text-muted: #80868B;
-            }}
-        }}
-
-        * {{
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }}
+        {shared_css}
 
         body {{
-            font-family: var(--font-stack);
-            background-color: var(--bg-base);
-            color: var(--text-primary);
             display: flex;
             height: 100vh;
             overflow: hidden;
-            user-select: none;
-            -webkit-font-smoothing: antialiased;
+            background-color: var(--bg-base);
         }}
 
-        /* Sidebar */
+        /* Two-Column Layout: Sidebar */
         .sidebar {{
-            width: 240px;
-            background-color: var(--bg-sidebar);
+            width: 230px;
+            background: var(--bg-surface);
             border-right: 1px solid var(--border);
-            padding: 24px 12px;
             display: flex;
             flex-direction: column;
-            gap: 2px;
+            padding: 24px 12px;
+            gap: 4px;
             flex-shrink: 0;
         }}
 
-        .sidebar-header {{
+        .sidebar-brand {{
             display: flex;
             align-items: center;
             gap: 10px;
-            padding: 0 12px 20px 12px;
+            padding: 0 10px 20px 10px;
             border-bottom: 1px solid var(--border-subtle);
             margin-bottom: 12px;
         }}
 
-        .sidebar-header h1 {{
+        .sidebar-brand h1 {{
             font-size: 15px;
             font-weight: 600;
-            letter-spacing: 0.3px;
             color: var(--text-primary);
-        }}
-
-        .sidebar-header .version-tag {{
-            font-size: 11px;
-            padding: 2px 6px;
-            background: rgba(255, 255, 255, 0.08);
-            border-radius: 4px;
-            color: var(--text-secondary);
-            font-family: monospace;
         }}
 
         .nav-item {{
             display: flex;
             align-items: center;
-            gap: 12px;
-            padding: 10px 14px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 13.5px;
-            font-weight: 400;
+            gap: 10px;
+            padding: 8px 12px;
+            font-size: 13px;
+            font-weight: 500;
             color: var(--text-secondary);
-            transition: background 0.1s ease, color 0.1s ease;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.12s ease;
         }}
 
         .nav-item:hover {{
-            background: rgba(255, 255, 255, 0.04);
             color: var(--text-primary);
+            background: var(--hover-bg);
         }}
 
         .nav-item.active {{
-            background: rgba(225, 29, 72, 0.12);
-            color: var(--accent);
-            font-weight: 600;
+            color: var(--text-primary);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
         }}
 
-        .nav-item svg {{
-            width: 17px;
-            height: 17px;
-            stroke: currentColor;
-            fill: none;
-            stroke-width: 2;
-            stroke-linecap: round;
-            stroke-linejoin: round;
-            flex-shrink: 0;
+        .nav-item.active svg {{
+            stroke: var(--accent);
         }}
 
-        /* Main Content */
-        .content-area {{
+        /* Two-Column Layout: Content Area */
+        .main-content {{
             flex: 1;
             display: flex;
             flex-direction: column;
@@ -167,261 +117,88 @@ impl SettingsUi {
         }}
 
         .content-header {{
-            height: 60px;
-            padding: 0 36px;
             display: flex;
             align-items: center;
             justify-content: space-between;
+            padding: 20px 36px;
             border-bottom: 1px solid var(--border-subtle);
             background: var(--bg-base);
-            flex-shrink: 0;
         }}
 
-        .search-container {{
+        .search-bar-wrap {{
             position: relative;
-            width: 320px;
+            width: 260px;
         }}
 
-        .search-container input {{
-            width: 100%;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 7px 12px 7px 34px;
-            color: var(--text-primary);
-            font-size: 13px;
-            outline: none;
-            transition: border-color 0.15s ease;
-        }}
-
-        .search-container input:focus {{
-            border-color: var(--border-focus);
-        }}
-
-        .search-container svg {{
+        .search-bar-wrap svg {{
             position: absolute;
             left: 10px;
             top: 50%;
             transform: translateY(-50%);
-            width: 15px;
-            height: 15px;
-            stroke: var(--text-muted);
-            fill: none;
-            stroke-width: 2;
+            color: var(--text-muted);
+            pointer-events: none;
+        }}
+
+        .search-bar-wrap input {{
+            width: 100%;
+            padding: 7px 10px 7px 32px;
+            font-size: 13px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            outline: none;
+        }}
+
+        .search-bar-wrap input:focus {{
+            border-color: var(--accent);
         }}
 
         .content-scroll {{
             flex: 1;
-            padding: 32px 36px 60px 36px;
             overflow-y: auto;
+            padding: 28px 36px 64px 36px;
         }}
 
-        .section {{
+        .settings-container {{
+            max-width: 740px;
+        }}
+
+        .category-pane {{
             display: none;
-            max-width: 720px;
         }}
 
-        .section.active {{
+        .category-pane.active {{
             display: block;
         }}
 
-        .section-title {{
+        .category-title {{
             font-size: 18px;
             font-weight: 600;
             color: var(--text-primary);
             margin-bottom: 4px;
         }}
 
-        .section-desc {{
+        .category-desc {{
             font-size: 13px;
             color: var(--text-secondary);
             margin-bottom: 20px;
         }}
 
-        /* Card Container */
-        .settings-card {{
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            margin-bottom: 24px;
-            overflow: hidden;
-        }}
-
-        .setting-row {{
-            padding: 14px 18px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border-bottom: 1px solid var(--border-subtle);
-            transition: background 0.1s ease;
-        }}
-
-        .setting-row:last-child {{
-            border-bottom: none;
-        }}
-
-        .setting-row:hover {{
-            background: var(--bg-card-hover);
-        }}
-
-        .setting-meta {{
-            padding-right: 20px;
-        }}
-
-        .setting-meta h4 {{
-            font-size: 13.5px;
-            font-weight: 500;
-            color: var(--text-primary);
-            margin-bottom: 2px;
-        }}
-
-        .setting-meta p {{
-            font-size: 12px;
-            color: var(--text-secondary);
-            line-height: 1.4;
-        }}
-
-        /* Controls */
-        input[type="text"], input[type="number"], select {{
-            background: var(--bg-input);
-            border: 1px solid var(--border);
-            color: var(--text-primary);
-            padding: 6px 10px;
-            border-radius: 5px;
-            font-size: 13px;
-            outline: none;
-            font-family: inherit;
-        }}
-
-        input[type="text"]:focus, input[type="number"]:focus, select:focus {{
-            border-color: var(--border-focus);
-        }}
-
-        select {{
-            cursor: pointer;
-            padding-right: 26px;
-            appearance: none;
-            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="%239AA0A6" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>');
-            background-repeat: no-repeat;
-            background-position: right 8px center;
-        }}
-
-        /* Windows 11 Fluent Toggle Switch */
-        .switch {{
-            position: relative;
-            display: inline-block;
-            width: 38px;
-            height: 20px;
-            flex-shrink: 0;
-        }}
-
-        .switch input {{
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }}
-
-        .slider {{
-            position: absolute;
-            cursor: pointer;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background-color: #383838;
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            transition: 0.15s ease;
-        }}
-
-        .slider:before {{
-            position: absolute;
-            content: "";
-            height: 12px;
-            width: 12px;
-            left: 3px;
-            bottom: 3px;
-            background-color: #C8C8C8;
-            border-radius: 50%;
-            transition: 0.15s ease;
-        }}
-
-        input:checked + .slider {{
-            background-color: var(--accent);
-            border-color: var(--accent);
-        }}
-
-        input:checked + .slider:before {{
-            transform: translateX(18px);
-            background-color: #FFFFFF;
-        }}
-
-        /* Standard Buttons */
-        .btn {{
-            background: #2D2D2D;
-            border: 1px solid var(--border);
-            color: var(--text-primary);
-            padding: 6px 14px;
-            border-radius: 5px;
-            font-size: 12.5px;
-            font-weight: 500;
-            cursor: pointer;
-            outline: none;
-            transition: background 0.1s ease, border-color 0.1s ease;
-        }}
-
-        .btn:hover {{
-            background: #383838;
-            border-color: #444444;
-        }}
-
-        .btn-primary {{
-            background: var(--accent);
-            border-color: var(--accent);
-            color: #FFFFFF;
-        }}
-
-        .btn-primary:hover {{
-            background: var(--accent-hover);
-        }}
-
-        .btn-danger {{
-            background: rgba(209, 52, 56, 0.15);
-            border: 1px solid rgba(209, 52, 56, 0.4);
-            color: #FF8F94;
-        }}
-
-        .btn-danger:hover {{
-            background: var(--danger);
-            color: #FFFFFF;
-        }}
-
-        .status-badge {{
-            font-size: 11.5px;
-            font-weight: 500;
-            padding: 3px 8px;
-            border-radius: 4px;
-            background: rgba(255, 255, 255, 0.06);
-            color: var(--text-secondary);
-            border: 1px solid var(--border);
-        }}
-
-        .status-badge.active {{
-            background: rgba(16, 124, 65, 0.15);
-            color: #6CCB5F;
-            border-color: rgba(16, 124, 65, 0.3);
-        }}
-
-        /* Toast */
-        #toast {{
+        /* Toast notification */
+        .toast {{
             position: fixed;
             bottom: 24px;
             right: 24px;
-            background: #2B2B2B;
-            border: 1px solid var(--border);
-            color: #FFFFFF;
-            padding: 10px 16px;
-            border-radius: 6px;
+            background: var(--bg-card);
+            border: 1px solid var(--accent);
+            color: var(--text-primary);
+            padding: 10px 18px;
+            border-radius: var(--radius-sm);
             font-size: 13px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            font-weight: 500;
             display: none;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
             z-index: 1000;
         }}
     </style>
@@ -429,8 +206,8 @@ impl SettingsUi {
 <body>
     <!-- Sidebar -->
     <div class="sidebar">
-        <div class="sidebar-header">
-            <svg viewBox="0 0 100 100" width="24" height="24" fill="none">
+        <div class="sidebar-brand">
+            <svg viewBox="0 0 100 100" width="22" height="22" fill="none">
                 <defs>
                     <linearGradient id="prism-settings-logo" x1="0" y1="0" x2="100" y2="100">
                         <stop offset="0%" stop-color="#FF385C"/>
@@ -443,309 +220,321 @@ impl SettingsUi {
                 <circle cx="50" cy="50" r="4" fill="#FFFFFF"/>
             </svg>
             <h1>Settings</h1>
-            <span class="version-tag">v{version}</span>
+            <span class="badge" style="margin-left: auto;">v{version}</span>
         </div>
 
-        <div class="nav-item active" onclick="switchTab('general', this)">
-            <svg viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01M10 8h.01"/></svg>
-            General
+        <div class="nav-item active" onclick="switchCategory('general', this)">
+            {general_icon_svg} General
         </div>
-        <div class="nav-item" onclick="switchTab('performance', this)">
-            <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-            Performance
+        <div class="nav-item" onclick="switchCategory('performance', this)">
+            {perf_icon_svg} Performance
         </div>
-        <div class="nav-item" onclick="switchTab('privacy', this)">
-            <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            Privacy & Security
+        <div class="nav-item" onclick="switchCategory('privacy', this)">
+            {privacy_icon_svg} Privacy & Security
         </div>
-        <div class="nav-item" onclick="switchTab('video', this)">
-            <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            Video & Media
+        <div class="nav-item" onclick="switchCategory('video', this)">
+            {video_icon_svg} Video & Media
         </div>
-        <div class="nav-item" onclick="switchTab('storage', this)">
-            <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
-            Storage & Cache
+        <div class="nav-item" onclick="switchCategory('storage', this)">
+            {storage_icon_svg} Storage & Cache
         </div>
-        <div class="nav-item" onclick="switchTab('about', this)">
-            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-            About Nexora
+        <div class="nav-item" onclick="switchCategory('about', this)">
+            {about_icon_svg} About Nexora
         </div>
     </div>
 
-    <!-- Content Area -->
-    <div class="content-area">
+    <!-- Main Content Area -->
+    <div class="main-content">
         <div class="content-header">
-            <div class="search-container">
-                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                <input type="text" id="settings-search" placeholder="Search settings" oninput="filterSettings(this.value)" />
+            <div class="search-bar-wrap">
+                {search_icon_svg}
+                <input type="text" id="settings-filter" placeholder="Search settings..." oninput="filterSettings(this.value)" />
             </div>
             <div style="font-size: 12px; color: var(--text-muted);">
-                Changes are saved automatically
+                Changes saved automatically
             </div>
         </div>
 
         <div class="content-scroll">
-            <!-- 1. GENERAL -->
-            <div id="general" class="section active">
-                <h2 class="section-title">General Settings</h2>
-                <p class="section-desc">Manage startup behavior, search engine preferences, and shortcuts</p>
+            <div class="settings-container">
+                <!-- 1. GENERAL -->
+                <div id="general" class="category-pane active">
+                    <h2 class="category-title">General Settings</h2>
+                    <p class="category-desc">Manage startup behavior, search provider, and default appearance.</p>
 
-                <div class="settings-card">
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Homepage</h4>
-                            <p>Web address loaded when opening new tabs or windows</p>
+                    <div class="card">
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Homepage URL</div>
+                                <div class="setting-desc">Web address loaded when opening new tabs or launch</div>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <input type="text" id="homepage-input" class="input-text" style="width: 240px;" value="{homepage_escaped}" onchange="saveSetting('homepage', this.value)" />
+                                <button class="btn btn-primary btn-sm" onclick="saveSetting('homepage', document.getElementById('homepage-input').value)">Save</button>
+                                <button class="btn btn-ghost btn-sm" onclick="document.getElementById('homepage-input').value = 'nexora://home'; saveSetting('homepage', 'nexora://home');">Nexora Home</button>
+                            </div>
                         </div>
-                        <div style="display: flex; gap: 8px;">
-                            <input type="text" id="homepage" value="{homepage_escaped}" style="width: 250px;" onchange="saveSetting('homepage', this.value)" />
-                            <button class="btn btn-primary" onclick="saveSetting('homepage', document.getElementById('homepage').value)">Save</button>
-                            <button class="btn btn-secondary" onclick="document.getElementById('homepage').value = 'nexora://home'; saveSetting('homepage', 'nexora://home');" title="Restore Nexora dedicated homepage">Use Nexora Home</button>
-                        </div>
-                    </div>
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Default Search Engine</h4>
-                            <p>Search provider queried for address bar terms</p>
-                        </div>
-                        <select id="search_engine" onchange="saveSetting('default_search_engine', this.value)">
-                            <option value="Google" {google_selected}>Google</option>
-                            <option value="DuckDuckGo" {ddg_selected}>DuckDuckGo</option>
-                            <option value="Bing" {bing_selected}>Microsoft Bing</option>
-                            <option value="Brave" {brave_selected}>Brave Search</option>
-                        </select>
-                    </div>
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Bookmarks Manager</h4>
-                            <p>Manage, organize, and edit saved bookmark links</p>
-                        </div>
-                        <button class="btn" onclick="navigate('nexora://bookmarks')">Open Bookmarks</button>
-                    </div>
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Browsing History</h4>
-                            <p>View, search, or delete your chronological browsing records</p>
-                        </div>
-                        <button class="btn" onclick="navigate('nexora://history')">Open History</button>
-                    </div>
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Theme Appearance</h4>
-                            <p>Match your Windows system settings or choose a preferred appearance</p>
-                        </div>
-                        <select id="theme" onchange="saveSetting('theme', this.value)">
-                            <option value="system" {theme_sys_selected}>System Default</option>
-                            <option value="dark" {theme_dark_selected}>Dark</option>
-                            <option value="light" {theme_light_selected}>Light</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
 
-            <!-- 2. PERFORMANCE -->
-            <div id="performance" class="section">
-                <h2 class="section-title">Performance &amp; Smart Suspension</h2>
-                <p class="section-desc">Tune background tab memory reclamation, hardware acceleration, and process scheduling</p>
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Default Search Engine</div>
+                                <div class="setting-desc">Search provider used for queries entered in the address bar</div>
+                            </div>
+                            <select class="select-input" onchange="saveSetting('default_search_engine', this.value)">
+                                <option value="Google" {google_sel}>Google</option>
+                                <option value="DuckDuckGo" {ddg_sel}>DuckDuckGo</option>
+                                <option value="Bing" {bing_sel}>Microsoft Bing</option>
+                                <option value="Brave" {brave_sel}>Brave Search</option>
+                            </select>
+                        </div>
 
-                <div class="settings-card">
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Hardware Video Acceleration</h4>
-                            <p>Offload video decoding to GPU via Direct3D 11 and DXVA2</p>
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Theme Appearance</div>
+                                <div class="setting-desc">Choose between dark, light, or Windows system default</div>
+                            </div>
+                            <select class="select-input" onchange="saveSetting('theme', this.value)">
+                                <option value="dark" {theme_dark_sel}>Dark (Default)</option>
+                                <option value="light" {theme_light_sel}>Light</option>
+                                <option value="system" {theme_sys_sel}>System Default</option>
+                            </select>
                         </div>
-                        <label class="switch">
-                            <input type="checkbox" id="hw_accel" {hw_accel_checked} onchange="saveSetting('hardware_acceleration', this.checked)" />
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Smart Tab Suspension</h4>
-                            <p>Automatically suspend idle background tabs to conserve system memory</p>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Bookmarks Manager</div>
+                                <div class="setting-desc">Organize and manage your saved bookmarks</div>
+                            </div>
+                            <button class="btn btn-ghost btn-sm" onclick="navigate('nexora://bookmarks')">Open Bookmarks</button>
                         </div>
-                        <label class="switch">
-                            <input type="checkbox" id="smart_susp" {smart_susp_checked} onchange="saveSetting('smart_suspension', this.checked)" />
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Inactivity Suspension Timeout</h4>
-                            <p>Minutes before an inactive non-media background tab is suspended</p>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <input type="number" id="susp_timeout" value="{susp_timeout}" min="1" max="120" style="width: 75px;" onchange="saveSetting('suspension_timeout_minutes', parseInt(this.value))" />
-                            <span style="font-size: 13px; color: var(--text-secondary);">minutes</span>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Browsing History</div>
+                                <div class="setting-desc">View and search your chronological browsing records</div>
+                            </div>
+                            <button class="btn btn-ghost btn-sm" onclick="navigate('nexora://history')">Open History</button>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- 3. PRIVACY -->
-            <div id="privacy" class="section">
-                <h2 class="section-title">Privacy &amp; Security</h2>
-                <p class="section-desc">Manage network request filtering, tracker blocking, and site permissions</p>
+                <!-- 2. PERFORMANCE -->
+                <div id="performance" class="category-pane">
+                    <h2 class="category-title">Performance Settings</h2>
+                    <p class="category-desc">Configure hardware acceleration, memory pressure limits, and tab suspension.</p>
 
-                <div class="settings-card">
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Built-in Ad Blocker</h4>
-                            <p>Native Rust request-level network filter blocking ad servers</p>
+                    <div class="card">
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Smart Tab Suspension</div>
+                                <div class="setting-desc">Suspend inactive background tabs under memory pressure to keep RAM usage low</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" {smart_susp_checked} onchange="saveSetting('smart_suspension', this.checked)" />
+                                <span class="toggle-slider"></span>
+                            </label>
                         </div>
-                        <label class="switch">
-                            <input type="checkbox" id="ad_block" {adblock_checked} onchange="saveSetting('ad_block_enabled', this.checked)" />
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Tracker &amp; Fingerprinting Protection</h4>
-                            <p>Block third-party analytics, tracking beacons, and cryptominers</p>
-                        </div>
-                        <label class="switch">
-                            <input type="checkbox" id="tracker_block" {tracker_checked} onchange="saveSetting('tracker_protection_enabled', this.checked)" />
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Zero-Telemetry Status</h4>
-                            <p>Complete network isolation: 0 analytics pings, 0 telemetry beacons</p>
-                        </div>
-                        <span class="status-badge active">Enforced</span>
-                    </div>
-                </div>
-            </div>
 
-            <!-- 4. VIDEO & STREAMING -->
-            <div id="video" class="section">
-                <h2 class="section-title">Video &amp; Streaming Optimization</h2>
-                <p class="section-desc">GPU hardware decoder pipeline and verified media DRM authorization</p>
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Inactivity Timeout</div>
+                                <div class="setting-desc">Minutes of inactivity before background tabs become eligible for suspension</div>
+                            </div>
+                            <select class="select-input" onchange="saveSetting('suspension_timeout_minutes', parseInt(this.value))">
+                                <option value="5" {t5_sel}>5 Minutes</option>
+                                <option value="10" {t10_sel}>10 Minutes (Recommended)</option>
+                                <option value="15" {t15_sel}>15 Minutes</option>
+                                <option value="30" {t30_sel}>30 Minutes</option>
+                                <option value="60" {t60_sel}>60 Minutes</option>
+                            </select>
+                        </div>
 
-                <div class="settings-card">
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>GPU Video Decoder Pipeline</h4>
-                            <p>Direct3D 11 NVDEC offload on NVIDIA GeForce GT 730 / Intel HD Graphics</p>
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Direct3D 11 & NVDEC Acceleration</div>
+                                <div class="setting-desc">Offload high-resolution video decoding directly to GPU to reduce host CPU load</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" {hw_accel_checked} onchange="saveSetting('hardware_acceleration', this.checked)" />
+                                <span class="toggle-slider"></span>
+                            </label>
                         </div>
-                        <span class="status-badge active">D3D11 Active</span>
-                    </div>
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>DRM Playback Pipelines</h4>
-                            <p>Widevine CDM and PlayReady EME for 1080p streaming services</p>
-                        </div>
-                        <span class="status-badge active">Certified EME</span>
-                    </div>
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Active Media Priority Scheduler</h4>
-                            <p>Elevates process priority during active audio and video playback</p>
-                        </div>
-                        <span class="status-badge active">Above Normal</span>
-                    </div>
-                </div>
-            </div>
 
-            <!-- 5. STORAGE & CACHE -->
-            <div id="storage" class="section">
-                <h2 class="section-title">Storage &amp; Cache Boundaries</h2>
-                <p class="section-desc">Manage local disk storage boundaries, database maintenance, and history purging</p>
-
-                <div class="settings-card">
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Disk Cache Boundary</h4>
-                            <p>Maximum disk cache allowed before automatic LRU cleanup (MB)</p>
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">System Diagnostics</div>
+                                <div class="setting-desc">Inspect live memory, GPU decode status, and tab architecture metrics</div>
+                            </div>
+                            <button class="btn btn-ghost btn-sm" onclick="navigate('nexora://diagnostics')">Open Diagnostics</button>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <input type="number" id="disk_cache" value="{disk_cache}" min="64" max="2048" style="width: 80px;" onchange="saveSetting('disk_cache_limit_mb', parseInt(this.value))" />
-                            <span style="font-size: 13px; color: var(--text-secondary);">MB</span>
-                        </div>
-                    </div>
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Media Cache Boundary</h4>
-                            <p>Maximum video stream chunk buffer storage on disk (MB)</p>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <input type="number" id="media_cache" value="{media_cache}" min="32" max="1024" style="width: 80px;" onchange="saveSetting('media_cache_limit_mb', parseInt(this.value))" />
-                            <span style="font-size: 13px; color: var(--text-secondary);">MB</span>
-                        </div>
-                    </div>
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Database Journal Compaction</h4>
-                            <p>Truncate and compact SQLite write-ahead logging journal (WAL)</p>
-                        </div>
-                        <button class="btn" id="btn-compact-wal" onclick="compactWal()">Compact SQLite WAL</button>
-                    </div>
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Clear Browser Cache</h4>
-                            <p>Purge temporary engine disk and media cache immediately</p>
-                        </div>
-                        <button class="btn" id="btn-clear-cache" onclick="clearCache()">Clear Cache</button>
-                    </div>
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Clear Browsing History</h4>
-                            <p>Erase all visited URL records and timeline metadata from SQLite database</p>
-                        </div>
-                        <button class="btn btn-danger" id="btn-clear-history" onclick="clearHistory()">Clear History</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 6. ABOUT -->
-            <div id="about" class="section">
-                <div style="display: flex; align-items: center; gap: 18px; margin-bottom: 22px;">
-                    <svg viewBox="0 0 100 100" width="56" height="56" fill="none">
-                        <defs>
-                            <linearGradient id="prism-about-logo" x1="0" y1="0" x2="100" y2="100">
-                                <stop offset="0%" stop-color="#FF385C"/>
-                                <stop offset="100%" stop-color="#E11D48"/>
-                            </linearGradient>
-                        </defs>
-                        <polygon points="20,15 55,15 35,85 15,85" fill="url(#prism-about-logo)"/>
-                        <polygon points="55,15 75,65 55,65 35,15" fill="#FDA4AF" opacity="0.85"/>
-                        <polygon points="85,85 50,85 70,15 90,15" fill="url(#prism-about-logo)"/>
-                        <circle cx="50" cy="50" r="4" fill="#FFFFFF"/>
-                    </svg>
-                    <div>
-                        <h2 class="section-title" style="margin-bottom: 4px;">About Nexora Browser</h2>
-                        <p class="section-desc">Powered by The Quantum Prism Core • Built for Windows</p>
                     </div>
                 </div>
 
-                <div class="settings-card">
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Nexora Core Build</h4>
-                            <p>Ultra-lightweight, streaming-first desktop browser for Windows</p>
+                <!-- 3. PRIVACY & SECURITY -->
+                <div id="privacy" class="category-pane">
+                    <h2 class="category-title">Privacy & Security</h2>
+                    <p class="category-desc">Manage built-in ad blocking, tracker protection, and browsing data.</p>
+
+                    <div class="card">
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">High-Speed Ad Blocker</div>
+                                <div class="setting-desc">Block intrusive advertising network requests while preserving video streaming CDNs</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" {adblock_checked} onchange="saveSetting('ad_block_enabled', this.checked)" />
+                                <span class="toggle-slider"></span>
+                            </label>
                         </div>
-                        <span class="status-badge">v{version} (x86_64-pc-windows-gnu)</span>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Tracker Protection</div>
+                                <div class="setting-desc">Block cross-site tracking beacons and profiling scripts</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" {tracker_checked} onchange="saveSetting('tracker_protection_enabled', this.checked)" />
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Zero-Telemetry Hardening</div>
+                                <div class="setting-desc">7 OS-level kill switches active: background pings, reporting, and cloud sync disabled</div>
+                            </div>
+                            <span class="badge badge-success">Enforced</span>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Clear Browsing History</div>
+                                <div class="setting-desc">Delete all visit records and search queries from local database</div>
+                            </div>
+                            <button class="btn btn-ghost btn-sm" id="btn-clear-history" onclick="clearHistory()">Clear History</button>
+                        </div>
                     </div>
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Rendering Engine</h4>
-                            <p>Microsoft WebView2 Evergreen Runtime (Chromium Core)</p>
+                </div>
+
+                <!-- 4. VIDEO & MEDIA -->
+                <div id="video" class="category-pane">
+                    <h2 class="category-title">Video & Media Engine</h2>
+                    <p class="category-desc">Manage DRM pipelines, media priority boost, and picture-in-picture.</p>
+
+                    <div class="card">
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Legitimate DRM Pipelines</div>
+                                <div class="setting-desc">Widevine CDM and PlayReady EME supported natively via Windows OS runtime</div>
+                            </div>
+                            <span class="badge badge-success">Active & Certified</span>
                         </div>
-                        <span class="status-badge">System Evergreen</span>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Active Media Priority Boost</div>
+                                <div class="setting-desc">Boost process priority during active audio/video playback to eliminate frame drops</div>
+                            </div>
+                            <span class="badge badge-success">Enabled</span>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Picture-in-Picture (PiP)</div>
+                                <div class="setting-desc">Seamless floating video window with 16:9 aspect ratio and always-on-top positioning</div>
+                            </div>
+                            <span class="badge">Ready (Ctrl+P)</span>
+                        </div>
                     </div>
-                    <div class="setting-row">
-                        <div class="setting-meta">
-                            <h4>Core Philosophy</h4>
-                            <p>Maximum performance. Minimum overhead. Complete browsing freedom.</p>
+                </div>
+
+                <!-- 5. STORAGE & CACHE -->
+                <div id="storage" class="category-pane">
+                    <h2 class="category-title">Storage & Cache Limits</h2>
+                    <p class="category-desc">Manage local disk footprints and SQLite database integrity.</p>
+
+                    <div class="card">
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Disk Cache Limit</div>
+                                <div class="setting-desc">Maximum disk space allocated for web resource caching</div>
+                            </div>
+                            <select class="select-input" onchange="saveSetting('disk_cache_limit_mb', parseInt(this.value))">
+                                <option value="64" {dc64_sel}>64 MB</option>
+                                <option value="128" {dc128_sel}>128 MB</option>
+                                <option value="256" {dc256_sel}>256 MB (Default)</option>
+                                <option value="512" {dc512_sel}>512 MB</option>
+                            </select>
                         </div>
-                        <button class="btn btn-danger" onclick="resetDefaults()">Reset to Defaults</button>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Media Cache Limit</div>
+                                <div class="setting-desc">Maximum disk space allocated for streaming video buffer chunks</div>
+                            </div>
+                            <select class="select-input" onchange="saveSetting('media_cache_limit_mb', parseInt(this.value))">
+                                <option value="32" {mc32_sel}>32 MB</option>
+                                <option value="64" {mc64_sel}>64 MB (Default)</option>
+                                <option value="128" {mc128_sel}>128 MB</option>
+                                <option value="256" {mc256_sel}>256 MB</option>
+                            </select>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Compact SQLite Database WAL</div>
+                                <div class="setting-desc">Flush write-ahead logs and truncate database file to reclaim disk space</div>
+                            </div>
+                            <button class="btn btn-ghost btn-sm" id="btn-compact-wal" onclick="compactWal()">Compact Database</button>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Clear Engine Cache</div>
+                                <div class="setting-desc">Delete temporary web assets and cookies from disk cache</div>
+                            </div>
+                            <button class="btn btn-ghost btn-sm" id="btn-clear-cache" onclick="clearCache()">Clear Cache</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 6. ABOUT NEXORA -->
+                <div id="about" class="category-pane">
+                    <h2 class="category-title">About Nexora</h2>
+                    <p class="category-desc">High-performance desktop browser engineered in Rust for Windows.</p>
+
+                    <div class="card">
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Nexora Desktop Browser</div>
+                                <div class="setting-desc">Version {version} • Windows x86_64</div>
+                            </div>
+                            <span class="badge">Up to date</span>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Rendering Engine</div>
+                                <div class="setting-desc">Microsoft WebView2 Evergreen with Direct3D 11 NVDEC Acceleration</div>
+                            </div>
+                            <span class="badge">Hardware Accelerated</span>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Reset to Defaults</div>
+                                <div class="setting-desc">Restore all preferences and configurations to initial state</div>
+                            </div>
+                            <button class="btn btn-ghost btn-sm" style="color:var(--error);" onclick="resetDefaults()">Reset All Settings</button>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div id="toast"></div>
+    <!-- Notification Toast -->
+    <div class="toast" id="toast"></div>
 
     <script>
         function showToast(message) {{
@@ -768,35 +557,19 @@ impl SettingsUi {
             }}
         }}
 
-        function clearHistory() {{
-            if (confirm("Are you sure you want to clear your complete browsing history?")) {{
-                if (window.chrome && window.chrome.webview) {{
-                    window.chrome.webview.postMessage(JSON.stringify({{
-                        action: "clear_history"
-                    }}));
-                }}
-                showToast("Browsing history cleared");
-                const btn = document.getElementById('btn-clear-history');
-                if (btn) {{
-                    btn.textContent = "Cleared";
-                }}
-            }}
-        }}
-
-        function switchTab(tabId, clickedElement) {{
+        function switchCategory(catId, clickedItem) {{
             document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
-            const targetSection = document.getElementById(tabId);
-            if (targetSection) {{
-                targetSection.classList.add('active');
+            document.querySelectorAll('.category-pane').forEach(el => el.classList.remove('active'));
+            const target = document.getElementById(catId);
+            if (target) {{
+                target.classList.add('active');
             }}
-            if (clickedElement) {{
-                clickedElement.classList.add('active');
+            if (clickedItem) {{
+                clickedItem.classList.add('active');
             }}
         }}
 
         function saveSetting(key, value) {{
-            console.log('Saving setting:', key, value);
             if (window.chrome && window.chrome.webview) {{
                 window.chrome.webview.postMessage(JSON.stringify({{
                     action: "save_setting",
@@ -805,6 +578,19 @@ impl SettingsUi {
                 }}));
             }}
             showToast("Setting saved automatically");
+        }}
+
+        function clearHistory() {{
+            if (confirm("Clear complete local browsing history?")) {{
+                if (window.chrome && window.chrome.webview) {{
+                    window.chrome.webview.postMessage(JSON.stringify({{
+                        action: "clear_history"
+                    }}));
+                }}
+                showToast("Browsing history cleared");
+                const btn = document.getElementById('btn-clear-history');
+                if (btn) btn.textContent = "Cleared";
+            }}
         }}
 
         function compactWal() {{
@@ -819,13 +605,13 @@ impl SettingsUi {
             setTimeout(() => {{
                 btn.textContent = "Compacted";
                 btn.disabled = false;
-                showToast("SQLite WAL compacted successfully");
-            }}, 300);
+                showToast("SQLite database compacted successfully");
+            }}, 350);
         }}
 
         function clearCache() {{
             const btn = document.getElementById('btn-clear-cache');
-            btn.textContent = "Purging...";
+            btn.textContent = "Clearing...";
             btn.disabled = true;
             if (window.chrome && window.chrome.webview) {{
                 window.chrome.webview.postMessage(JSON.stringify({{
@@ -833,23 +619,21 @@ impl SettingsUi {
                 }}));
             }}
             setTimeout(() => {{
-                btn.textContent = "Purged";
+                btn.textContent = "Cleared";
                 btn.disabled = false;
-                showToast("Temporary cache purged");
-            }}, 300);
+                showToast("Cache cleared successfully");
+            }}, 350);
         }}
 
         function resetDefaults() {{
-            if (confirm("Reset all browser configuration back to factory defaults?")) {{
+            if (confirm("Reset all browser settings back to factory defaults?")) {{
                 if (window.chrome && window.chrome.webview) {{
                     window.chrome.webview.postMessage(JSON.stringify({{
                         action: "reset_defaults"
                     }}));
                 }}
                 showToast("Resetting to defaults...");
-                setTimeout(() => {{
-                    location.reload();
-                }}, 500);
+                setTimeout(() => location.reload(), 400);
             }}
         }}
 
@@ -860,41 +644,56 @@ impl SettingsUi {
                 rows.forEach(r => r.style.display = 'flex');
                 return;
             }}
-            document.querySelectorAll('.section').forEach(s => s.classList.add('active'));
             rows.forEach(r => {{
                 const text = r.textContent.toLowerCase();
-                if (text.includes(q)) {{
-                    r.style.display = 'flex';
-                }} else {{
-                    r.style.display = 'none';
-                }}
+                r.style.display = text.includes(q) ? 'flex' : 'none';
             }});
         }}
     </script>
 </body>
-</html>"###,
+</html>
+            "###,
+            shared_css = shared_css,
             version = version,
+            general_icon_svg = general_icon_svg,
+            perf_icon_svg = perf_icon_svg,
+            privacy_icon_svg = privacy_icon_svg,
+            video_icon_svg = video_icon_svg,
+            storage_icon_svg = storage_icon_svg,
+            about_icon_svg = about_icon_svg,
+            search_icon_svg = search_icon_svg,
             homepage_escaped = homepage_escaped,
-            google_selected = if default_engine == "Google" { "selected" } else { "" },
-            ddg_selected = if default_engine == "DuckDuckGo" { "selected" } else { "" },
-            bing_selected = if default_engine == "Bing" { "selected" } else { "" },
-            brave_selected = if default_engine == "Brave" { "selected" } else { "" },
-            theme_sys_selected = if theme_str == "system" { "selected" } else { "" },
-            theme_dark_selected = if theme_str == "dark" { "selected" } else { "" },
-            theme_light_selected = if theme_str == "light" { "selected" } else { "" },
-            hw_accel_checked = hw_accel_checked,
+            google_sel = if default_engine == "Google" { "selected" } else { "" },
+            ddg_sel = if default_engine == "DuckDuckGo" { "selected" } else { "" },
+            bing_sel = if default_engine == "Bing" { "selected" } else { "" },
+            brave_sel = if default_engine == "Brave" { "selected" } else { "" },
+            theme_dark_sel = if theme_str == "dark" { "selected" } else { "" },
+            theme_light_sel = if theme_str == "light" { "selected" } else { "" },
+            theme_sys_sel = if theme_str == "system" { "selected" } else { "" },
             smart_susp_checked = smart_susp_checked,
-            susp_timeout = susp_timeout,
+            hw_accel_checked = hw_accel_checked,
             adblock_checked = adblock_checked,
             tracker_checked = tracker_checked,
-            disk_cache = disk_cache,
-            media_cache = media_cache,
+            t5_sel = if susp_timeout == 5 { "selected" } else { "" },
+            t10_sel = if susp_timeout == 10 { "selected" } else { "" },
+            t15_sel = if susp_timeout == 15 { "selected" } else { "" },
+            t30_sel = if susp_timeout == 30 { "selected" } else { "" },
+            t60_sel = if susp_timeout == 60 { "selected" } else { "" },
+            dc64_sel = if disk_cache == 64 { "selected" } else { "" },
+            dc128_sel = if disk_cache == 128 { "selected" } else { "" },
+            dc256_sel = if disk_cache == 256 { "selected" } else { "" },
+            dc512_sel = if disk_cache == 512 { "selected" } else { "" },
+            mc32_sel = if media_cache == 32 { "selected" } else { "" },
+            mc64_sel = if media_cache == 64 { "selected" } else { "" },
+            mc128_sel = if media_cache == 128 { "selected" } else { "" },
+            mc256_sel = if media_cache == 256 { "selected" } else { "" },
         )
     }
 }
 
-fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
+fn html_escape(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
@@ -909,16 +708,13 @@ mod tests {
     fn test_render_settings_html_contains_all_tabs() {
         let config = NexoraConfig::default();
         let html = SettingsUi::render_html(&config);
-
+        assert!(html.contains("<!DOCTYPE html>"));
         assert!(html.contains("General Settings"));
-        assert!(html.contains("Performance &amp; Smart Suspension") || html.contains("Performance"));
-        assert!(html.contains("Privacy &amp; Security") || html.contains("Privacy"));
-        assert!(html.contains("Video &amp; Streaming Optimization") || html.contains("Video"));
-        assert!(html.contains("Storage &amp; Cache Boundaries") || html.contains("Storage"));
-        assert!(html.contains("About Nexora Browser"));
-        assert!(html.contains("Bookmarks Manager"));
-        assert!(html.contains("Browsing History"));
-        assert!(html.contains("nexora://home"));
-        assert!(html.contains("Zero-Telemetry"));
+        assert!(html.contains("Performance Settings"));
+        assert!(html.contains("Privacy & Security"));
+        assert!(html.contains("Video & Media Engine"));
+        assert!(html.contains("Storage & Cache Limits"));
+        assert!(html.contains("About Nexora"));
+        assert!(html.contains("search-bar-wrap"));
     }
 }

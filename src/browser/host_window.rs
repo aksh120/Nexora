@@ -833,13 +833,16 @@ impl HostWindow {
                                         windows::core::PCWSTR(wide_title.as_ptr()),
                                     );
 
-                                    // STOP in-flight navigation from the old tab and navigate to this tab's own URL
+                                    // Instant multi-controller visibility switch (< 15ms)
+                                    let (x, y, w, h) = (*ptr).layout.webview_rect();
+                                    let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
+                                    let t0 = std::time::Instant::now();
                                     if let Some(ref webview) = (*ptr).webview {
-                                        let _ = webview.stop();
-                                        let _ = webview.navigate(&url);
+                                        let _ = webview.switch_to_tab(id, bounds);
                                     }
+                                    let elapsed_ms = t0.elapsed().as_secs_f64() * 1000.0;
+                                    log::info!("[Tab Switch] Switched to tab #{} in {:.2} ms (instant persistent view)", id, elapsed_ms);
 
-                                    let _ = crate::performance::memory::trim_child_processes();
                                     let _ = InvalidateRect(hwnd, None, false);
                                 }
                             }
@@ -847,10 +850,17 @@ impl HostWindow {
                         ChromeHitResult::TabClose(id) => {
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             let new_active = tabs.close_tab(id);
-                            let maybe_tab_info = new_active.and_then(|new_id| tabs.get_tab(new_id).map(|t| (t.url.clone(), t.title.clone())));
+                            let maybe_tab_info = new_active.and_then(|new_id| tabs.get_tab(new_id).map(|t| (new_id, t.url.clone(), t.title.clone())));
                             drop(tabs);
 
-                            if let Some((url, title)) = maybe_tab_info {
+                            let (x, y, w, h) = (*ptr).layout.webview_rect();
+                            let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
+
+                            if let Some(ref webview) = (*ptr).webview {
+                                webview.close_tab_view(id);
+                            }
+
+                            if let Some((active_id, url, title)) = maybe_tab_info {
                                 let is_bm = if !url.starts_with("nexora://") && url != "about:blank" && !url.is_empty() {
                                     if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
                                         let db_path = paths.data_dir.join("nexora.db");
@@ -874,8 +884,7 @@ impl HostWindow {
                                 );
 
                                 if let Some(ref webview) = (*ptr).webview {
-                                    let _ = webview.stop();
-                                    let _ = webview.navigate(&url);
+                                    let _ = webview.switch_to_tab(active_id, bounds);
                                 }
                             }
 
@@ -892,9 +901,12 @@ impl HostWindow {
                             } else {
                                 "New Tab"
                             };
-                            let mut tabs = (*ptr).tab_manager.borrow_mut();
-                            let _ = tabs.create_tab(&homepage, Some(title));
-                            drop(tabs);
+                            let new_id = {
+                                let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                let id = tabs.create_tab(&homepage, Some(title));
+                                tabs.switch_tab(id);
+                                id
+                            };
 
                             let full_title = format!("{} - Nexora", title);
                             let wide_title: Vec<u16> = full_title.encode_utf16().chain(std::iter::once(0)).collect();
@@ -902,6 +914,9 @@ impl HostWindow {
                                 hwnd,
                                 windows::core::PCWSTR(wide_title.as_ptr()),
                             );
+
+                            let (x, y, w, h) = (*ptr).layout.webview_rect();
+                            let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
 
                             if let Some(ref mut chrome) = (*ptr).chrome {
                                 chrome.set_omnibox_text(&homepage);
@@ -911,11 +926,10 @@ impl HostWindow {
                             }
 
                             if let Some(ref webview) = (*ptr).webview {
-                                let _ = webview.stop();
-                                let _ = webview.navigate(&homepage);
+                                let _ = webview.create_tab_view(new_id, &homepage, bounds, true);
+                                let _ = webview.switch_to_tab(new_id, bounds);
                             }
 
-                            let _ = crate::performance::memory::trim_child_processes();
                             let _ = InvalidateRect(hwnd, None, false);
                         }
                         ChromeHitResult::None => {}
@@ -1066,14 +1080,14 @@ impl HostWindow {
                                             windows::core::PCWSTR(wide_title.as_ptr()),
                                         );
 
+                                        let (x, y, w, h) = (*ptr).layout.webview_rect();
+                                        let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
                                         if let Some(ref webview) = (*ptr).webview {
-                                            let _ = webview.stop();
-                                            let _ = webview.navigate(&url);
+                                            let _ = webview.switch_to_tab(target_id, bounds);
                                         }
                                         if let Some(ref chrome) = (*ptr).chrome {
                                             chrome.set_omnibox_text(&url);
                                         }
-                                        let _ = crate::performance::memory::trim_child_processes();
                                         let _ = InvalidateRect(hwnd, None, false);
                                     }
                                 }
@@ -1153,11 +1167,19 @@ impl HostWindow {
                                 } else {
                                     "New Tab"
                                 };
-                                let mut tabs = (*ptr).tab_manager.borrow_mut();
-                                let _ = tabs.create_tab(&homepage, Some(title));
-                                drop(tabs);
+                                let new_id = {
+                                    let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                    let id = tabs.create_tab(&homepage, Some(title));
+                                    tabs.switch_tab(id);
+                                    id
+                                };
+
+                                let (x, y, w, h) = (*ptr).layout.webview_rect();
+                                let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
+
                                 if let Some(ref webview) = (*ptr).webview {
-                                    let _ = webview.navigate(&homepage);
+                                    let _ = webview.create_tab_view(new_id, &homepage, bounds, true);
+                                    let _ = webview.switch_to_tab(new_id, bounds);
                                 }
                                 if let Some(ref chrome) = (*ptr).chrome {
                                     chrome.set_omnibox_text(&homepage);
@@ -1170,29 +1192,47 @@ impl HostWindow {
                                 return LRESULT(0);
                             }
                             'W' | 'w' => {
-                                let mut tabs = (*ptr).tab_manager.borrow_mut();
-                                if let Some(active_id) = tabs.active_tab_id() {
-                                    let new_active = tabs.close_tab(active_id);
-                                    let maybe_url = new_active.and_then(|new_id| tabs.get_tab(new_id).map(|t| t.url.clone()));
-                                    drop(tabs);
-
-                                    if let Some(url) = maybe_url {
-                                        if let Some(ref webview) = (*ptr).webview {
-                                            let _ = webview.navigate(&url);
-                                        }
-                                        if let Some(ref chrome) = (*ptr).chrome {
-                                            chrome.set_omnibox_text(&url);
-                                        }
+                                let (maybe_info, closed_id) = {
+                                    let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                    if let Some(active_id) = tabs.active_tab_id() {
+                                        let new_active = tabs.close_tab(active_id);
+                                        let info = new_active.and_then(|new_id| tabs.get_tab(new_id).map(|t| (new_id, t.url.clone(), t.title.clone())));
+                                        (info, Some(active_id))
                                     } else {
-                                        let _ = SendMessageW(hwnd, WM_CLOSE, WPARAM(0), LPARAM(0));
+                                        (None, None)
                                     }
+                                };
 
-                                    if let Some(ref chrome) = (*ptr).chrome {
-                                        let count = (*ptr).tab_manager.borrow().tab_count();
-                                        chrome.layout_controls(&(*ptr).layout, count);
+                                if let Some(id) = closed_id {
+                                    if let Some(ref webview) = (*ptr).webview {
+                                        webview.close_tab_view(id);
                                     }
-                                    let _ = InvalidateRect(hwnd, None, false);
                                 }
+
+                                if let Some((new_id, url, title)) = maybe_info {
+                                    let (x, y, w, h) = (*ptr).layout.webview_rect();
+                                    let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
+                                    if let Some(ref webview) = (*ptr).webview {
+                                        let _ = webview.switch_to_tab(new_id, bounds);
+                                    }
+                                    if let Some(ref chrome) = (*ptr).chrome {
+                                        chrome.set_omnibox_text(&url);
+                                    }
+                                    let full_title = format!("{} - Nexora", title);
+                                    let wide_title: Vec<u16> = full_title.encode_utf16().chain(std::iter::once(0)).collect();
+                                    let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
+                                        hwnd,
+                                        windows::core::PCWSTR(wide_title.as_ptr()),
+                                    );
+                                } else if closed_id.is_some() {
+                                    let _ = SendMessageW(hwnd, WM_CLOSE, WPARAM(0), LPARAM(0));
+                                }
+
+                                if let Some(ref chrome) = (*ptr).chrome {
+                                    let count = (*ptr).tab_manager.borrow().tab_count();
+                                    chrome.layout_controls(&(*ptr).layout, count);
+                                }
+                                let _ = InvalidateRect(hwnd, None, false);
                                 return LRESULT(0);
                             }
                             'R' | 'r' => {

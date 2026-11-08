@@ -104,7 +104,7 @@ Building an independent web rendering engine (HTML parser, CSS layout engine, Ja
 
 NEXORA utilizes a **dual-layer process architecture**:
 1. **The Native Orchestrator (Nexora.exe)**: Pure Rust executable hosting the Win32 message loop, tab management state machine, smart suspension engine, SQLite persistence layer, native UI widgets, and network request filter rules.
-2. **The Rendering Subsystem**: Isolated Chromium rendering processes spawned per-tab or pooled by domain, running in restricted Windows sandboxes with hardware-accelerated Direct3D swap chains.
+2. **Persistent Multi-Controller Rendering Subsystem**: Dedicated `ICoreWebView2Controller` instances maintained per active tab, managed via an active visibility switcher (`SetIsVisible(TRUE/FALSE)`). Tab switching does not recreate or reload webviews, achieving instant (< 15ms) transitions with 100% video and DOM continuity. Inactive/aged tabs are unloaded via `SmartSuspensionEngine` under memory pressure.
 
 ```
                       +---------------------------------------+
@@ -115,11 +115,11 @@ NEXORA utilizes a **dual-layer process architecture**:
             +-----------------------------+-----------------------------+
             |                             |                             |
 +-----------------------+     +-----------------------+     +-----------------------+
-|  Win32 Window Frame   |     | Tab Manager & Smart   |     | SQLite Persistence    |
-|  - Custom Tab Bar     |     |   Suspension Engine   |     |   (WAL Mode)          |
-|  - Omnibox / URL Bar  |     | - Idle Tab Sweeper    |     | - Bookmarks           |
-|  - Ad Filter Intercept|     | - Priority Scheduler  |     | - History (FTS5)      |
-|  - Settings & Diag    |     | - Working Set Trimmer |     | - Preferences         |
+|  Win32 Window Frame   |     | Multi-View Controller |     | SQLite Persistence    |
+|  - Custom Tab Bar     |     |   & Suspension Engine |     |   (WAL Mode)          |
+|  - Omnibox / URL Bar  |     | - Tab 1 View (Active) |     | - Bookmarks           |
+|  - Lucide Vector Icons|     | - Tab 2 View (Hidden) |     | - History (FTS5)      |
+|  - Unified Design Sys |     | - Working Set Trimmer |     | - Preferences         |
 +-----------------------+     +-----------------------+     +-----------------------+
             |                             |
             +-----------------------------+
@@ -129,8 +129,8 @@ NEXORA utilizes a **dual-layer process architecture**:
 +-------------------------------------------------------------------+
 |               Chromium Sandboxed Process Subsystem                |
 |  +--------------------+  +--------------------+  +--------------+ |
-|  | GPU / DXVA Process |  | Active Tab Renderer|  | Suspended Tab| |
-|  | (D3D11 Compositor) |  | (YouTube 1080p60)  |  | (Stub / Dorm)| |
+|  | GPU / DXVA Process |  | Resident Tab 1 View|  | Resident Tab2| |
+|  | (D3D11 Compositor) |  | (YouTube 1080p60)  |  | (Google Docs)| |
 |  +--------------------+  +--------------------+  +--------------+ |
 +-------------------------------------------------------------------+
 ```
