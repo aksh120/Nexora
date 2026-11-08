@@ -4,7 +4,7 @@
 
 #define MyAppName "Nexora"
 #define MyAppVersion "0.1.0"
-#define MyAppPublisher "Nexora Development Team"
+#define MyAppPublisher "Akshat Apoorv"
 #define MyAppURL "https://github.com/Nexora/Nexora"
 #define MyAppExeName "Nexora.exe"
 

@@ -39,7 +39,7 @@ def embed(exe_path, ico_path, is_installer=False):
             pver.StringStruct('FileDescription', desc),
             pver.StringStruct('FileVersion', version_str),
             pver.StringStruct('InternalName', internal_name),
-            pver.StringStruct('LegalCopyright', 'Copyright (c) 2026 Nexora Development Team'),
+            pver.StringStruct('LegalCopyright', 'Copyright (c) 2026 Akshat Apoorv'),
             pver.StringStruct('OriginalFilename', orig_name),
             pver.StringStruct('ProductName', 'Nexora'),
             pver.StringStruct('ProductVersion', version_str),

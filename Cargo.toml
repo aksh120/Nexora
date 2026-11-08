@@ -2,7 +2,7 @@
 name = "nexora"
 version = "0.1.0"
 edition = "2021"
-authors = ["Nexora Development Team"]
+authors = ["Akshat Apoorv"]
 description = "Ultra-Lightweight, Streaming-First Desktop Browser"
 default-run = "Nexora"
 

@@ -8,7 +8,7 @@ fn main() {
         res.set("ProductName", "Nexora");
         res.set("ProductVersion", env!("CARGO_PKG_VERSION"));
         res.set("FileVersion", env!("CARGO_PKG_VERSION"));
-        res.set("LegalCopyright", "Copyright (c) 2026 Nexora Development Team");
+        res.set("LegalCopyright", "Copyright (c) 2026 Akshat Apoorv");
         if let Err(e) = res.compile() {
             eprintln!("Warning: Failed to compile windows resource: {}", e);
         }

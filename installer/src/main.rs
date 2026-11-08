@@ -339,7 +339,7 @@ fn install_engine(
     let uninst_key = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Nexora";
     reg_add("HKCU", uninst_key, Some("DisplayName"), "Nexora");
     reg_add("HKCU", uninst_key, Some("DisplayVersion"), "0.1.0");
-    reg_add("HKCU", uninst_key, Some("Publisher"), "Nexora Development Team");
+    reg_add("HKCU", uninst_key, Some("Publisher"), "Akshat Apoorv");
     reg_add("HKCU", uninst_key, Some("DisplayIcon"), &icon_ref);
     reg_add("HKCU", uninst_key, Some("UninstallString"), &uninst_str);
     reg_add(

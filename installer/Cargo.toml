@@ -2,7 +2,7 @@
 name = "nexora-installer"
 version = "0.1.0"
 edition = "2021"
-authors = ["Nexora Development Team"]
+authors = ["Akshat Apoorv"]
 description = "Nexora Desktop Browser Official Setup & Installer"
 
 [[bin]]

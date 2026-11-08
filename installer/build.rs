@@ -9,7 +9,7 @@ fn main() {
         res.set("ProductVersion", "0.1.0");
         res.set("FileVersion", "0.1.0");
         res.set("OriginalFilename", "Nexora-Setup-v0.1.0.exe");
-        res.set("LegalCopyright", "Copyright (c) 2026 Nexora Development Team");
+        res.set("LegalCopyright", "Copyright (c) 2026 Akshat Apoorv");
         if let Err(e) = res.compile() {
             eprintln!("Warning: Failed to compile windows resource: {}", e);
         }
