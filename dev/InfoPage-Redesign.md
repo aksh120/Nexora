@@ -38,3 +38,4 @@ The redesign transitions the page from an AI-generated SaaS landing-page templat
    - Comprehensive matrix covering framework, rendering engine, binary size, OS requirements, test coverage (72/72 tests passing), and MIT license.
 10. **Footer**:
     - Authentic open-source footer with GitHub links, releases, license, and author attribution (Akshat Apoorv).
+
