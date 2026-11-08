@@ -29,3 +29,4 @@ Download and run `Nexora-Setup-v0.1.0.exe`. It installs to `%LOCALAPPDATA%\Progr
 
 ### Portable Archive (`.zip`)
 Download and extract `Nexora-v0.1.0-windows-x64-portable.zip`. Run `Nexora.exe` directly without installation or administrator privileges.
+

@@ -53,6 +53,9 @@ impl FullscreenController {
             let new_style = (style_raw & !WS_OVERLAPPEDWINDOW.0) | WS_POPUP.0;
             SetWindowLongPtrW(hwnd, GWL_STYLE, new_style as isize);
 
+            // Mark fullscreen before SetWindowPos so synchronous messages know the window is fullscreen
+            self.is_fullscreen = true;
+
             // 4. Reposition window to cover the entire monitor
             let _ = SetWindowPos(
                 hwnd,
@@ -64,7 +67,6 @@ impl FullscreenController {
                 SWP_NOOWNERZORDER | SWP_FRAMECHANGED,
             );
 
-            self.is_fullscreen = true;
             log::info!("[Fullscreen] Entered seamless borderless HTML5 fullscreen: {}x{}", screen_w, screen_h);
 
             (0, 0, screen_w, screen_h)
@@ -83,6 +85,9 @@ impl FullscreenController {
             let w = self.saved_rect.right - self.saved_rect.left;
             let h = self.saved_rect.bottom - self.saved_rect.top;
 
+            // Mark not fullscreen before SetWindowPos
+            self.is_fullscreen = false;
+
             // Restore original bounds
             let _ = SetWindowPos(
                 hwnd,
@@ -94,7 +99,6 @@ impl FullscreenController {
                 SWP_NOOWNERZORDER | SWP_FRAMECHANGED,
             );
 
-            self.is_fullscreen = false;
             log::info!("[Fullscreen] Exited HTML5 fullscreen. Restored window: {}x{}", w, h);
 
             (self.saved_rect.left, self.saved_rect.top, w, h)

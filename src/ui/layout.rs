@@ -38,6 +38,14 @@ impl BrowserLayout {
         (0, TOP_CHROME_HEIGHT, self.window_width, h)
     }
 
+    pub fn webview_rect_for(&self, is_fullscreen: bool) -> (i32, i32, i32, i32) {
+        if is_fullscreen {
+            (0, 0, self.window_width, self.window_height)
+        } else {
+            self.webview_rect()
+        }
+    }
+
     pub fn brand_logo_rect(&self) -> (i32, i32, i32, i32) {
         (8, (TAB_BAR_HEIGHT - 22) / 2, 22, 22)
     }
@@ -195,6 +203,11 @@ mod tests {
         let omnibox = layout.omnibox_rect();
         assert!(omnibox.2 > 200, "Omnibox width should be wide enough");
         assert_eq!(omnibox.3, OMNIBOX_HEIGHT);
+
+        let fs_rect = layout.webview_rect_for(true);
+        assert_eq!(fs_rect, (0, 0, 1280, 800));
+        let normal_rect = layout.webview_rect_for(false);
+        assert_eq!(normal_rect, (0, TOP_CHROME_HEIGHT, 1280, 800 - TOP_CHROME_HEIGHT));
     }
 }
 

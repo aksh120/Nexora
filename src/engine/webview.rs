@@ -969,15 +969,31 @@ impl WebViewEngine {
                         if !ptr.is_null() {
                             if entering_fs {
                                 let (_, _, w, h) = (*ptr).fullscreen.enter_fullscreen(hwnd_parent);
+                                (*ptr).layout = crate::ui::layout::BrowserLayout::new(w, h);
+                                if let Some(ref chrome) = (*ptr).chrome {
+                                    chrome.set_omnibox_visible(false);
+                                }
                                 let rect = RECT { left: 0, top: 0, right: w, bottom: h };
                                 let _ = ctl_for_fs.SetBounds(rect);
+                                if let Some(ref webview) = (*ptr).webview {
+                                    let _ = webview.set_bounds(0, 0, w, h);
+                                }
                             } else {
                                 let (_, _, w, h) = (*ptr).fullscreen.exit_fullscreen(hwnd_parent);
                                 (*ptr).layout = crate::ui::layout::BrowserLayout::new(w, h);
+                                if let Some(ref chrome) = (*ptr).chrome {
+                                    chrome.set_omnibox_visible(true);
+                                    let tab_count = (*ptr).tab_manager.borrow().tab_count();
+                                    chrome.layout_controls(&(*ptr).layout, tab_count);
+                                }
                                 let (wx, wy, ww, wh) = (*ptr).layout.webview_rect();
                                 let rect = RECT { left: wx, top: wy, right: wx + ww, bottom: wy + wh };
                                 let _ = ctl_for_fs.SetBounds(rect);
+                                if let Some(ref webview) = (*ptr).webview {
+                                    let _ = webview.set_bounds(wx, wy, ww, wh);
+                                }
                             }
+                            let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
                         }
                     }
                 }

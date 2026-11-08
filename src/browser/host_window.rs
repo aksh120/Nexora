@@ -111,6 +111,12 @@ pub struct WindowContext {
     pub hover_timer_active: bool,
 }
 
+impl WindowContext {
+    pub fn current_webview_rect(&self) -> (i32, i32, i32, i32) {
+        self.layout.webview_rect_for(self.fullscreen.is_fullscreen())
+    }
+}
+
 pub struct HostWindow {
     hwnd: HWND,
     is_closing: Arc<AtomicBool>,
@@ -366,7 +372,7 @@ impl HostWindow {
         unsafe {
             let ptr = GetWindowLongPtrW(self.hwnd, GWLP_USERDATA) as *mut WindowContext;
             if !ptr.is_null() {
-                let (x, y, w, h) = (*ptr).layout.webview_rect();
+                let (x, y, w, h) = (*ptr).current_webview_rect();
                 let _ = webview.set_bounds(x, y, w, h);
                 (*ptr).webview = Some(webview);
             }
@@ -445,6 +451,9 @@ impl HostWindow {
                 DefWindowProcW(hwnd, msg, wparam, lparam)
             }
             WM_NCHITTEST => {
+                if !ptr.is_null() && (*ptr).fullscreen.is_fullscreen() {
+                    return LRESULT(HTCLIENT as isize);
+                }
                 let sx = (lparam.0 & 0xffff) as i16 as i32;
                 let sy = ((lparam.0 >> 16) & 0xffff) as i16 as i32;
 
@@ -510,14 +519,25 @@ impl HostWindow {
                         let height = rect.bottom - rect.top;
                         (*ptr).layout = BrowserLayout::new(width, height);
 
+                        let is_fs = (*ptr).fullscreen.is_fullscreen();
                         let tab_count = (*ptr).tab_manager.borrow().tab_count();
+
                         if let Some(ref chrome) = (*ptr).chrome {
-                            chrome.layout_controls(&(*ptr).layout, tab_count);
+                            if is_fs {
+                                chrome.set_omnibox_visible(false);
+                            } else {
+                                chrome.set_omnibox_visible(true);
+                                chrome.layout_controls(&(*ptr).layout, tab_count);
+                            }
                         }
 
                         if let Some(ref webview) = (*ptr).webview {
-                            let (wx, wy, ww, wh) = (*ptr).layout.webview_rect();
-                            let _ = webview.set_bounds(wx, wy, ww, wh);
+                            if is_fs {
+                                let _ = webview.set_bounds(0, 0, width, height);
+                            } else {
+                                let (wx, wy, ww, wh) = (*ptr).layout.webview_rect();
+                                let _ = webview.set_bounds(wx, wy, ww, wh);
+                            }
                         }
 
                         let _ = InvalidateRect(hwnd, None, false);
@@ -535,6 +555,9 @@ impl HostWindow {
                 let _ = TrackMouseEvent(&mut tme);
 
                 if !ptr.is_null() {
+                    if (*ptr).fullscreen.is_fullscreen() {
+                        return LRESULT(0);
+                    }
                     let x = (lparam.0 & 0xffff) as i16 as i32;
                     let y = ((lparam.0 >> 16) & 0xffff) as i16 as i32;
 
@@ -619,6 +642,9 @@ impl HostWindow {
             }
             WM_LBUTTONDOWN => {
                 if !ptr.is_null() {
+                    if (*ptr).fullscreen.is_fullscreen() {
+                        return LRESULT(0);
+                    }
                     let x = (lparam.0 & 0xffff) as i16 as i32;
                     let y = ((lparam.0 >> 16) & 0xffff) as i16 as i32;
 
@@ -918,7 +944,7 @@ impl HostWindow {
                             }
                         }
                         ChromeHitResult::Tab(id) => {
-                            let (x, y, w, h) = (*ptr).layout.webview_rect();
+                            let (x, y, w, h) = (*ptr).current_webview_rect();
                             let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
 
                             // Setup drag start parameters
@@ -978,7 +1004,7 @@ impl HostWindow {
                                     );
 
                                     // Instant multi-controller visibility switch (< 15ms)
-                                    let (x, y, w, h) = (*ptr).layout.webview_rect();
+                                    let (x, y, w, h) = (*ptr).current_webview_rect();
                                     let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
                                     let t0 = std::time::Instant::now();
                                     if let Some(ref webview) = (*ptr).webview {
@@ -1011,7 +1037,7 @@ impl HostWindow {
                             let maybe_tab_info = new_active.and_then(|new_id| tabs.get_tab(new_id).map(|t| (new_id, t.url.clone(), t.title.clone())));
                             drop(tabs);
 
-                            let (x, y, w, h) = (*ptr).layout.webview_rect();
+                            let (x, y, w, h) = (*ptr).current_webview_rect();
                             let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
 
                             if let Some(ref webview) = (*ptr).webview {
@@ -1073,7 +1099,7 @@ impl HostWindow {
                                 windows::core::PCWSTR(wide_title.as_ptr()),
                             );
 
-                            let (x, y, w, h) = (*ptr).layout.webview_rect();
+                            let (x, y, w, h) = (*ptr).current_webview_rect();
                             let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
 
                             if let Some(ref mut chrome) = (*ptr).chrome {
@@ -1123,6 +1149,9 @@ impl HostWindow {
             }
             WM_RBUTTONUP => {
                 if !ptr.is_null() {
+                    if (*ptr).fullscreen.is_fullscreen() {
+                        return LRESULT(0);
+                    }
                     let x = (lparam.0 & 0xffff) as i16 as i32;
                     let y = ((lparam.0 >> 16) & 0xffff) as i16 as i32;
                     if y <= TAB_BAR_HEIGHT {
@@ -1157,6 +1186,9 @@ impl HostWindow {
             }
             WM_LBUTTONDBLCLK => {
                 if !ptr.is_null() {
+                    if (*ptr).fullscreen.is_fullscreen() {
+                        return LRESULT(0);
+                    }
                     let x = (lparam.0 & 0xffff) as i16 as i32;
                     let y = ((lparam.0 >> 16) & 0xffff) as i16 as i32;
 
@@ -1194,12 +1226,21 @@ impl HostWindow {
                         if is_fs {
                             let (_, _, w, h) = (*ptr).fullscreen.exit_fullscreen(hwnd);
                             (*ptr).layout = BrowserLayout::new(w, h);
+                            if let Some(ref chrome) = (*ptr).chrome {
+                                chrome.set_omnibox_visible(true);
+                                let count = (*ptr).tab_manager.borrow().tab_count();
+                                chrome.layout_controls(&(*ptr).layout, count);
+                            }
                             if let Some(ref webview) = (*ptr).webview {
                                 let (wx, wy, ww, wh) = (*ptr).layout.webview_rect();
                                 let _ = webview.set_bounds(wx, wy, ww, wh);
                             }
                         } else {
                             let (_, _, w, h) = (*ptr).fullscreen.enter_fullscreen(hwnd);
+                            (*ptr).layout = BrowserLayout::new(w, h);
+                            if let Some(ref chrome) = (*ptr).chrome {
+                                chrome.set_omnibox_visible(false);
+                            }
                             if let Some(ref webview) = (*ptr).webview {
                                 let _ = webview.set_bounds(0, 0, w, h);
                             }
@@ -1212,6 +1253,11 @@ impl HostWindow {
                     if vk == VK_ESCAPE.0 && (*ptr).fullscreen.is_fullscreen() {
                         let (_, _, w, h) = (*ptr).fullscreen.exit_fullscreen(hwnd);
                         (*ptr).layout = BrowserLayout::new(w, h);
+                        if let Some(ref chrome) = (*ptr).chrome {
+                            chrome.set_omnibox_visible(true);
+                            let count = (*ptr).tab_manager.borrow().tab_count();
+                            chrome.layout_controls(&(*ptr).layout, count);
+                        }
                         if let Some(ref webview) = (*ptr).webview {
                             let (wx, wy, ww, wh) = (*ptr).layout.webview_rect();
                             let _ = webview.set_bounds(wx, wy, ww, wh);
@@ -1298,7 +1344,7 @@ impl HostWindow {
                                             windows::core::PCWSTR(wide_title.as_ptr()),
                                         );
 
-                                        let (x, y, w, h) = (*ptr).layout.webview_rect();
+                                        let (x, y, w, h) = (*ptr).current_webview_rect();
                                         let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
                                         if let Some(ref webview) = (*ptr).webview {
                                             let _ = webview.switch_to_tab(target_id, bounds);
@@ -1392,7 +1438,7 @@ impl HostWindow {
                                     id
                                 };
 
-                                let (x, y, w, h) = (*ptr).layout.webview_rect();
+                                let (x, y, w, h) = (*ptr).current_webview_rect();
                                 let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
 
                                 if let Some(ref webview) = (*ptr).webview {
@@ -1428,7 +1474,7 @@ impl HostWindow {
                                 }
 
                                 if let Some((new_id, url, title)) = maybe_info {
-                                    let (x, y, w, h) = (*ptr).layout.webview_rect();
+                                    let (x, y, w, h) = (*ptr).current_webview_rect();
                                     let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
                                     if let Some(ref webview) = (*ptr).webview {
                                         let _ = webview.switch_to_tab(new_id, bounds);
@@ -1740,7 +1786,7 @@ impl HostWindow {
                         tabs.switch_tab(id);
                         id
                     };
-                    let (x, y, w, h) = (*ptr).layout.webview_rect();
+                    let (x, y, w, h) = (*ptr).current_webview_rect();
                     let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
                     if let Some(ref webview) = (*ptr).webview {
                         let _ = webview.create_tab_view(new_id, &homepage, bounds, true);
@@ -1762,7 +1808,7 @@ impl HostWindow {
                         tabs.switch_tab(new_id);
                         drop(tabs);
 
-                        let (x, y, w, h) = (*ptr).layout.webview_rect();
+                        let (x, y, w, h) = (*ptr).current_webview_rect();
                         let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
                         if let Some(ref webview) = (*ptr).webview {
                             let _ = webview.create_tab_view(new_id, &dup_url, bounds, true);
@@ -1843,7 +1889,7 @@ impl HostWindow {
                     let maybe_tab_info = new_active.and_then(|new_id| tabs.get_tab(new_id).map(|t| (new_id, t.url.clone(), t.title.clone())));
                     drop(tabs);
 
-                    let (x, y, w, h) = (*ptr).layout.webview_rect();
+                    let (x, y, w, h) = (*ptr).current_webview_rect();
                     let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
 
                     if let Some(ref webview) = (*ptr).webview {
@@ -1876,7 +1922,7 @@ impl HostWindow {
                         for cid in closed {
                             webview.close_tab_view(cid);
                         }
-                        let (x, y, w, h) = (*ptr).layout.webview_rect();
+                        let (x, y, w, h) = (*ptr).current_webview_rect();
                         let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
                         let _ = webview.switch_to_tab(tab_id, bounds);
                     }

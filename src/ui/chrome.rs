@@ -11,8 +11,8 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_RETURN};
 use windows::Win32::UI::WindowsAndMessaging::{
     CallWindowProcW, CreateWindowExW, GetWindowLongPtrW, GetWindowTextLengthW, GetWindowTextW,
-    MoveWindow, SendMessageW, SetWindowLongPtrW, SetWindowTextW, GWLP_USERDATA, GWLP_WNDPROC, HMENU,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WM_CHAR, WM_KEYDOWN, WM_KILLFOCUS, WM_LBUTTONUP, WM_SETFOCUS,
+    MoveWindow, SendMessageW, SetWindowLongPtrW, SetWindowTextW, ShowWindow, GWLP_USERDATA, GWLP_WNDPROC, HMENU,
+    SW_HIDE, SW_SHOW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CHAR, WM_KEYDOWN, WM_KILLFOCUS, WM_LBUTTONUP, WM_SETFOCUS,
     WM_SETFONT, WNDPROC, WS_CHILD, WS_TABSTOP, WS_VISIBLE,
 };
 
@@ -236,6 +236,13 @@ impl BrowserChrome {
         unsafe {
             let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
             let _ = SetWindowTextW(self.hwnd_omnibox, PCWSTR(wide.as_ptr()));
+        }
+    }
+
+    pub fn set_omnibox_visible(&self, visible: bool) {
+        unsafe {
+            let cmd = if visible { SW_SHOW } else { SW_HIDE };
+            let _ = ShowWindow(self.hwnd_omnibox, cmd);
         }
     }
 
