@@ -25,9 +25,11 @@ type FnFinalize = unsafe extern "system" fn(*mut c_void) -> c_int;
 type FnColumnText = unsafe extern "system" fn(*mut c_void, c_int) -> *const c_uchar;
 type FnColumnInt64 = unsafe extern "system" fn(*mut c_void, c_int) -> i64;
 type FnColumnInt = unsafe extern "system" fn(*mut c_void, c_int) -> c_int;
+type FnColumnDouble = unsafe extern "system" fn(*mut c_void, c_int) -> f64;
 type FnColumnCount = unsafe extern "system" fn(*mut c_void) -> c_int;
 type FnBindText = unsafe extern "system" fn(*mut c_void, c_int, *const c_char, c_int, *mut c_void) -> c_int;
 type FnBindInt64 = unsafe extern "system" fn(*mut c_void, c_int, i64) -> c_int;
+type FnBindDouble = unsafe extern "system" fn(*mut c_void, c_int, f64) -> c_int;
 type FnBindNull = unsafe extern "system" fn(*mut c_void, c_int) -> c_int;
 type FnErrmsg = unsafe extern "system" fn(*mut c_void) -> *const c_char;
 type FnChanges = unsafe extern "system" fn(*mut c_void) -> c_int;
@@ -44,9 +46,11 @@ pub struct WinSqliteLib {
     column_text: FnColumnText,
     column_int64: FnColumnInt64,
     column_int: FnColumnInt,
+    column_double: FnColumnDouble,
     column_count: FnColumnCount,
     bind_text: FnBindText,
     bind_int64: FnBindInt64,
+    bind_double: FnBindDouble,
     bind_null: FnBindNull,
     errmsg: FnErrmsg,
     changes: FnChanges,
@@ -87,9 +91,11 @@ impl WinSqliteLib {
             let column_text = get_sym!(sqlite3_column_text, s!("sqlite3_column_text"), FnColumnText);
             let column_int64 = get_sym!(sqlite3_column_int64, s!("sqlite3_column_int64"), FnColumnInt64);
             let column_int = get_sym!(sqlite3_column_int, s!("sqlite3_column_int"), FnColumnInt);
+            let column_double = get_sym!(sqlite3_column_double, s!("sqlite3_column_double"), FnColumnDouble);
             let column_count = get_sym!(sqlite3_column_count, s!("sqlite3_column_count"), FnColumnCount);
             let bind_text = get_sym!(sqlite3_bind_text, s!("sqlite3_bind_text"), FnBindText);
             let bind_int64 = get_sym!(sqlite3_bind_int64, s!("sqlite3_bind_int64"), FnBindInt64);
+            let bind_double = get_sym!(sqlite3_bind_double, s!("sqlite3_bind_double"), FnBindDouble);
             let bind_null = get_sym!(sqlite3_bind_null, s!("sqlite3_bind_null"), FnBindNull);
             let errmsg = get_sym!(sqlite3_errmsg, s!("sqlite3_errmsg"), FnErrmsg);
             let changes = get_sym!(sqlite3_changes, s!("sqlite3_changes"), FnChanges);
@@ -105,9 +111,11 @@ impl WinSqliteLib {
                 column_text,
                 column_int64,
                 column_int,
+                column_double,
                 column_count,
                 bind_text,
                 bind_int64,
+                bind_double,
                 bind_null,
                 errmsg,
                 changes,
@@ -120,6 +128,7 @@ impl WinSqliteLib {
 pub enum SqliteValue {
     Text(String),
     Integer(i64),
+    Real(f64),
     Null,
 }
 
@@ -148,6 +157,10 @@ impl<'a> SqliteRow<'a> {
 
     pub fn get_i32(&self, col: i32) -> i32 {
         unsafe { (self.db.lib.column_int)(self.stmt, col) }
+    }
+
+    pub fn get_f64(&self, col: i32) -> f64 {
+        unsafe { (self.db.lib.column_double)(self.stmt, col) }
     }
 }
 
@@ -333,6 +346,9 @@ impl SqliteConnection {
                     SqliteValue::Integer(v) => {
                         (self.lib.bind_int64)(stmt, idx, *v);
                     }
+                    SqliteValue::Real(v) => {
+                        (self.lib.bind_double)(stmt, idx, *v);
+                    }
                     SqliteValue::Null => {
                         (self.lib.bind_null)(stmt, idx);
                     }
@@ -430,6 +446,28 @@ impl SqliteConnection {
             self.execute("PRAGMA user_version = 2;")?;
             self.execute("COMMIT;")?;
             log::info!("Database schema migration v2 applied successfully.");
+        }
+
+        if version < 3 {
+            log::info!("Applying schema migration v3 (Per-Site Zoom & Pinned Tab Persistence)...");
+            self.execute("BEGIN TRANSACTION;")?;
+
+            // 5. Site Zoom Table (Feature 3)
+            self.execute(
+                "CREATE TABLE IF NOT EXISTS site_zoom (
+                    origin TEXT PRIMARY KEY,
+                    zoom_factor REAL NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );"
+            )?;
+
+            // 6. Extend session_tabs if columns missing
+            let _ = self.execute("ALTER TABLE session_tabs ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0;");
+            let _ = self.execute("ALTER TABLE session_tabs ADD COLUMN zoom_factor REAL NOT NULL DEFAULT 1.0;");
+
+            self.execute("PRAGMA user_version = 3;")?;
+            self.execute("COMMIT;")?;
+            log::info!("Database schema migration v3 applied successfully.");
         }
 
         Ok(())

@@ -181,6 +181,202 @@ impl TabManager {
         }
         false
     }
+
+    // --- Audio Control Methods ---
+    pub fn set_tab_muted(&mut self, id: usize, muted: bool) {
+        if let Some(tab) = self.get_tab_mut(id) {
+            tab.set_muted(muted);
+        }
+    }
+
+    pub fn toggle_tab_mute(&mut self, id: usize) -> Option<bool> {
+        let tab = self.get_tab_mut(id)?;
+        Some(tab.toggle_mute())
+    }
+
+    pub fn mute_other_tabs(&mut self, keep_id: usize) {
+        for tab in self.tabs.iter_mut() {
+            if tab.id != keep_id {
+                tab.set_muted(true);
+            }
+        }
+    }
+
+    pub fn unmute_all_tabs(&mut self) {
+        for tab in self.tabs.iter_mut() {
+            tab.set_muted(false);
+        }
+    }
+
+    // --- Pinned Tabs Methods ---
+    pub fn pinned_tab_count(&self) -> usize {
+        self.tabs.iter().filter(|t| t.is_pinned).count()
+    }
+
+    pub fn is_tab_pinned(&self, id: usize) -> bool {
+        self.get_tab(id).map(|t| t.is_pinned).unwrap_or(false)
+    }
+
+    pub fn pin_tab(&mut self, id: usize) -> bool {
+        let current_idx = match self.tabs.iter().position(|t| t.id == id) {
+            Some(i) => i,
+            None => return false,
+        };
+
+        if self.tabs[current_idx].is_pinned {
+            return false;
+        }
+
+        self.tabs[current_idx].is_pinned = true;
+        let tab = self.tabs.remove(current_idx);
+
+        // Insert at the end of the pinned section
+        let insert_idx = self.tabs.iter().position(|t| !t.is_pinned).unwrap_or(self.tabs.len());
+        self.tabs.insert(insert_idx, tab);
+        log::info!("Pinned tab #{} moved to index {}", id, insert_idx);
+        true
+    }
+
+    pub fn unpin_tab(&mut self, id: usize) -> bool {
+        let current_idx = match self.tabs.iter().position(|t| t.id == id) {
+            Some(i) => i,
+            None => return false,
+        };
+
+        if !self.tabs[current_idx].is_pinned {
+            return false;
+        }
+
+        self.tabs[current_idx].is_pinned = false;
+        let tab = self.tabs.remove(current_idx);
+
+        // Insert at the beginning of the unpinned section
+        let insert_idx = self.tabs.iter().position(|t| !t.is_pinned).unwrap_or(self.tabs.len());
+        self.tabs.insert(insert_idx, tab);
+        log::info!("Unpinned tab #{} moved to index {}", id, insert_idx);
+        true
+    }
+
+    // --- Duplicate Tab ---
+    pub fn duplicate_tab(&mut self, id: usize) -> Option<usize> {
+        let (source_idx, source_url, source_title, zoom, muted) = {
+            let (idx, tab) = self.tabs.iter().enumerate().find(|(_, t)| t.id == id)?;
+            (idx, tab.url.clone(), tab.title.clone(), tab.zoom_factor, tab.is_muted)
+        };
+
+        let new_id = self.next_tab_id;
+        self.next_tab_id += 1;
+
+        let mut new_tab = Tab::new(new_id, &source_url, Some(&source_title));
+        new_tab.zoom_factor = zoom;
+        new_tab.is_muted = muted;
+        new_tab.state = TabState::Inactive;
+
+        // Insert immediately after source tab
+        let insert_idx = (source_idx + 1).min(self.tabs.len());
+        self.tabs.insert(insert_idx, new_tab);
+        log::info!("Duplicated tab #{} as #{} at index {}", id, new_id, insert_idx);
+        Some(new_id)
+    }
+
+    // --- Drag and Drop Tab Reordering ---
+    pub fn move_tab(&mut self, from_index: usize, to_index: usize) -> bool {
+        if from_index >= self.tabs.len() || to_index >= self.tabs.len() || from_index == to_index {
+            return false;
+        }
+
+        let mut tab = self.tabs.remove(from_index);
+
+        // Check if crossed pinned boundary
+        let pinned_count = self.tabs.iter().filter(|t| t.is_pinned).count();
+        if tab.is_pinned {
+            if to_index > pinned_count {
+                // Dragged out of pinned section -> unpin
+                tab.is_pinned = false;
+                log::info!("Tab #{} unpinned via drag past pinned zone", tab.id);
+            }
+        } else {
+            if to_index < pinned_count {
+                // Dragged into pinned section -> pin
+                tab.is_pinned = true;
+                log::info!("Tab #{} pinned via drag into pinned zone", tab.id);
+            }
+        }
+
+        self.tabs.insert(to_index, tab);
+        true
+    }
+
+    // --- Tab Close Variants ---
+    pub fn close_other_tabs(&mut self, keep_id: usize) -> Vec<usize> {
+        let mut closed_ids = Vec::new();
+        let mut remaining = Vec::new();
+        for tab in self.tabs.drain(..) {
+            if tab.id == keep_id {
+                remaining.push(tab);
+            } else {
+                closed_ids.push(tab.id);
+            }
+        }
+        self.tabs = remaining;
+        self.active_tab_id = Some(keep_id);
+        if let Some(tab) = self.get_active_tab_mut() {
+            tab.state = TabState::Active;
+        }
+        closed_ids
+    }
+
+    pub fn close_tabs_to_right(&mut self, pivot_id: usize) -> Vec<usize> {
+        let pivot_idx = match self.tabs.iter().position(|t| t.id == pivot_id) {
+            Some(i) => i,
+            None => return Vec::new(),
+        };
+
+        let mut closed_ids = Vec::new();
+        let mut kept = Vec::new();
+        for (i, tab) in self.tabs.drain(..).enumerate() {
+            if i <= pivot_idx {
+                kept.push(tab);
+            } else {
+                closed_ids.push(tab.id);
+            }
+        }
+        self.tabs = kept;
+
+        // If the active tab was among the closed ones, set pivot as active
+        if let Some(active) = self.active_tab_id {
+            if closed_ids.contains(&active) {
+                self.active_tab_id = Some(pivot_id);
+                if let Some(tab) = self.get_active_tab_mut() {
+                    tab.state = TabState::Active;
+                }
+            }
+        }
+        closed_ids
+    }
+
+    // --- Zoom & State ---
+    pub fn set_tab_zoom(&mut self, id: usize, zoom: f64) {
+        if let Some(tab) = self.get_tab_mut(id) {
+            tab.set_zoom(zoom);
+        }
+    }
+
+    pub fn get_tab_zoom(&self, id: usize) -> f64 {
+        self.get_tab(id).map(|t| t.zoom_factor).unwrap_or(1.0)
+    }
+
+    pub fn set_tab_pip(&mut self, id: usize, active: bool) {
+        if let Some(tab) = self.get_tab_mut(id) {
+            tab.set_active_pip(active);
+        }
+    }
+
+    pub fn set_tab_thumbnail(&mut self, id: usize, data: Option<Vec<u8>>) {
+        if let Some(tab) = self.get_tab_mut(id) {
+            tab.set_thumbnail(data);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -235,5 +431,109 @@ mod tests {
         assert_eq!(manager.tab_count(), 2);
         assert!(new_active.is_some());
         assert_eq!(manager.active_tab_id(), new_active);
+    }
+
+    #[test]
+    fn test_tab_pinning_and_boundaries() {
+        let mut manager = TabManager::new();
+        let _t1 = manager.create_tab("https://t1.com", Some("T1"));
+        let t2 = manager.create_tab("https://t2.com", Some("T2"));
+        let t3 = manager.create_tab("https://t3.com", Some("T3"));
+
+        assert_eq!(manager.pinned_tab_count(), 0);
+        assert!(!manager.is_tab_pinned(t2));
+
+        // Pin t2 -> should move to index 0
+        assert!(manager.pin_tab(t2));
+        assert_eq!(manager.pinned_tab_count(), 1);
+        assert!(manager.is_tab_pinned(t2));
+        assert_eq!(manager.tabs()[0].id, t2);
+
+        // Pin t3 -> should move to index 1 (end of pinned group)
+        assert!(manager.pin_tab(t3));
+        assert_eq!(manager.pinned_tab_count(), 2);
+        assert_eq!(manager.tabs()[1].id, t3);
+
+        // Unpin t2 -> moves to beginning of unpinned
+        assert!(manager.unpin_tab(t2));
+        assert_eq!(manager.pinned_tab_count(), 1);
+        assert!(!manager.is_tab_pinned(t2));
+    }
+
+    #[test]
+    fn test_tab_audio_and_muting() {
+        let mut manager = TabManager::new();
+        let t1 = manager.create_tab("https://yt.com", Some("YouTube"));
+        let t2 = manager.create_tab("https://sp.com", Some("Spotify"));
+        let t3 = manager.create_tab("https://news.com", Some("News"));
+
+        assert_eq!(manager.toggle_tab_mute(t1), Some(true));
+        assert!(manager.tabs().iter().find(|t| t.id == t1).unwrap().is_muted);
+        assert_eq!(manager.toggle_tab_mute(t1), Some(false));
+        assert!(!manager.tabs().iter().find(|t| t.id == t1).unwrap().is_muted);
+
+        // Mute others
+        manager.mute_other_tabs(t1);
+        assert!(!manager.tabs().iter().find(|t| t.id == t1).unwrap().is_muted);
+        assert!(manager.tabs().iter().find(|t| t.id == t2).unwrap().is_muted);
+        assert!(manager.tabs().iter().find(|t| t.id == t3).unwrap().is_muted);
+
+        // Unmute all
+        manager.unmute_all_tabs();
+        assert!(!manager.tabs().iter().find(|t| t.id == t2).unwrap().is_muted);
+        assert!(!manager.tabs().iter().find(|t| t.id == t3).unwrap().is_muted);
+    }
+
+    #[test]
+    fn test_tab_duplication() {
+        let mut manager = TabManager::new();
+        let t1 = manager.create_tab("https://github.com", Some("GitHub"));
+        manager.set_tab_zoom(t1, 1.25);
+        manager.set_tab_muted(t1, true);
+
+        let dup = manager.duplicate_tab(t1);
+        assert!(dup.is_some());
+        let dup_id = dup.unwrap();
+
+        assert_eq!(manager.tab_count(), 2);
+        let dup_tab = manager.get_tab(dup_id).unwrap();
+        assert_eq!(dup_tab.url, "https://github.com");
+        assert_eq!(dup_tab.title, "GitHub");
+        assert_eq!(dup_tab.zoom_factor, 1.25);
+        assert!(dup_tab.is_muted);
+    }
+
+    #[test]
+    fn test_tab_drag_reordering() {
+        let mut manager = TabManager::new();
+        let t1 = manager.create_tab("https://1.com", Some("1"));
+        let t2 = manager.create_tab("https://2.com", Some("2"));
+        let t3 = manager.create_tab("https://3.com", Some("3"));
+
+        // Move index 0 to index 2
+        assert!(manager.move_tab(0, 2));
+        assert_eq!(manager.tabs()[0].id, t2);
+        assert_eq!(manager.tabs()[1].id, t3);
+        assert_eq!(manager.tabs()[2].id, t1);
+    }
+
+    #[test]
+    fn test_tab_close_others_and_right() {
+        let mut manager = TabManager::new();
+        let t1 = manager.create_tab("https://1.com", Some("1"));
+        let t2 = manager.create_tab("https://2.com", Some("2"));
+        let t3 = manager.create_tab("https://3.com", Some("3"));
+        let t4 = manager.create_tab("https://4.com", Some("4"));
+
+        // Close right of t2 -> closes t3, t4
+        let closed = manager.close_tabs_to_right(t2);
+        assert_eq!(closed, vec![t3, t4]);
+        assert_eq!(manager.tab_count(), 2);
+
+        // Close others of t2 -> closes t1
+        let closed2 = manager.close_other_tabs(t2);
+        assert_eq!(closed2, vec![t1]);
+        assert_eq!(manager.tab_count(), 1);
+        assert_eq!(manager.tabs()[0].id, t2);
     }
 }

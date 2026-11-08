@@ -61,18 +61,21 @@ impl LazyRestorePipeline {
             let is_active = saved_tab.id == target_active_id;
             let tab_id = tab_manager.create_tab(&saved_tab.url, Some(&saved_tab.title));
 
+            if let Some(tab) = tab_manager.get_tab_mut(tab_id) {
+                tab.is_pinned = saved_tab.is_pinned;
+                tab.zoom_factor = saved_tab.zoom_factor;
+                if is_active {
+                    tab.state = TabState::Active;
+                    tab.touch();
+                } else {
+                    tab.state = TabState::Suspended;
+                }
+            }
+
             if is_active {
                 active_tab_id = tab_id;
                 active_url = saved_tab.url.clone();
-                if let Some(tab) = tab_manager.get_tab_mut(tab_id) {
-                    tab.state = TabState::Active;
-                    tab.touch();
-                }
             } else {
-                // Register background tab as Suspended stub
-                if let Some(tab) = tab_manager.get_tab_mut(tab_id) {
-                    tab.state = TabState::Suspended;
-                }
                 dormant_tabs.push((tab_id, saved_tab.title.clone(), saved_tab.url.clone()));
             }
         }
@@ -132,6 +135,8 @@ mod tests {
                     title: "YouTube".to_string(),
                     is_active: false,
                     is_suspended: false,
+                    is_pinned: false,
+                    zoom_factor: 1.0,
                 },
                 SavedTab {
                     id: 2,
@@ -140,6 +145,8 @@ mod tests {
                     title: "Hacker News".to_string(),
                     is_active: true,
                     is_suspended: false,
+                    is_pinned: false,
+                    zoom_factor: 1.0,
                 },
                 SavedTab {
                     id: 3,
@@ -148,6 +155,8 @@ mod tests {
                     title: "GitHub".to_string(),
                     is_active: false,
                     is_suspended: false,
+                    is_pinned: false,
+                    zoom_factor: 1.0,
                 },
             ],
             active_tab_id: Some(2),

@@ -5,7 +5,7 @@ use crate::core::error::Result;
 use crate::storage::db::{SqliteConnection, SqliteValue};
 use crate::tabs::Tab;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SavedTab {
     pub id: usize,
     pub position: i32,
@@ -13,6 +13,8 @@ pub struct SavedTab {
     pub title: String,
     pub is_active: bool,
     pub is_suspended: bool,
+    pub is_pinned: bool,
+    pub zoom_factor: f64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -42,10 +44,12 @@ impl SessionManager {
         for (pos, tab) in tabs.iter().enumerate() {
             let is_active = if Some(tab.id) == active_tab_id { 1 } else { 0 };
             let is_suspended = if tab.is_suspended() { 1 } else { 0 };
+            let is_pinned = if tab.is_pinned { 1 } else { 0 };
+            let zoom = tab.zoom_factor;
 
             self.db.execute_with_params(
-                "INSERT INTO session_tabs (id, position, url, title, is_active, is_suspended, created_at) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?);",
+                "INSERT INTO session_tabs (id, position, url, title, is_active, is_suspended, is_pinned, zoom_factor, created_at) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
                 &[
                     SqliteValue::Integer(tab.id as i64),
                     SqliteValue::Integer(pos as i64),
@@ -53,6 +57,8 @@ impl SessionManager {
                     SqliteValue::Text(tab.title.clone()),
                     SqliteValue::Integer(is_active),
                     SqliteValue::Integer(is_suspended),
+                    SqliteValue::Integer(is_pinned),
+                    SqliteValue::Real(zoom),
                     SqliteValue::Integer(now),
                 ],
             )?;
@@ -64,7 +70,7 @@ impl SessionManager {
     }
 
     pub fn load_session(&self) -> Result<SavedSession> {
-        let sql = "SELECT id, position, url, title, is_active, is_suspended \
+        let sql = "SELECT id, position, url, title, is_active, is_suspended, is_pinned, zoom_factor \
                    FROM session_tabs ORDER BY position ASC;";
 
         let mut active_id = None;
@@ -83,6 +89,11 @@ impl SessionManager {
                 title: row.get_text(3),
                 is_active,
                 is_suspended: row.get_i32(5) != 0,
+                is_pinned: row.get_i32(6) != 0,
+                zoom_factor: {
+                    let z = row.get_f64(7);
+                    if z > 0.1 { z } else { 1.0 }
+                },
             })
         })?;
 

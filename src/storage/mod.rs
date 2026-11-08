@@ -10,6 +10,7 @@ pub mod history_ui;
 pub mod session;
 pub mod backup;
 pub mod recovery;
+pub mod zoom;
 
 pub use bookmarks::{BookmarkEntry, BookmarkManager};
 pub use bookmarks_ui::BookmarksUi;
@@ -20,3 +21,4 @@ pub use history_ui::HistoryUi;
 pub use session::{SavedSession, SavedTab, SessionManager};
 pub use backup::DatabaseBackupManager;
 pub use recovery::{CrashRecoveryManager, SessionCheckpoint, CheckpointTab};
+pub use zoom::ZoomManager;

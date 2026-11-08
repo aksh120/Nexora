@@ -5,17 +5,23 @@ use serde::{Deserialize, Serialize};
 use crate::core::error::{NexoraError, Result};
 use crate::tabs::Tab;
 
+fn default_zoom() -> f64 { 1.0 }
+
 /// Checkpoint information for a single tab
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CheckpointTab {
     pub id: usize,
     pub url: String,
     pub title: String,
     pub is_suspended: bool,
+    #[serde(default)]
+    pub is_pinned: bool,
+    #[serde(default = "default_zoom")]
+    pub zoom_factor: f64,
 }
 
 /// Structured session checkpoint saved periodically to disk
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SessionCheckpoint {
     pub timestamp: u64,
     pub active_tab_id: Option<usize>,
@@ -73,6 +79,8 @@ impl CrashRecoveryManager {
                     url: t.url.clone(),
                     title: t.title.clone(),
                     is_suspended: t.is_suspended(),
+                    is_pinned: t.is_pinned,
+                    zoom_factor: t.zoom_factor,
                 })
                 .collect(),
         };

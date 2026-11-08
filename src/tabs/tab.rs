@@ -14,7 +14,12 @@ pub struct Tab {
     pub url: String,
     pub state: TabState,
     pub is_playing_audio: bool,
+    pub is_muted: bool,
+    pub is_pinned: bool,
     pub is_loading: bool,
+    pub zoom_factor: f64,
+    pub has_active_pip: bool,
+    pub thumbnail_data: Option<Vec<u8>>,
     pub favicon_url: Option<String>,
     pub scroll_position: (i32, i32),
     pub created_at: Instant,
@@ -44,7 +49,12 @@ impl Tab {
             url: url.to_string(),
             state: TabState::Active,
             is_playing_audio: false,
+            is_muted: false,
+            is_pinned: false,
             is_loading: false,
+            zoom_factor: 1.0,
+            has_active_pip: false,
+            thumbnail_data: None,
             favicon_url: None,
             scroll_position: (0, 0),
             created_at: now,
@@ -108,7 +118,32 @@ impl Tab {
     }
 
     pub fn can_be_suspended(&self) -> bool {
-        !self.is_active() && !self.is_playing_audio && !self.is_loading
+        !self.is_active() && !self.is_playing_audio && !self.is_loading && !self.is_pinned && !self.has_active_pip
+    }
+
+    pub fn toggle_mute(&mut self) -> bool {
+        self.is_muted = !self.is_muted;
+        self.is_muted
+    }
+
+    pub fn set_muted(&mut self, muted: bool) {
+        self.is_muted = muted;
+    }
+
+    pub fn set_pinned(&mut self, pinned: bool) {
+        self.is_pinned = pinned;
+    }
+
+    pub fn set_zoom(&mut self, zoom: f64) {
+        self.zoom_factor = zoom.clamp(0.25, 5.0);
+    }
+
+    pub fn set_active_pip(&mut self, active: bool) {
+        self.has_active_pip = active;
+    }
+
+    pub fn set_thumbnail(&mut self, data: Option<Vec<u8>>) {
+        self.thumbnail_data = data;
     }
 
     pub fn suspend(&mut self) -> bool {
