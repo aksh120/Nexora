@@ -13,11 +13,11 @@
 
 | Status | Count |
 | :--- | :--- |
-| **Completed** | 62 |
+| **Completed** | 63 |
 | **In Progress** | 0 |
 | **Not Started** | 0 |
 | **Blocked** | 0 |
-| **Total** | 62 |
+| **Total** | 63 |
 
 ---
 
@@ -171,3 +171,22 @@
 | `TASK-1212` | Verify video continuity during tab switching | P0 | **Completed** | `TASK-1203` | Preserved background audio and playback timestamp across tab switches without resetting by keeping controller instances alive. |
 | `TASK-1213` | Validate smart tab suspension memory balance | P1 | **Completed** | `TASK-1203` | Integrated `SmartSuspensionEngine` with `close_tab_view` / `suspend_tab_view` and `trim_child_processes()` to enforce memory boundaries while keeping resident tabs instant. |
 | `TASK-1214` | Complete UI and performance regression test suite | P0 | **Completed** | `TASK-1206` | Executed full test suite: 65 passed, 0 failed, 0 warnings. Verified release build and packaging automation. |
+
+---
+
+### Phase 13: Advanced Browser Features
+
+| Task ID | Description | Priority | Status | Dependencies | Completion Notes |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `TASK-1301` | Tab Audio Controls (Muting, Indicators, Context Menu, `IsMuted` sync) | P0 | **Completed** | `TASK-1214` | Tab model updated with `is_muted`. Rendered Lucide Volume2/VolumeX icons in tab strip. Hardware `ICoreWebView2_8::SetIsMuted` and HTML5 fallback implemented. Mute toggling without tab switching, and context menu mute actions ("Mute Tab", "Unmute Tab", "Mute other tabs", "Unmute all tabs") fully operational. |
+| `TASK-1302` | Pinned Tabs (Pin/Unpin, Compact Favicon representation, Drag ordering, Persistence) | P0 | **Completed** | `TASK-1214` | Pinned tabs rendered with compact 38px width, Lucide Pin/Audio icons, no accidental close button. Pinned boundary enforcement during reordering. Session recovery and checkpoint persistence integrated. |
+| `TASK-1303` | Duplicate Tab (Independent tab creation, URL/state copy, independent navigation) | P0 | **Completed** | `TASK-1214` | Context menu "Duplicate Tab" allocates an independent `ICoreWebView2Controller`, inherits source URL, zoom, and mute states, and maintains independent navigation history. |
+| `TASK-1304` | Drag-and-Drop Tab Rearrangement (Visual drop indicator, native tab reordering, no controller recreation) | P0 | **Completed** | `TASK-1302` | Implemented Win32 mouse drag threshold (> 6px), visual drop slot accent insertion indicator line in chrome, boundary enforcement between pinned and normal tabs, and controller preservation. |
+| `TASK-1305` | Find in Page (Ctrl+F, compact floating UI, match counter, next/prev, non-destructive matching) | P0 | **Completed** | `TASK-1214` | Compact floating search toolbar positioned at upper-right of content area with Lucide icons (Search, ChevronUp, ChevronDown, X), live counter `1/N`, Enter/Shift+Enter navigation, Escape close, and non-destructive `window.find()` matching. |
+| `TASK-1306` | Per-Site Persistent Zoom (Ctrl+/-, 50%-200%, SQLite per-origin persistence, menu controls) | P0 | **Completed** | `TASK-1214` | SQLite schema migration v3 (`site_zoom`), origin normalization, zoom step clamping (50%-200%), `Ctrl+Plus`, `Ctrl+Minus`, `Ctrl+0`, and `Ctrl+MouseWheel` integration with persistent database storage. |
+| `TASK-1307` | Website Permissions Panel (Shield icon beside omnibox, origin details, Camera/Mic/Geo/Notif/Autoplay Ask/Allow/Block, SQLite persistence) | P0 | **Completed** | `TASK-1214` | Clickable Lucide ShieldCheck security icon beside omnibox opening a native popup with origin info, HTTPS security status, and submenus for Camera, Mic, Geolocation, Notifications, and Autoplay with SQLite persistence. |
+| `TASK-1308` | Tab Hover Previews (~500ms hover card, favicon/title/URL, `CapturePreview` thumbnail, caching) | P1 | **Completed** | `TASK-1214` | Win32 timer `IDT_TAB_HOVER_PREVIEW` (450ms) tracking hovered tab state without blocking UI, displaying metadata and cached thumbnail for background and suspended tabs. |
+| `TASK-1309` | Advanced Picture-in-Picture (Floating topmost window, drag/resize, play/pause, suspension guard) | P0 | **Completed** | `TASK-1214` | Native Chromium Picture-in-Picture with always-on-top window, playback continuity during tab switching, suspension exemption (`can_be_suspended = false` when `has_active_pip`), and keyboard shortcut `Ctrl+Shift+P`. |
+| `TASK-1310` | Database Migrations & Session Persistence Integration | P0 | **Completed** | `TASK-1302`, `TASK-1306` | Schema migration v3 successfully applied: `site_zoom` table, `session_tabs.is_pinned`, `session_tabs.zoom_factor`, and atomic crash checkpoint persistence. |
+| `TASK-1311` | Automated Testing & Performance Regression Verification | P0 | **Completed** | `TASK-1301`..`TASK-1310` | 72 automated unit tests passing (0 failed, 0 warnings). Release binary compiled and branded with official Orbital Ribbon vector icons. |
+| `TASK-1312` | Standalone Windows Installer Setup Executable (.exe) | P0 | **Completed** | `TASK-1311` | Built native Win32 standalone installer setup binary (`dist/Nexora-Setup-v0.1.0.exe` and `NexoraSetup.exe`, ~2.97 MB) embedding all browser binaries and assets. Implemented dark-themed GDI UI, silent install (`/S`), uninstaller (`uninstall.exe`), Start Menu/Desktop shortcuts via COM `IShellLinkW`, WebView2 Evergreen detection, and registry integration. |
