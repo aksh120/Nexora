@@ -177,6 +177,14 @@ impl WebViewEngine {
         self.navigate_tab(tab_id, initial_url)?;
 
         if make_active {
+            // Guarantee all other tab controllers are hidden
+            for (&id, view) in self.tab_views.borrow().iter() {
+                if id != tab_id {
+                    unsafe {
+                        let _ = view.controller.SetIsVisible(false);
+                    }
+                }
+            }
             self.active_tab_id.set(Some(tab_id));
         }
 
@@ -185,22 +193,11 @@ impl WebViewEngine {
     }
 
     /// Performs instantaneous tab switching (< 15ms) via `SetIsVisible` toggling.
+    /// Strictly guarantees that ONLY `tab_id` is visible, and all other controllers are hidden.
     pub fn switch_to_tab(&self, tab_id: usize, bounds: RECT) -> Result<()> {
-        let prev_active_id = self.active_tab_id.get();
-        if prev_active_id == Some(tab_id) {
-            return Ok(());
-        }
+        self.active_tab_id.set(Some(tab_id));
 
-        // 1. Hide the previous active tab view controller
-        if let Some(prev_id) = prev_active_id {
-            if let Some(prev_view) = self.tab_views.borrow().get(&prev_id) {
-                unsafe {
-                    let _ = prev_view.controller.SetIsVisible(false);
-                }
-            }
-        }
-
-        // 2. Ensure destination tab view exists (lazy restore if suspended)
+        // 1. Ensure destination tab view exists (lazy restore if suspended)
         let exists = self.tab_views.borrow().contains_key(&tab_id);
         if !exists {
             let (target_url, _) = unsafe {
@@ -218,15 +215,21 @@ impl WebViewEngine {
                 }
             };
             self.create_tab_view(tab_id, &target_url, bounds, true)?;
-        } else if let Some(view) = self.tab_views.borrow().get(&tab_id) {
+        }
+
+        // 2. Hide ALL other tab view controllers and display ONLY tab_id
+        for (&id, view) in self.tab_views.borrow().iter() {
             unsafe {
-                let _ = view.controller.SetBounds(bounds);
-                let _ = view.controller.SetIsVisible(true);
-                let _ = view.controller.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+                if id == tab_id {
+                    let _ = view.controller.SetBounds(bounds);
+                    let _ = view.controller.SetIsVisible(true);
+                    let _ = view.controller.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+                } else {
+                    let _ = view.controller.SetIsVisible(false);
+                }
             }
         }
 
-        self.active_tab_id.set(Some(tab_id));
         Ok(())
     }
 
@@ -288,7 +291,17 @@ impl WebViewEngine {
     }
 
     pub fn navigate(&self, target_url: &str) -> Result<()> {
-        let active_id = self.active_tab_id.get().unwrap_or(1);
+        let active_id = unsafe {
+            let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                self.hwnd,
+                windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+            ) as *mut crate::browser::host_window::WindowContext;
+            if !ptr.is_null() {
+                (*ptr).tab_manager.borrow().active_tab_id().unwrap_or(1)
+            } else {
+                self.active_tab_id.get().unwrap_or(1)
+            }
+        };
         self.navigate_tab(active_id, target_url)
     }
 
@@ -402,22 +415,35 @@ impl WebViewEngine {
         Ok(())
     }
 
-    pub fn reload(&self) -> Result<()> {
-        if let Some(active_id) = self.active_tab_id.get() {
-            let views = self.tab_views.borrow();
-            if let Some(view) = views.get(&active_id) {
-                if view.is_internal_page {
-                    let url = view.current_url.clone();
-                    drop(views);
-                    return self.navigate_tab(active_id, &url);
-                }
-                unsafe {
-                    view.webview.Reload()
-                        .map_err(|e| NexoraError::Engine(format!("Reload failed: {}", e)))?;
-                }
+    pub fn reload_tab(&self, tab_id: usize) -> Result<()> {
+        let views = self.tab_views.borrow();
+        if let Some(view) = views.get(&tab_id) {
+            if view.is_internal_page {
+                let url = view.current_url.clone();
+                drop(views);
+                return self.navigate_tab(tab_id, &url);
+            }
+            unsafe {
+                view.webview.Reload()
+                    .map_err(|e| NexoraError::Engine(format!("Reload failed: {}", e)))?;
             }
         }
         Ok(())
+    }
+
+    pub fn reload(&self) -> Result<()> {
+        let active_id = unsafe {
+            let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                self.hwnd,
+                windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+            ) as *mut crate::browser::host_window::WindowContext;
+            if !ptr.is_null() {
+                (*ptr).tab_manager.borrow().active_tab_id().unwrap_or(1)
+            } else {
+                self.active_tab_id.get().unwrap_or(1)
+            }
+        };
+        self.reload_tab(active_id)
     }
 
     pub fn stop(&self) -> Result<()> {
@@ -1060,7 +1086,7 @@ impl WebViewEngine {
 
                     if !msg_str.is_empty() {
                         log::info!("[WebView2 IPC Tab #{}] Received WebMessage: {}", tab_id, msg_str);
-                        Self::handle_ipc_message(hwnd_parent, sender.as_ref(), &msg_str);
+                        Self::handle_ipc_message(hwnd_parent, tab_id, sender.as_ref(), &msg_str);
                     }
                 }
             }
@@ -1074,7 +1100,7 @@ impl WebViewEngine {
         Ok(())
     }
 
-    fn handle_ipc_message(hwnd: HWND, sender: Option<&ICoreWebView2>, msg_str: &str) {
+    fn handle_ipc_message(hwnd: HWND, tab_id: usize, sender: Option<&ICoreWebView2>, msg_str: &str) {
         #[derive(serde::Deserialize)]
         struct IpcPayload {
             action: String,
@@ -1090,7 +1116,7 @@ impl WebViewEngine {
             Ok(payload) => match payload.action.as_str() {
                 "navigate" => {
                     if let Some(url) = payload.url {
-                        log::info!("[IPC Action] Navigating to '{}'", url);
+                        log::info!("[IPC Action Tab #{}] Navigating to '{}'", tab_id, url);
                         let ptr = unsafe {
                             windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
                                 hwnd,
@@ -1099,19 +1125,22 @@ impl WebViewEngine {
                         };
                         if !ptr.is_null() {
                             unsafe {
-                                if let Some(ref chrome) = (*ptr).chrome {
-                                    chrome.set_omnibox_text(&url);
+                                let is_active = (*ptr).tab_manager.borrow().active_tab_id() == Some(tab_id);
+                                if is_active {
+                                    if let Some(ref chrome) = (*ptr).chrome {
+                                        chrome.set_omnibox_text(&url);
+                                    }
                                 }
                                 let mut tabs = (*ptr).tab_manager.borrow_mut();
-                                if let Some(active) = tabs.get_active_tab_mut() {
-                                    active.url = url.clone();
-                                    active.push_history(&url);
+                                if let Some(tab) = tabs.get_tab_mut(tab_id) {
+                                    tab.url = url.clone();
+                                    tab.push_history(&url);
                                 }
                                 drop(tabs);
                                 let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd, None, false);
 
                                 if let Some(ref webview) = (*ptr).webview {
-                                    let _ = webview.navigate(&url);
+                                    let _ = webview.navigate_tab(tab_id, &url);
                                     return;
                                 }
                             }
@@ -1376,7 +1405,7 @@ mod tests {
     fn test_settings_ipc_save_and_persist() {
         let dummy_hwnd = HWND::default();
         let msg = r#"{"action":"save_setting","key":"homepage","value":"https://duckduckgo.com"}"#;
-        WebViewEngine::handle_ipc_message(dummy_hwnd, None, msg);
+        WebViewEngine::handle_ipc_message(dummy_hwnd, 1, None, msg);
 
         let paths = crate::app::application::ApplicationPaths::resolve().expect("paths");
         let config = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
@@ -1384,19 +1413,19 @@ mod tests {
 
         // Test theme setting
         let msg_theme = r#"{"action":"save_setting","key":"theme","value":"dark"}"#;
-        WebViewEngine::handle_ipc_message(dummy_hwnd, None, msg_theme);
+        WebViewEngine::handle_ipc_message(dummy_hwnd, 1, None, msg_theme);
         let config2 = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
         assert_eq!(config2.theme, crate::app::config::ThemeMode::Dark);
 
         // Test timeout setting
         let msg_timeout = r#"{"action":"save_setting","key":"suspension_timeout_minutes","value":25}"#;
-        WebViewEngine::handle_ipc_message(dummy_hwnd, None, msg_timeout);
+        WebViewEngine::handle_ipc_message(dummy_hwnd, 1, None, msg_timeout);
         let config3 = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
         assert_eq!(config3.suspension_timeout_minutes, 25);
 
         // Reset to default
         let reset_msg = r#"{"action":"reset_defaults"}"#;
-        WebViewEngine::handle_ipc_message(dummy_hwnd, None, reset_msg);
+        WebViewEngine::handle_ipc_message(dummy_hwnd, 1, None, reset_msg);
         let config_def = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
         assert_eq!(config_def.homepage, "nexora://home");
         assert_eq!(config_def.suspension_timeout_minutes, 10);

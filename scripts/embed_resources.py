@@ -51,9 +51,11 @@ if __name__ == '__main__':
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     ico = os.path.join(project_root, 'assets', 'branding', 'icon.ico')
     targets = [
+        os.path.join(project_root, 'Nexora.exe'),
         os.path.join(project_root, 'target', 'debug', 'Nexora.exe'),
         os.path.join(project_root, 'target', 'release', 'Nexora.exe'),
         os.path.join(project_root, 'dist', 'Nexora.exe'),
+        os.path.join(project_root, 'dist', 'Nexora-v0.1.0-portable', 'Nexora.exe'),
     ]
     for t in targets:
         if os.path.exists(t):

@@ -109,3 +109,4 @@ if os.path.exists(dist_concepts):
     print(f'Deleted old dist concepts directory: {dist_concepts}')
 
 print('All branding assets generated successfully with the official logo!')
+

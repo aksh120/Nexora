@@ -33,3 +33,4 @@ for p in paths:
         print(f"Skipping {p}: {e}")
 
 print("Branding text cleanup complete.")
+

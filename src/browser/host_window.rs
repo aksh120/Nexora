@@ -289,14 +289,16 @@ impl HostWindow {
                             crate::navigation::NavigationTarget::Internal(u) => u,
                         };
 
+                        let active_id = (*ptr).tab_manager.borrow().active_tab_id().unwrap_or(1);
                         if let Some(ref webview) = (*ptr).webview {
-                            let _ = webview.navigate(&dest_url);
+                            let _ = webview.navigate_tab(active_id, &dest_url);
                         }
 
                         // Update active tab URL
                         let mut tabs = (*ptr).tab_manager.borrow_mut();
                         if let Some(active) = tabs.get_active_tab_mut() {
-                            active.url = dest_url;
+                            active.url = dest_url.clone();
+                            active.push_history(&dest_url);
                         }
                         drop(tabs);
 
@@ -580,10 +582,11 @@ impl HostWindow {
                         ChromeHitResult::BtnBack => {
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             if let Some(active) = tabs.get_active_tab_mut() {
+                                let active_id = active.id;
                                 if let Some(prev_url) = active.go_back() {
                                     drop(tabs);
                                     if let Some(ref webview) = (*ptr).webview {
-                                        let _ = webview.navigate(&prev_url);
+                                        let _ = webview.navigate_tab(active_id, &prev_url);
                                     }
                                     if let Some(ref chrome) = (*ptr).chrome {
                                         chrome.set_omnibox_text(&prev_url);
@@ -595,10 +598,11 @@ impl HostWindow {
                         ChromeHitResult::BtnForward => {
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             if let Some(active) = tabs.get_active_tab_mut() {
+                                let active_id = active.id;
                                 if let Some(next_url) = active.go_forward() {
                                     drop(tabs);
                                     if let Some(ref webview) = (*ptr).webview {
-                                        let _ = webview.navigate(&next_url);
+                                        let _ = webview.navigate_tab(active_id, &next_url);
                                     }
                                     if let Some(ref chrome) = (*ptr).chrome {
                                         chrome.set_omnibox_text(&next_url);
@@ -608,8 +612,9 @@ impl HostWindow {
                             }
                         }
                         ChromeHitResult::BtnReload => {
+                            let active_id = (*ptr).tab_manager.borrow().active_tab_id().unwrap_or(1);
                             if let Some(ref webview) = (*ptr).webview {
-                                let _ = webview.reload();
+                                let _ = webview.reload_tab(active_id);
                             }
                         }
                         ChromeHitResult::BtnHome => {
@@ -621,18 +626,19 @@ impl HostWindow {
                             };
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             if let Some(active) = tabs.get_active_tab_mut() {
+                                let active_id = active.id;
                                 active.url = homepage.clone();
                                 active.title = title.to_string();
                                 active.push_history(&homepage);
+                                drop(tabs);
+                                if let Some(ref webview) = (*ptr).webview {
+                                    let _ = webview.navigate_tab(active_id, &homepage);
+                                }
+                                if let Some(ref chrome) = (*ptr).chrome {
+                                    chrome.set_omnibox_text(&homepage);
+                                }
+                                let _ = InvalidateRect(hwnd, None, false);
                             }
-                            drop(tabs);
-                            if let Some(ref webview) = (*ptr).webview {
-                                let _ = webview.navigate(&homepage);
-                            }
-                            if let Some(ref chrome) = (*ptr).chrome {
-                                chrome.set_omnibox_text(&homepage);
-                            }
-                            let _ = InvalidateRect(hwnd, None, false);
                         }
                         ChromeHitResult::BtnBookmark => {
                             let tabs = (*ptr).tab_manager.borrow();
@@ -805,10 +811,16 @@ impl HostWindow {
                             }
                         }
                         ChromeHitResult::Tab(id) => {
+                            let (x, y, w, h) = (*ptr).layout.webview_rect();
+                            let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
+
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             let current_active = tabs.active_tab_id();
                             if current_active == Some(id) {
                                 drop(tabs);
+                                if let Some(ref webview) = (*ptr).webview {
+                                    let _ = webview.switch_to_tab(id, bounds);
+                                }
                                 return LRESULT(0);
                             }
                             let was_suspended = tabs.get_tab(id).map(|t| t.is_suspended()).unwrap_or(false);

@@ -24,9 +24,9 @@ use crate::ui::theme::{rgb, ThemePalette};
 pub const IDC_OMNIBOX: usize = 1005;
 pub const EM_SETSEL: u32 = 0x00B1;
 
-pub const ATLAS_ICON_SIZE: i32 = 24;
-pub const ATLAS_TOTAL_WIDTH: i32 = 696;
-pub const ATLAS_TOTAL_HEIGHT: i32 = 24;
+pub const ATLAS_ICON_SIZE: i32 = 48;
+pub const ATLAS_TOTAL_WIDTH: i32 = 1488;
+pub const ATLAS_TOTAL_HEIGHT: i32 = 48;
 const ATLAS_BYTES: &[u8] = include_bytes!("../../assets/branding/chrome_icons_atlas.bin");
 
 pub const ICON_LOGO: usize = 0;
@@ -58,6 +58,8 @@ pub const ICON_CAP_RESTORE_NORMAL: usize = 25;
 pub const ICON_CAP_RESTORE_HOVER: usize = 26;
 pub const ICON_CAP_CLOSE_NORMAL: usize = 27;
 pub const ICON_CAP_CLOSE_HOVER: usize = 28;
+pub const ICON_FWD_DISABLED: usize = 29;
+pub const ICON_BACK_DISABLED: usize = 30;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChromeHitResult {
@@ -483,7 +485,7 @@ impl BrowserChrome {
                 } else {
                     ICON_CLOSE_NORMAL
                 };
-                Self::draw_atlas_icon(mem_dc, self.atlas_dc, close_idx, close_cx - 7, close_cy - 7, 14, 14);
+                Self::draw_atlas_icon(mem_dc, self.atlas_dc, close_idx, close_cx - 8, close_cy - 8, 16, 16);
             }
 
             // 6. Render New Tab "+" Button (Lucide Plus)
@@ -501,9 +503,9 @@ impl BrowserChrome {
                 let _ = DeleteObject(hover_brush);
             }
             let plus_idx = if is_new_tab_hovered { ICON_PLUS_HOVER } else { ICON_PLUS_NORMAL };
-            let plus_x = new_tab.0 + (new_tab.2 - 16) / 2;
-            let plus_y = new_tab.1 + (new_tab.3 - 16) / 2;
-            Self::draw_atlas_icon(mem_dc, self.atlas_dc, plus_idx, plus_x, plus_y, 16, 16);
+            let plus_x = new_tab.0 + (new_tab.2 - 18) / 2;
+            let plus_y = new_tab.1 + (new_tab.3 - 18) / 2;
+            Self::draw_atlas_icon(mem_dc, self.atlas_dc, plus_idx, plus_x, plus_y, 18, 18);
 
             // 7. Render Custom Caption Buttons on Top-Right
             let min_rect = layout.caption_minimize_rect();
@@ -519,7 +521,7 @@ impl BrowserChrome {
                 let _ = DeleteObject(h_brush);
             }
             let min_idx = if is_min_hover { ICON_CAP_MIN_HOVER } else { ICON_CAP_MIN_NORMAL };
-            Self::draw_atlas_icon(mem_dc, self.atlas_dc, min_idx, min_rect.0 + (min_rect.2 - 14) / 2, min_rect.1 + (min_rect.3 - 14) / 2, 14, 14);
+            Self::draw_atlas_icon(mem_dc, self.atlas_dc, min_idx, min_rect.0 + (min_rect.2 - 16) / 2, min_rect.1 + (min_rect.3 - 16) / 2, 16, 16);
 
             // Maximize / Restore
             let is_max_hover = self.hovered_item == ChromeHitResult::CaptionMaximize;
@@ -534,7 +536,7 @@ impl BrowserChrome {
             } else {
                 if is_max_hover { ICON_CAP_MAX_HOVER } else { ICON_CAP_MAX_NORMAL }
             };
-            Self::draw_atlas_icon(mem_dc, self.atlas_dc, max_idx, max_rect.0 + (max_rect.2 - 14) / 2, max_rect.1 + (max_rect.3 - 14) / 2, 14, 14);
+            Self::draw_atlas_icon(mem_dc, self.atlas_dc, max_idx, max_rect.0 + (max_rect.2 - 16) / 2, max_rect.1 + (max_rect.3 - 16) / 2, 16, 16);
 
             // Close
             let is_close_hover = self.hovered_item == ChromeHitResult::CaptionClose;
@@ -545,18 +547,36 @@ impl BrowserChrome {
                 let _ = DeleteObject(red_brush);
             }
             let cap_close_idx = if is_close_hover { ICON_CAP_CLOSE_HOVER } else { ICON_CAP_CLOSE_NORMAL };
-            Self::draw_atlas_icon(mem_dc, self.atlas_dc, cap_close_idx, close_rect.0 + (close_rect.2 - 14) / 2, close_rect.1 + (close_rect.3 - 14) / 2, 14, 14);
+            Self::draw_atlas_icon(mem_dc, self.atlas_dc, cap_close_idx, close_rect.0 + (close_rect.2 - 16) / 2, close_rect.1 + (close_rect.3 - 16) / 2, 16, 16);
 
             // 8. Render Navigation Toolbar Buttons with Antialiased Vector Lucide Icons
+            let active_tab = tabs.iter().find(|t| Some(t.id) == active_tab_id);
+            let can_back = active_tab.map(|t| t.can_go_back()).unwrap_or(false);
+            let can_fwd = active_tab.map(|t| t.can_go_forward()).unwrap_or(false);
+
             // Back Button
             let back = layout.back_button_rect();
             let is_back_hover = self.hovered_item == ChromeHitResult::BtnBack;
-            Self::render_toolbar_button(mem_dc, self.atlas_dc, back, is_back_hover, self.theme.button_hover_bg, if is_back_hover { ICON_BACK_HOVER } else { ICON_BACK_NORMAL });
+            let back_idx = if !can_back {
+                ICON_BACK_DISABLED
+            } else if is_back_hover {
+                ICON_BACK_HOVER
+            } else {
+                ICON_BACK_NORMAL
+            };
+            Self::render_toolbar_button(mem_dc, self.atlas_dc, back, is_back_hover && can_back, self.theme.button_hover_bg, back_idx);
 
             // Forward Button
             let fwd = layout.forward_button_rect();
             let is_fwd_hover = self.hovered_item == ChromeHitResult::BtnForward;
-            Self::render_toolbar_button(mem_dc, self.atlas_dc, fwd, is_fwd_hover, self.theme.button_hover_bg, if is_fwd_hover { ICON_FWD_HOVER } else { ICON_FWD_NORMAL });
+            let fwd_idx = if !can_fwd {
+                ICON_FWD_DISABLED
+            } else if is_fwd_hover {
+                ICON_FWD_HOVER
+            } else {
+                ICON_FWD_NORMAL
+            };
+            Self::render_toolbar_button(mem_dc, self.atlas_dc, fwd, is_fwd_hover && can_fwd, self.theme.button_hover_bg, fwd_idx);
 
             // Reload Button
             let reload = layout.reload_button_rect();
@@ -606,7 +626,7 @@ impl BrowserChrome {
             let _ = DeleteObject(border_pen);
 
             // Render Lucide ShieldCheck security icon on the left of omnibox
-            Self::draw_atlas_icon(mem_dc, self.atlas_dc, ICON_SHIELD_CHECK, omnibox.0 + 8, omnibox.1 + (omnibox.3 - 16) / 2, 16, 16);
+            Self::draw_atlas_icon(mem_dc, self.atlas_dc, ICON_SHIELD_CHECK, omnibox.0 + 8, omnibox.1 + (omnibox.3 - 18) / 2, 18, 18);
 
             // Clean up GDI objects
             let _ = SelectObject(mem_dc, old_pen);
@@ -685,8 +705,8 @@ impl BrowserChrome {
             let _ = DeleteObject(h_brush);
         }
 
-        let icon_w = 20;
-        let icon_h = 20;
+        let icon_w = 22;
+        let icon_h = 22;
         let icon_x = rect.0 + (rect.2 - icon_w) / 2;
         let icon_y = rect.1 + (rect.3 - icon_h) / 2;
         Self::draw_atlas_icon(mem_dc, atlas_dc, icon_idx, icon_x, icon_y, icon_w, icon_h);
