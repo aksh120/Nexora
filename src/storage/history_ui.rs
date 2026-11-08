@@ -4,6 +4,7 @@ pub struct HistoryUi;
 
 impl HistoryUi {
     pub fn render_html(history_entries: &[HistoryEntry]) -> String {
+        let logo_svg = crate::ui::branding::BrandIdentity::monogram_svg(22);
         let mut entry_cards = String::new();
         let total_count = history_entries.len();
 
@@ -384,18 +385,7 @@ impl HistoryUi {
 <body>
     <div class="top-bar">
         <div class="brand-section">
-            <svg viewBox="0 0 100 100" width="22" height="22" fill="none">
-                <defs>
-                    <linearGradient id="prism-hist-logo" x1="0" y1="0" x2="100" y2="100">
-                        <stop offset="0%" stop-color="#FF385C"/>
-                        <stop offset="100%" stop-color="#E11D48"/>
-                    </linearGradient>
-                </defs>
-                <polygon points="20,15 55,15 35,85 15,85" fill="url(#prism-hist-logo)"/>
-                <polygon points="55,15 75,65 55,65 35,15" fill="#FDA4AF" opacity="0.85"/>
-                <polygon points="85,85 50,85 70,15 90,15" fill="url(#prism-hist-logo)"/>
-                <circle cx="50" cy="50" r="4" fill="#FFFFFF"/>
-            </svg>
+            {logo_svg}
             <h1>History</h1>
             <span class="count-pill">{total_count} records</span>
         </div>
@@ -487,6 +477,7 @@ impl HistoryUi {
 </body>
 </html>"###,
             total_count = total_count,
+            logo_svg = logo_svg,
             entry_cards = entry_cards,
         )
     }

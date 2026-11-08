@@ -99,7 +99,7 @@ impl HostWindow {
             // Window background brush
             let bg_brush: HBRUSH = CreateSolidBrush(theme.window_bg);
 
-            // Load application icon (The Quantum Prism)
+            // Load application icon (Official Orbital Ribbon N)
             let mut hicon = windows::Win32::UI::WindowsAndMessaging::LoadIconW(
                 hinstance,
                 PCWSTR(1 as *const u16),
@@ -132,6 +132,18 @@ impl HostWindow {
                 }
             }
 
+            let hicon_sm = if !hicon.is_invalid() {
+                windows::Win32::UI::WindowsAndMessaging::CopyImage(
+                    windows::Win32::Foundation::HANDLE(hicon.0),
+                    windows::Win32::UI::WindowsAndMessaging::IMAGE_ICON,
+                    windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics(windows::Win32::UI::WindowsAndMessaging::SM_CXSMICON),
+                    windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics(windows::Win32::UI::WindowsAndMessaging::SM_CYSMICON),
+                    windows::Win32::UI::WindowsAndMessaging::IMAGE_FLAGS(0),
+                ).map(|h| windows::Win32::UI::WindowsAndMessaging::HICON(h.0)).unwrap_or(hicon)
+            } else {
+                hicon
+            };
+
             let wnd_class = WNDCLASSEXW {
                 cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
                 style: windows::Win32::UI::WindowsAndMessaging::WNDCLASS_STYLES(0),
@@ -148,7 +160,7 @@ impl HostWindow {
                 hbrBackground: bg_brush,
                 lpszMenuName: PCWSTR::null(),
                 lpszClassName: class_name,
-                hIconSm: hicon,
+                hIconSm: hicon_sm,
             };
 
             let _ = RegisterClassExW(&wnd_class);
@@ -171,10 +183,10 @@ impl HostWindow {
             )
             .map_err(|e| NexoraError::Win32(format!("Failed to create host window: {}", e)))?;
 
-            // Set window and taskbar icons
+            // Set window and taskbar icons (Big for Alt+Tab/Taskbar, Small for Titlebar)
             if !hicon.is_invalid() {
                 let _ = SendMessageW(hwnd, WM_SETICON, WPARAM(ICON_BIG), LPARAM(hicon.0 as isize));
-                let _ = SendMessageW(hwnd, WM_SETICON, WPARAM(ICON_SMALL), LPARAM(hicon.0 as isize));
+                let _ = SendMessageW(hwnd, WM_SETICON, WPARAM(ICON_SMALL), LPARAM(hicon_sm.0 as isize));
             }
 
             // Apply native dark title bar if theme is dark

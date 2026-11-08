@@ -33,6 +33,7 @@ impl SettingsUi {
         let storage_icon_svg = LucideIcon::HardDrive.to_svg(16, 2.0, "currentColor");
         let about_icon_svg = LucideIcon::Sparkles.to_svg(16, 2.0, "currentColor");
         let search_icon_svg = LucideIcon::Search.to_svg(14, 2.0, "currentColor");
+        let logo_svg = BrandIdentity::monogram_svg(24);
         let shared_css = DesignTokens::shared_css(true);
 
         format!(
@@ -207,18 +208,7 @@ impl SettingsUi {
     <!-- Sidebar -->
     <div class="sidebar">
         <div class="sidebar-brand">
-            <svg viewBox="0 0 100 100" width="22" height="22" fill="none">
-                <defs>
-                    <linearGradient id="prism-settings-logo" x1="0" y1="0" x2="100" y2="100">
-                        <stop offset="0%" stop-color="#FF385C"/>
-                        <stop offset="100%" stop-color="#E11D48"/>
-                    </linearGradient>
-                </defs>
-                <polygon points="20,15 55,15 35,85 15,85" fill="url(#prism-settings-logo)"/>
-                <polygon points="55,15 75,65 55,65 35,15" fill="#FDA4AF" opacity="0.85"/>
-                <polygon points="85,85 50,85 70,15 90,15" fill="url(#prism-settings-logo)"/>
-                <circle cx="50" cy="50" r="4" fill="#FFFFFF"/>
-            </svg>
+            {logo_svg}
             <h1>Settings</h1>
             <span class="badge" style="margin-left: auto;">v{version}</span>
         </div>
@@ -662,6 +652,7 @@ impl SettingsUi {
             storage_icon_svg = storage_icon_svg,
             about_icon_svg = about_icon_svg,
             search_icon_svg = search_icon_svg,
+            logo_svg = logo_svg,
             homepage_escaped = homepage_escaped,
             google_sel = if default_engine == "Google" { "selected" } else { "" },
             ddg_sel = if default_engine == "DuckDuckGo" { "selected" } else { "" },

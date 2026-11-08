@@ -140,6 +140,7 @@ impl DiagnosticsUi {
         let refresh_icon = LucideIcon::RotateCw.to_svg(14, 2.0, "currentColor");
         let copy_icon = LucideIcon::Copy.to_svg(14, 2.0, "currentColor");
         let download_icon = LucideIcon::Download.to_svg(14, 2.0, "currentColor");
+        let logo_svg = BrandIdentity::monogram_svg(24);
 
         format!(
             r##"<!DOCTYPE html>
@@ -328,18 +329,7 @@ impl DiagnosticsUi {
 <body>
     <header class="diag-header">
         <div class="brand-cluster">
-            <svg viewBox="0 0 100 100" width="24" height="24" fill="none">
-                <defs>
-                    <linearGradient id="prism-diag-logo" x1="0" y1="0" x2="100" y2="100">
-                        <stop offset="0%" stop-color="#FF385C"/>
-                        <stop offset="100%" stop-color="#E11D48"/>
-                    </linearGradient>
-                </defs>
-                <polygon points="20,15 55,15 35,85 15,85" fill="url(#prism-diag-logo)"/>
-                <polygon points="55,15 75,65 55,65 35,15" fill="#FDA4AF" opacity="0.85"/>
-                <polygon points="85,85 50,85 70,15 90,15" fill="url(#prism-diag-logo)"/>
-                <circle cx="50" cy="50" r="4" fill="#FFFFFF"/>
-            </svg>
+            {logo_svg}
             <h1 class="brand-title">Diagnostics</h1>
             <span class="badge-version">v{version}</span>
         </div>
@@ -595,6 +585,7 @@ impl DiagnosticsUi {
 </html>"##,
             shared_css = shared_css,
             version = version,
+            logo_svg = logo_svg,
             copy_icon = copy_icon,
             download_icon = download_icon,
             refresh_icon = refresh_icon,

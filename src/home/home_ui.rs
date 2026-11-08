@@ -19,6 +19,7 @@ impl HomeUi {
         let history_icon_svg = LucideIcon::History.to_svg(14, 2.0, "currentColor");
         let diagnostics_icon_svg = LucideIcon::Cpu.to_svg(14, 2.0, "currentColor");
         let arrow_right_svg = LucideIcon::ArrowRight.to_svg(16, 2.0, "#FFFFFF");
+        let logo_svg = crate::ui::branding::BrandIdentity::monogram_svg(36);
         let shared_css = DesignTokens::shared_css(true);
 
         // Pre-render up to 8 user bookmarks
@@ -500,18 +501,7 @@ impl HomeUi {
         <!-- Brand & Greeting Header -->
         <div class="header-brand">
             <div class="brand-logo-wrap">
-                <svg viewBox="0 0 100 100" width="28" height="28" fill="none">
-                    <defs>
-                        <linearGradient id="prism-gradient" x1="0" y1="0" x2="100" y2="100">
-                            <stop offset="0%" stop-color="#FF385C"/>
-                            <stop offset="100%" stop-color="#E11D48"/>
-                        </linearGradient>
-                    </defs>
-                    <polygon points="20,15 55,15 35,85 15,85" fill="url(#prism-gradient)"/>
-                    <polygon points="55,15 75,65 55,65 35,15" fill="#FDA4AF" opacity="0.85"/>
-                    <polygon points="85,85 50,85 70,15 90,15" fill="url(#prism-gradient)"/>
-                    <circle cx="50" cy="50" r="4" fill="#FFFFFF"/>
-                </svg>
+                {logo_svg}
             </div>
             <h1 class="greeting-title" id="greeting-text">Welcome to Nexora</h1>
             <div class="greeting-date" id="greeting-date"></div>
@@ -770,6 +760,7 @@ impl HomeUi {
             google_sel = if default_engine == "Google" { "selected" } else { "" },
             ddg_sel = if default_engine == "DuckDuckGo" { "selected" } else { "" },
             bing_sel = if default_engine == "Bing" { "selected" } else { "" },
+            logo_svg = logo_svg,
             bookmarks_html = bookmarks_html,
         )
     }

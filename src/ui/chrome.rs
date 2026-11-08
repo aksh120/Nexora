@@ -1,7 +1,7 @@
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateFontW, CreatePen, CreateSolidBrush,
+    Arc, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateFontW, CreatePen, CreateSolidBrush,
     DeleteDC, DeleteObject, DrawTextW, Ellipse, FillRect, LineTo, MoveToEx, Polygon, SelectObject,
     SetBkMode, SetTextColor, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER,
     FW_NORMAL, HDC, HFONT, PS_NULL, PS_SOLID, SRCCOPY, TRANSPARENT,
@@ -315,12 +315,12 @@ impl BrowserChrome {
             let _ = MoveToEx(mem_dc, 0, TOP_CHROME_HEIGHT - 1, None);
             let _ = LineTo(mem_dc, layout.window_width, TOP_CHROME_HEIGHT - 1);
 
-            // 4. Render Brand Logo (The Quantum Prism)
+            // 4. Render Brand Logo (Official Orbital Ribbon N)
             let logo = layout.brand_logo_rect();
             let is_logo_hovered = self.hovered_item == ChromeHitResult::BrandLogo;
             let logo_cx = logo.0 + logo.2 / 2;
             let logo_cy = logo.1 + logo.3 / 2;
-            Self::draw_quantum_prism_logo(mem_dc, logo_cx, logo_cy, is_logo_hovered);
+            Self::draw_brand_logo(mem_dc, logo_cx, logo_cy, is_logo_hovered);
 
             // 5. Render Tabs
             let tab_rects = layout.calculate_tab_rects(tabs.len());
@@ -834,55 +834,74 @@ impl BrowserChrome {
         let _ = DeleteObject(pen);
     }
 
-    unsafe fn draw_quantum_prism_logo(hdc: HDC, cx: i32, cy: i32, is_hovered: bool) {
+    unsafe fn draw_brand_logo(hdc: HDC, cx: i32, cy: i32, is_hovered: bool) {
         let null_pen = CreatePen(PS_NULL, 0, rgb(0, 0, 0));
         let old_pen = SelectObject(hdc, null_pen);
 
-        // 1. Left facet - Crimson
+        // 1. Back arc of silver orbital ring
+        let silver_pen = CreatePen(PS_SOLID, 1, if is_hovered { rgb(255, 255, 255) } else { rgb(212, 212, 216) });
+        let old_silver = SelectObject(hdc, silver_pen);
+        let _ = Arc(hdc, cx - 11, cy - 8, cx + 11, cy + 8, cx - 7, cy + 6, cx + 8, cy - 5);
+        let _ = SelectObject(hdc, old_silver);
+        let _ = DeleteObject(silver_pen);
+
+        // 2. Left slanted leg - Crimson
         let left_brush = CreateSolidBrush(if is_hovered { rgb(255, 60, 95) } else { rgb(225, 29, 72) });
         let old_brush = SelectObject(hdc, left_brush);
         let left_pts = [
-            POINT { x: cx - 7, y: cy - 2 },
-            POINT { x: cx, y: cy - 8 },
-            POINT { x: cx, y: cy + 1 },
-            POINT { x: cx - 7, y: cy + 7 },
+            POINT { x: cx - 6, y: cy + 7 },
+            POINT { x: cx - 3, y: cy - 7 },
+            POINT { x: cx - 1, y: cy - 7 },
+            POINT { x: cx - 4, y: cy + 7 },
         ];
         let _ = Polygon(hdc, &left_pts);
 
-        // 2. Right facet - Coral / Pink Accent
-        let right_brush = CreateSolidBrush(if is_hovered { rgb(255, 185, 195) } else { rgb(253, 164, 175) });
+        // 3. Fold crease top accent - Coral/Pink
+        let crease_brush = CreateSolidBrush(if is_hovered { rgb(255, 185, 195) } else { rgb(253, 164, 175) });
+        let _ = SelectObject(hdc, crease_brush);
+        let crease_pts = [
+            POINT { x: cx - 3, y: cy - 7 },
+            POINT { x: cx, y: cy - 7 },
+            POINT { x: cx - 2, y: cy - 3 },
+            POINT { x: cx - 4, y: cy - 3 },
+        ];
+        let _ = Polygon(hdc, &crease_pts);
+
+        // 4. Center bold diagonal - Deep Crimson
+        let diag_brush = CreateSolidBrush(if is_hovered { rgb(244, 63, 94) } else { rgb(180, 15, 55) });
+        let _ = SelectObject(hdc, diag_brush);
+        let diag_pts = [
+            POINT { x: cx - 2, y: cy - 7 },
+            POINT { x: cx + 1, y: cy - 7 },
+            POINT { x: cx + 6, y: cy + 7 },
+            POINT { x: cx + 3, y: cy + 7 },
+        ];
+        let _ = Polygon(hdc, &diag_pts);
+
+        // 5. Right slanted leg - Crimson
+        let right_brush = CreateSolidBrush(if is_hovered { rgb(255, 60, 95) } else { rgb(225, 29, 72) });
         let _ = SelectObject(hdc, right_brush);
         let right_pts = [
-            POINT { x: cx, y: cy - 8 },
-            POINT { x: cx + 7, y: cy - 2 },
-            POINT { x: cx + 7, y: cy + 7 },
-            POINT { x: cx, y: cy + 1 },
+            POINT { x: cx + 4, y: cy - 7 },
+            POINT { x: cx + 7, y: cy - 7 },
+            POINT { x: cx + 5, y: cy + 7 },
+            POINT { x: cx + 2, y: cy + 7 },
         ];
         let _ = Polygon(hdc, &right_pts);
 
-        // 3. Bottom facet - Deep Crimson Base
-        let base_brush = CreateSolidBrush(if is_hovered { rgb(244, 63, 94) } else { rgb(180, 15, 55) });
-        let _ = SelectObject(hdc, base_brush);
-        let base_pts = [
-            POINT { x: cx - 7, y: cy + 7 },
-            POINT { x: cx, y: cy + 1 },
-            POINT { x: cx + 7, y: cy + 7 },
-            POINT { x: cx, y: cy + 8 },
-        ];
-        let _ = Polygon(hdc, &base_pts);
-
-        // 4. Center refraction core - Pure white glow
-        let white_brush = CreateSolidBrush(rgb(255, 255, 255));
-        let _ = SelectObject(hdc, white_brush);
-        let _ = Ellipse(hdc, cx - 2, cy - 2, cx + 2, cy + 2);
+        // 6. Front arc of silver orbital ring (sweeping across the right leg)
+        let front_silver_pen = CreatePen(PS_SOLID, 1, if is_hovered { rgb(255, 255, 255) } else { rgb(240, 240, 245) });
+        let _ = SelectObject(hdc, front_silver_pen);
+        let _ = Arc(hdc, cx - 11, cy - 8, cx + 11, cy + 8, cx + 8, cy - 5, cx - 7, cy + 6);
+        let _ = DeleteObject(front_silver_pen);
 
         // Clean up GDI objects
         let _ = SelectObject(hdc, old_brush);
         let _ = SelectObject(hdc, old_pen);
         let _ = DeleteObject(left_brush);
+        let _ = DeleteObject(crease_brush);
+        let _ = DeleteObject(diag_brush);
         let _ = DeleteObject(right_brush);
-        let _ = DeleteObject(base_brush);
-        let _ = DeleteObject(white_brush);
         let _ = DeleteObject(null_pen);
     }
 

@@ -25,6 +25,13 @@ if (-not (Test-Path $releaseExe)) {
     Write-Error "Release binary not found at '$releaseExe'. Run 'cargo build --release' first."
 }
 
+# Embed official icon and version metadata into executable
+$pythonExe = "C:\Users\User\AppData\Local\Programs\Python\Python312\python.exe"
+if (Test-Path $pythonExe) {
+    Write-Host "Embedding icon and version info into $releaseExe..." -ForegroundColor Cyan
+    & $pythonExe (Join-Path $projectRoot "scripts\embed_resources.py")
+}
+
 # 1. Inspect binary
 $exeItem = Get-Item $releaseExe
 $exeSizeMB = [Math]::Round($exeItem.Length / 1MB, 2)
