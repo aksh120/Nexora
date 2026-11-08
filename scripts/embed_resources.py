@@ -35,7 +35,7 @@ def embed(exe_path, ico_path, is_installer=False):
 
     sfi = pver.StringFileInfo([
         pver.StringTable('040904b0', [
-            pver.StringStruct('CompanyName', 'Nexora'),
+            pver.StringStruct('CompanyName', 'Akshat Apoorv'),
             pver.StringStruct('FileDescription', desc),
             pver.StringStruct('FileVersion', version_str),
             pver.StringStruct('InternalName', internal_name),

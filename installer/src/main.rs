@@ -340,6 +340,8 @@ fn install_engine(
     reg_add("HKCU", uninst_key, Some("DisplayName"), "Nexora");
     reg_add("HKCU", uninst_key, Some("DisplayVersion"), "0.1.0");
     reg_add("HKCU", uninst_key, Some("Publisher"), "Akshat Apoorv");
+    reg_add("HKCU", uninst_key, Some("Contact"), "Akshat Apoorv");
+    reg_add("HKCU", uninst_key, Some("Author"), "Akshat Apoorv");
     reg_add("HKCU", uninst_key, Some("DisplayIcon"), &icon_ref);
     reg_add("HKCU", uninst_key, Some("UninstallString"), &uninst_str);
     reg_add(

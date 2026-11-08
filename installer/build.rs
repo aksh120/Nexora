@@ -6,6 +6,7 @@ fn main() {
         res.set_manifest_file("../assets/manifest/nexora.manifest");
         res.set("FileDescription", "Nexora Setup");
         res.set("ProductName", "Nexora");
+        res.set("CompanyName", "Akshat Apoorv");
         res.set("ProductVersion", "0.1.0");
         res.set("FileVersion", "0.1.0");
         res.set("OriginalFilename", "Nexora-Setup-v0.1.0.exe");

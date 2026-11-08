@@ -6,6 +6,7 @@ fn main() {
         res.set_manifest_file("assets/manifest/nexora.manifest");
         res.set("FileDescription", "Nexora");
         res.set("ProductName", "Nexora");
+        res.set("CompanyName", "Akshat Apoorv");
         res.set("ProductVersion", env!("CARGO_PKG_VERSION"));
         res.set("FileVersion", env!("CARGO_PKG_VERSION"));
         res.set("LegalCopyright", "Copyright (c) 2026 Akshat Apoorv");
