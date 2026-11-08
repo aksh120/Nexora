@@ -133,14 +133,32 @@ impl WebViewEngine {
     }
 
     pub fn navigate(&self, target_url: &str) -> Result<()> {
-        if target_url == "nexora://settings" {
+        let clean_url = target_url.trim_end_matches('/');
+        if clean_url == "nexora://home" || clean_url == "nexora://newtab" || clean_url == "nexora:" || clean_url.is_empty() {
+            let app_data_dir = crate::app::application::ApplicationPaths::resolve()
+                .map(|p| p.app_data_dir)
+                .unwrap_or_else(|_| std::env::temp_dir());
+            let config = crate::app::config::NexoraConfig::load_or_default(&app_data_dir);
+            let data_dir = crate::app::application::ApplicationPaths::resolve()
+                .map(|p| p.data_dir)
+                .unwrap_or_else(|_| std::env::temp_dir());
+            let db_path = data_dir.join("nexora.db");
+            let bookmarks = if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
+                bm_mgr.get_all().unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            let html = crate::home::HomeUi::render_html(&config, &bookmarks);
+            return self.navigate_to_string(&html);
+        } else if clean_url == "nexora://settings" {
             let app_data_dir = crate::app::application::ApplicationPaths::resolve()
                 .map(|p| p.app_data_dir)
                 .unwrap_or_else(|_| std::env::temp_dir());
             let config = crate::app::config::NexoraConfig::load_or_default(&app_data_dir);
             let html = crate::settings::SettingsUi::render_html(&config);
             return self.navigate_to_string(&html);
-        } else if target_url == "nexora://diagnostics" {
+        } else if clean_url == "nexora://diagnostics" {
             let snapshot = crate::diagnostics::DiagnosticsSnapshot::capture(
                 1,
                 "Nexora Diagnostics",
@@ -151,7 +169,7 @@ impl WebViewEngine {
             );
             let html = crate::diagnostics::DiagnosticsUi::render_html(&snapshot);
             return self.navigate_to_string(&html);
-        } else if target_url == "nexora://bookmarks" {
+        } else if clean_url == "nexora://bookmarks" {
             let app_data_dir = crate::app::application::ApplicationPaths::resolve()
                 .map(|p| p.data_dir)
                 .unwrap_or_else(|_| std::env::temp_dir());
@@ -164,7 +182,7 @@ impl WebViewEngine {
             };
             let html = crate::storage::BookmarksUi::render_html(&bookmarks);
             return self.navigate_to_string(&html);
-        } else if target_url == "nexora://history" {
+        } else if clean_url == "nexora://history" {
             let app_data_dir = crate::app::application::ApplicationPaths::resolve()
                 .map(|p| p.data_dir)
                 .unwrap_or_else(|_| std::env::temp_dir());
@@ -844,12 +862,31 @@ impl WebViewEngine {
                                 }
                                 drop(tabs);
                                 let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd, None, false);
+
+                                if let Some(ref webview) = (*ptr).webview {
+                                    let _ = webview.navigate(&url);
+                                    return;
+                                }
                             }
                         }
 
                         if let Some(s) = sender {
                             unsafe {
-                                if url == "nexora://bookmarks" {
+                                if url == "nexora://home" || url == "nexora://newtab" || url == "nexora:" {
+                                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                                        let config = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
+                                        let db_path = paths.data_dir.join("nexora.db");
+                                        let bookmarks = if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                                            let bm_mgr = crate::storage::BookmarkManager::new(std::sync::Arc::new(conn));
+                                            bm_mgr.get_all().unwrap_or_default()
+                                        } else {
+                                            Vec::new()
+                                        };
+                                        let html = crate::home::HomeUi::render_html(&config, &bookmarks);
+                                        let wide = pwstr_from_str(&html);
+                                        let _ = s.NavigateToString(PCWSTR(wide.0));
+                                    }
+                                } else if url == "nexora://bookmarks" {
                                     if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
                                         let db_path = paths.data_dir.join("nexora.db");
                                         let bookmarks = if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
@@ -882,6 +919,18 @@ impl WebViewEngine {
                                         let wide = pwstr_from_str(&html);
                                         let _ = s.NavigateToString(PCWSTR(wide.0));
                                     }
+                                } else if url == "nexora://diagnostics" {
+                                    let snapshot = crate::diagnostics::DiagnosticsSnapshot::capture(
+                                        1,
+                                        "Nexora Diagnostics",
+                                        "nexora://diagnostics",
+                                        0,
+                                        Default::default(),
+                                        false,
+                                    );
+                                    let html = crate::diagnostics::DiagnosticsUi::render_html(&snapshot);
+                                    let wide = pwstr_from_str(&html);
+                                    let _ = s.NavigateToString(PCWSTR(wide.0));
                                 } else {
                                     let wide = pwstr_from_str(&url);
                                     let _ = s.Navigate(PCWSTR(wide.0));
@@ -1170,7 +1219,7 @@ mod tests {
         let reset_msg = r#"{"action":"reset_defaults"}"#;
         WebViewEngine::handle_ipc_message(dummy_hwnd, None, reset_msg);
         let config_def = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
-        assert_eq!(config_def.homepage, "https://www.google.com");
+        assert_eq!(config_def.homepage, "nexora://home");
         assert_eq!(config_def.suspension_timeout_minutes, 10);
     }
 }

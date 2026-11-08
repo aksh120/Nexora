@@ -33,7 +33,7 @@ pub struct NexoraConfig {
 impl Default for NexoraConfig {
     fn default() -> Self {
         Self {
-            homepage: "https://www.google.com".to_string(),
+            homepage: "nexora://home".to_string(),
             default_search_engine: "Google".to_string(),
             theme: ThemeMode::System,
             hardware_acceleration: true,
@@ -52,7 +52,13 @@ impl NexoraConfig {
         let config_file = config_dir.join("config.json");
         if config_file.exists() {
             if let Ok(content) = fs::read_to_string(&config_file) {
-                if let Ok(config) = serde_json::from_str(&content) {
+                if let Ok(mut config) = serde_json::from_str::<NexoraConfig>(&content) {
+                    // Automatically upgrade legacy google.com default to the dedicated Nexora homepage
+                    if config.homepage == "https://www.google.com" || config.homepage.is_empty() {
+                        config.homepage = "nexora://home".to_string();
+                        let _ = config.save(config_dir);
+                        log::info!("Migrated legacy homepage to nexora://home");
+                    }
                     log::info!("Loaded configuration from {:?}", config_file);
                     return config;
                 }
@@ -81,7 +87,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = NexoraConfig::default();
-        assert_eq!(config.homepage, "https://www.google.com");
+        assert_eq!(config.homepage, "nexora://home");
         assert_eq!(config.default_search_engine, "Google");
         assert!(config.hardware_acceleration);
         assert!(config.smart_suspension);

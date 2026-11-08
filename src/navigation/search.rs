@@ -6,6 +6,7 @@ impl SearchEngine {
         match engine_name.to_lowercase().as_str() {
             "bing" => format!("https://www.bing.com/search?q={}", encoded),
             "duckduckgo" | "ddg" => format!("https://duckduckgo.com/?q={}", encoded),
+            "brave" => format!("https://search.brave.com/search?q={}", encoded),
             "ecosia" => format!("https://www.ecosia.org/search?q={}", encoded),
             "youtube" => format!("https://www.youtube.com/results?search_query={}", encoded),
             _ => format!("https://www.google.com/search?q={}", encoded), // Default to Google
@@ -48,6 +49,10 @@ mod tests {
         assert_eq!(
             SearchEngine::build_url("Bing", "high performance"),
             "https://www.bing.com/search?q=high+performance"
+        );
+        assert_eq!(
+            SearchEngine::build_url("Brave", "privacy search"),
+            "https://search.brave.com/search?q=privacy+search"
         );
         assert_eq!(
             SearchEngine::build_url("YouTube", "4k 60fps nature"),

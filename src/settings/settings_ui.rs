@@ -491,6 +491,7 @@ impl SettingsUi {
                         <div style="display: flex; gap: 8px;">
                             <input type="text" id="homepage" value="{homepage_escaped}" style="width: 250px;" onchange="saveSetting('homepage', this.value)" />
                             <button class="btn btn-primary" onclick="saveSetting('homepage', document.getElementById('homepage').value)">Save</button>
+                            <button class="btn btn-secondary" onclick="document.getElementById('homepage').value = 'nexora://home'; saveSetting('homepage', 'nexora://home');" title="Restore Nexora dedicated homepage">Use Nexora Home</button>
                         </div>
                     </div>
                     <div class="setting-row">
@@ -893,7 +894,7 @@ mod tests {
         assert!(html.contains("About Nexora Browser"));
         assert!(html.contains("Bookmarks Manager"));
         assert!(html.contains("Browsing History"));
-        assert!(html.contains("https://www.google.com"));
+        assert!(html.contains("nexora://home"));
         assert!(html.contains("Zero-Telemetry"));
     }
 }

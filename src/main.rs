@@ -6,6 +6,7 @@ mod browser;
 mod core;
 mod diagnostics;
 mod engine;
+mod home;
 mod media;
 mod navigation;
 mod performance;
@@ -223,8 +224,10 @@ fn main() {
         }
     };
 
-    // Record initial navigation in history
-    let _ = history_mgr.add_visit(&initial_url, "Nexora Home");
+    // Record initial navigation in history (skip internal pages)
+    if !initial_url.starts_with("nexora://") {
+        let _ = history_mgr.add_visit(&initial_url, "Nexora Home");
+    }
 
     // 9. Associate WebView2 with HostWindow
     host_window.set_webview(webview);

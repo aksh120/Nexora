@@ -528,12 +528,25 @@ impl HostWindow {
                         }
                         ChromeHitResult::BtnHome => {
                             let homepage = (*ptr).homepage.clone();
+                            let title = if homepage == "nexora://home" || homepage == "nexora://newtab" {
+                                "Nexora Home"
+                            } else {
+                                "Home"
+                            };
+                            let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            if let Some(active) = tabs.get_active_tab_mut() {
+                                active.url = homepage.clone();
+                                active.title = title.to_string();
+                                active.push_history(&homepage);
+                            }
+                            drop(tabs);
                             if let Some(ref webview) = (*ptr).webview {
                                 let _ = webview.navigate(&homepage);
                             }
                             if let Some(ref chrome) = (*ptr).chrome {
                                 chrome.set_omnibox_text(&homepage);
                             }
+                            let _ = InvalidateRect(hwnd, None, false);
                         }
                         ChromeHitResult::BtnBookmark => {
                             let tabs = (*ptr).tab_manager.borrow();
@@ -600,8 +613,13 @@ impl HostWindow {
                                 match cmd.0 as usize {
                                     IDM_NEW_TAB => {
                                         let homepage = (*ptr).homepage.clone();
+                                        let title = if homepage == "nexora://home" || homepage == "nexora://newtab" {
+                                            "Nexora Home"
+                                        } else {
+                                            "New Tab"
+                                        };
                                         let mut tabs = (*ptr).tab_manager.borrow_mut();
-                                        let _ = tabs.create_tab(&homepage, Some("New Tab"));
+                                        let _ = tabs.create_tab(&homepage, Some(title));
                                         drop(tabs);
                                         if let Some(ref webview) = (*ptr).webview {
                                             let _ = webview.navigate(&homepage);
@@ -771,8 +789,13 @@ impl HostWindow {
                         }
                         ChromeHitResult::NewTab => {
                             let homepage = (*ptr).homepage.clone();
+                            let title = if homepage == "nexora://home" || homepage == "nexora://newtab" {
+                                "Nexora Home"
+                            } else {
+                                "New Tab"
+                            };
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
-                            let _ = tabs.create_tab(&homepage, Some("New Tab"));
+                            let _ = tabs.create_tab(&homepage, Some(title));
                             drop(tabs);
 
                             if let Some(ref mut chrome) = (*ptr).chrome {
@@ -1020,8 +1043,13 @@ impl HostWindow {
                             }
                             'T' | 't' => {
                                 let homepage = (*ptr).homepage.clone();
+                                let title = if homepage == "nexora://home" || homepage == "nexora://newtab" {
+                                    "Nexora Home"
+                                } else {
+                                    "New Tab"
+                                };
                                 let mut tabs = (*ptr).tab_manager.borrow_mut();
-                                let _ = tabs.create_tab(&homepage, Some("New Tab"));
+                                let _ = tabs.create_tab(&homepage, Some(title));
                                 drop(tabs);
                                 if let Some(ref webview) = (*ptr).webview {
                                     let _ = webview.navigate(&homepage);
