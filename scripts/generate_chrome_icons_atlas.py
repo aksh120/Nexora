@@ -94,6 +94,29 @@ lucide_defs = [
     ("fwd_disabled", '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>', COLOR_MUTED, "none", STROKE_W),
     # 30: Back disabled (muted)
     ("back_disabled", '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>', COLOR_MUTED, "none", STROKE_W),
+
+    # 31: Volume2 normal (Audio playing)
+    ("volume2_normal", '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>', COLOR_NORMAL, "none", STROKE_W),
+    # 32: Volume2 hover
+    ("volume2_hover", '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>', COLOR_HOVER, "none", STROKE_W),
+
+    # 33: VolumeX normal (Muted)
+    ("volumex_normal", '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" x2="16" y1="9" y2="15"/><line x1="16" x2="22" y1="9" y2="15"/>', COLOR_ACCENT, "none", STROKE_W),
+    # 34: VolumeX hover
+    ("volumex_hover", '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" x2="16" y1="9" y2="15"/><line x1="16" x2="22" y1="9" y2="15"/>', COLOR_ACCENT_HOVER, "none", STROKE_W),
+
+    # 35: Pin normal
+    ("pin_normal", '<line x1="12" x2="12" y1="17" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>', COLOR_NORMAL, "none", STROKE_W),
+    # 36: Pin hover
+    ("pin_hover", '<line x1="12" x2="12" y1="17" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>', COLOR_ACCENT, "none", STROKE_W),
+
+    # 37: ChevronUp (Find previous)
+    ("chevron_up", '<path d="m18 15-6-6-6 6"/>', COLOR_NORMAL, "none", STROKE_W),
+    # 38: ChevronDown (Find next)
+    ("chevron_down", '<path d="m6 9 6 6 6-6"/>', COLOR_NORMAL, "none", STROKE_W),
+
+    # 39: Search (Find in Page)
+    ("search_icon", '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>', COLOR_MUTED, "none", STROKE_W),
 ]
 
 num_icons = len(lucide_defs)

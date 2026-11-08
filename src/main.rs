@@ -147,6 +147,8 @@ fn main() {
                     title: t.title,
                     is_active: Some(t.id) == checkpoint.active_tab_id,
                     is_suspended: t.is_suspended,
+                    is_pinned: t.is_pinned,
+                    zoom_factor: t.zoom_factor,
                 }).collect(),
                 active_tab_id: checkpoint.active_tab_id,
             };

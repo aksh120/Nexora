@@ -12,8 +12,8 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::MARGINS;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyState, ReleaseCapture, SetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
-    VK_CONTROL, VK_ESCAPE, VK_F11, VK_F5, VK_LEFT, VK_MENU, VK_RIGHT, VK_SHIFT, VK_TAB,
+    GetKeyState, ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
+    VK_ADD, VK_CONTROL, VK_ESCAPE, VK_F11, VK_F5, VK_LEFT, VK_MENU, VK_RIGHT, VK_SHIFT, VK_SUBTRACT, VK_TAB,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DispatchMessageW,
@@ -23,10 +23,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SW_MINIMIZE, SW_RESTORE, SW_SHOW, SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
     TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTALIGN, TPM_TOPALIGN,
     WINDOW_EX_STYLE, WM_CLOSE, WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED,
-    WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_NCCALCSIZE,
-    WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT, WM_SIZE, WM_TIMER, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
+    WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE,
+    WM_MOUSEWHEEL, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT, WM_RBUTTONUP, WM_SIZE,
+    WM_TIMER, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
     HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTLEFT, HTRIGHT, HTTOP,
-    HTTOPLEFT, HTTOPRIGHT, MF_SEPARATOR, MF_STRING,
+    HTTOPLEFT, HTTOPRIGHT, MENU_ITEM_FLAGS, MF_CHECKED, MF_POPUP, MF_SEPARATOR, MF_STRING, MF_UNCHECKED,
 };
 
 pub const WM_MOUSELEAVE: u32 = 0x02A3;
@@ -35,12 +36,43 @@ pub const WM_SETICON: u32 = 0x0080;
 pub const ICON_BIG: usize = 1;
 pub const ICON_SMALL: usize = 0;
 
+pub const VK_OEM_PLUS: u16 = 0xBB;
+pub const VK_OEM_MINUS: u16 = 0xBD;
+
 pub const IDM_NEW_TAB: usize = 2001;
 pub const IDM_BOOKMARKS: usize = 2002;
 pub const IDM_HISTORY: usize = 2003;
 pub const IDM_SETTINGS: usize = 2004;
 pub const IDM_DIAGNOSTICS: usize = 2005;
 pub const IDM_EXIT: usize = 2006;
+
+pub const IDM_TAB_DUPLICATE: usize = 3001;
+pub const IDM_TAB_PIN: usize = 3002;
+pub const IDM_TAB_UNPIN: usize = 3003;
+pub const IDM_TAB_MUTE: usize = 3004;
+pub const IDM_TAB_UNMUTE: usize = 3005;
+pub const IDM_TAB_MUTE_OTHERS: usize = 3006;
+pub const IDM_TAB_UNMUTE_ALL: usize = 3007;
+pub const IDM_TAB_CLOSE_TAB: usize = 3008;
+pub const IDM_TAB_CLOSE_OTHERS: usize = 3009;
+pub const IDM_TAB_CLOSE_RIGHT: usize = 3010;
+
+pub const IDM_PERM_CAMERA_ALLOW: usize = 4001;
+pub const IDM_PERM_CAMERA_ASK: usize = 4002;
+pub const IDM_PERM_CAMERA_BLOCK: usize = 4003;
+pub const IDM_PERM_MIC_ALLOW: usize = 4004;
+pub const IDM_PERM_MIC_ASK: usize = 4005;
+pub const IDM_PERM_MIC_BLOCK: usize = 4006;
+pub const IDM_PERM_GEO_ALLOW: usize = 4007;
+pub const IDM_PERM_GEO_ASK: usize = 4008;
+pub const IDM_PERM_GEO_BLOCK: usize = 4009;
+pub const IDM_PERM_NOTIF_ALLOW: usize = 4010;
+pub const IDM_PERM_NOTIF_ASK: usize = 4011;
+pub const IDM_PERM_NOTIF_BLOCK: usize = 4012;
+pub const IDM_PERM_AUTOPLAY_ALLOW: usize = 4013;
+pub const IDM_PERM_AUTOPLAY_ASK: usize = 4014;
+pub const IDM_PERM_AUTOPLAY_BLOCK: usize = 4015;
+pub const IDM_PERM_RESET_SITE: usize = 4016;
 
 use crate::core::error::{NexoraError, Result};
 use crate::engine::WebViewEngine;
@@ -52,6 +84,9 @@ use crate::ui::layout::{BrowserLayout, TAB_BAR_HEIGHT};
 use crate::ui::theme::ThemePalette;
 
 pub const IDT_SUSPENSION_TIMER: usize = 1001;
+pub const IDT_TAB_HOVER_PREVIEW: usize = 1002;
+
+const ZOOM_LEVELS: [f64; 11] = [0.50, 0.67, 0.75, 0.80, 0.90, 1.00, 1.10, 1.25, 1.50, 1.75, 2.00];
 
 pub struct WindowContext {
     pub layout: BrowserLayout,
@@ -68,6 +103,12 @@ pub struct WindowContext {
     pub omnibox_brush: HBRUSH,
     pub fullscreen: crate::media::FullscreenController,
     pub adblock_engine: Arc<crate::privacy::AdBlockEngine>,
+    pub drag_start_x: i32,
+    pub drag_start_y: i32,
+    pub is_dragging_tab: bool,
+    pub drag_tab_idx: Option<usize>,
+    pub hovered_tab_id: Option<usize>,
+    pub hover_timer_active: bool,
 }
 
 pub struct HostWindow {
@@ -231,6 +272,12 @@ impl HostWindow {
                 omnibox_brush,
                 fullscreen: crate::media::FullscreenController::new(),
                 adblock_engine: Arc::new(crate::privacy::AdBlockEngine::new(true, true)),
+                drag_start_x: 0,
+                drag_start_y: 0,
+                is_dragging_tab: false,
+                drag_tab_idx: None,
+                hovered_tab_id: None,
+                hover_timer_active: false,
             });
 
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(context) as isize);
@@ -490,9 +537,64 @@ impl HostWindow {
                 if !ptr.is_null() {
                     let x = (lparam.0 & 0xffff) as i16 as i32;
                     let y = ((lparam.0 >> 16) & 0xffff) as i16 as i32;
+
+                    // Tab Drag and Drop handling
+                    if let Some(from_idx) = (*ptr).drag_tab_idx {
+                        let dx = (x - (*ptr).drag_start_x).abs();
+                        if dx > 6 || (*ptr).is_dragging_tab {
+                            (*ptr).is_dragging_tab = true;
+                            let tabs = (*ptr).tab_manager.borrow();
+                            let tab_rects = (*ptr).layout.calculate_tab_rects_for_tabs(tabs.tabs());
+                            let pinned_count = tabs.pinned_tab_count();
+                            let is_source_pinned = from_idx < pinned_count;
+
+                            let mut insert_idx = from_idx;
+                            for (i, (tx, _ty, tw, _th)) in tab_rects.iter().enumerate() {
+                                let mid = tx + tw / 2;
+                                if x < mid {
+                                    insert_idx = i;
+                                    break;
+                                } else {
+                                    insert_idx = i + 1;
+                                }
+                            }
+
+                            if is_source_pinned {
+                                if insert_idx > pinned_count {
+                                    insert_idx = pinned_count;
+                                }
+                            } else {
+                                if insert_idx < pinned_count {
+                                    insert_idx = pinned_count;
+                                }
+                            }
+
+                            if let Some(ref mut chrome) = (*ptr).chrome {
+                                chrome.drag_source_idx = Some(from_idx);
+                                chrome.drag_insert_idx = Some(insert_idx);
+                            }
+                            let _ = InvalidateRect(hwnd, None, false);
+                            return LRESULT(0);
+                        }
+                    }
+
                     if let Some(ref mut chrome) = (*ptr).chrome {
                         let tabs = (*ptr).tab_manager.borrow();
                         let hit = chrome.hit_test(x, y, &(*ptr).layout, tabs.tabs());
+
+                        // Tab Hover Preview timer
+                        if let ChromeHitResult::Tab(tab_id) = hit {
+                            if (*ptr).hovered_tab_id != Some(tab_id) {
+                                (*ptr).hovered_tab_id = Some(tab_id);
+                                let _ = SetTimer(hwnd, IDT_TAB_HOVER_PREVIEW, 450, None);
+                                (*ptr).hover_timer_active = true;
+                            }
+                        } else if (*ptr).hover_timer_active {
+                            let _ = KillTimer(hwnd, IDT_TAB_HOVER_PREVIEW);
+                            (*ptr).hover_timer_active = false;
+                            (*ptr).hovered_tab_id = None;
+                        }
+
                         if chrome.update_hover(hit) {
                             let _ = InvalidateRect(hwnd, None, false);
                         }
@@ -502,6 +604,11 @@ impl HostWindow {
             }
             WM_MOUSELEAVE => {
                 if !ptr.is_null() {
+                    if (*ptr).hover_timer_active {
+                        let _ = KillTimer(hwnd, IDT_TAB_HOVER_PREVIEW);
+                        (*ptr).hover_timer_active = false;
+                        (*ptr).hovered_tab_id = None;
+                    }
                     if let Some(ref mut chrome) = (*ptr).chrome {
                         if chrome.update_hover(ChromeHitResult::None) {
                             let _ = InvalidateRect(hwnd, None, false);
@@ -814,6 +921,18 @@ impl HostWindow {
                             let (x, y, w, h) = (*ptr).layout.webview_rect();
                             let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
 
+                            // Setup drag start parameters
+                            {
+                                let tabs = (*ptr).tab_manager.borrow();
+                                if let Some(idx) = tabs.tabs().iter().position(|t| t.id == id) {
+                                    (*ptr).drag_start_x = x;
+                                    (*ptr).drag_start_y = y;
+                                    (*ptr).drag_tab_idx = Some(idx);
+                                    (*ptr).is_dragging_tab = false;
+                                    let _ = SetCapture(hwnd);
+                                }
+                            }
+
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             let current_active = tabs.active_tab_id();
                             if current_active == Some(id) {
@@ -828,6 +947,7 @@ impl HostWindow {
                                 if let Some(active) = tabs.get_active_tab() {
                                     let url = active.url.clone();
                                     let title = active.title.clone();
+                                    let tab_zoom = active.zoom_factor;
                                     drop(tabs);
                                     if was_suspended {
                                         log::info!("Waking suspended/lazy tab #{} and navigating to {}", id, url);
@@ -862,6 +982,7 @@ impl HostWindow {
                                     let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
                                     let t0 = std::time::Instant::now();
                                     if let Some(ref webview) = (*ptr).webview {
+                                        let _ = webview.set_tab_zoom(id, tab_zoom);
                                         let _ = webview.switch_to_tab(id, bounds);
                                     }
                                     let elapsed_ms = t0.elapsed().as_secs_f64() * 1000.0;
@@ -870,6 +991,19 @@ impl HostWindow {
                                     let _ = InvalidateRect(hwnd, None, false);
                                 }
                             }
+                        }
+                        ChromeHitResult::TabAudio(id) => {
+                            let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            let new_mute = tabs.toggle_tab_mute(id);
+                            drop(tabs);
+
+                            if let (Some(ref webview), Some(m)) = (&(*ptr).webview, new_mute) {
+                                webview.set_tab_muted(id, m);
+                            }
+                            let _ = InvalidateRect(hwnd, None, false);
+                        }
+                        ChromeHitResult::BtnShield => {
+                            Self::show_permissions_menu(hwnd, ptr);
                         }
                         ChromeHitResult::TabClose(id) => {
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
@@ -960,6 +1094,66 @@ impl HostWindow {
                     }
                 }
                 LRESULT(0)
+            }
+            WM_LBUTTONUP => {
+                if !ptr.is_null() {
+                    let _ = ReleaseCapture();
+                    if (*ptr).is_dragging_tab {
+                        let from_opt = (*ptr).drag_tab_idx;
+                        let to_opt = (*ptr).chrome.as_ref().and_then(|c| c.drag_insert_idx);
+
+                        if let (Some(from), Some(to)) = (from_opt, to_opt) {
+                            let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            tabs.move_tab(from, to);
+                            drop(tabs);
+                        }
+
+                        (*ptr).is_dragging_tab = false;
+                        (*ptr).drag_tab_idx = None;
+                        if let Some(ref mut chrome) = (*ptr).chrome {
+                            chrome.drag_source_idx = None;
+                            chrome.drag_insert_idx = None;
+                        }
+                        let _ = InvalidateRect(hwnd, None, false);
+                    } else {
+                        (*ptr).drag_tab_idx = None;
+                    }
+                }
+                LRESULT(0)
+            }
+            WM_RBUTTONUP => {
+                if !ptr.is_null() {
+                    let x = (lparam.0 & 0xffff) as i16 as i32;
+                    let y = ((lparam.0 >> 16) & 0xffff) as i16 as i32;
+                    if y <= TAB_BAR_HEIGHT {
+                        let hit = if let Some(ref chrome) = (*ptr).chrome {
+                            let tabs = (*ptr).tab_manager.borrow();
+                            chrome.hit_test(x, y, &(*ptr).layout, tabs.tabs())
+                        } else {
+                            ChromeHitResult::None
+                        };
+
+                        if let ChromeHitResult::Tab(target_tab_id) = hit {
+                            Self::show_tab_context_menu(hwnd, ptr, target_tab_id, x, y);
+                        }
+                    }
+                }
+                LRESULT(0)
+            }
+            WM_MOUSEWHEEL => {
+                if !ptr.is_null() {
+                    let ctrl_pressed = (GetKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0;
+                    if ctrl_pressed {
+                        let delta = ((wparam.0 >> 16) & 0xffff) as i16;
+                        if delta > 0 {
+                            Self::apply_zoom_step(hwnd, ptr, true);
+                        } else if delta < 0 {
+                            Self::apply_zoom_step(hwnd, ptr, false);
+                        }
+                        return LRESULT(0);
+                    }
+                }
+                DefWindowProcW(hwnd, msg, wparam, lparam)
             }
             WM_LBUTTONDBLCLK => {
                 if !ptr.is_null() {
@@ -1280,7 +1474,34 @@ impl HostWindow {
                                     return LRESULT(0);
                                 }
                             }
+                            'F' | 'f' => {
+                                if let Some(ref webview) = (*ptr).webview {
+                                    let _ = webview.execute_script(crate::navigation::FindInPage::script_open());
+                                }
+                                return LRESULT(0);
+                            }
+                            'G' | 'g' => {
+                                if let Some(ref webview) = (*ptr).webview {
+                                    let backwards = shift_pressed;
+                                    let script = format!("try {{ window.find('', false, {}, true, false, false, false); }} catch(e) {{}}", backwards);
+                                    let _ = webview.execute_script(&script);
+                                }
+                                return LRESULT(0);
+                            }
                             _ => {}
+                        }
+
+                        if vk == VK_ADD.0 || vk == VK_OEM_PLUS || vk == b'=' as u16 {
+                            Self::apply_zoom_step(hwnd, ptr, true);
+                            return LRESULT(0);
+                        }
+                        if vk == VK_SUBTRACT.0 || vk == VK_OEM_MINUS || vk == b'-' as u16 {
+                            Self::apply_zoom_step(hwnd, ptr, false);
+                            return LRESULT(0);
+                        }
+                        if vk == 0x30 || vk == 0x60 {
+                            Self::reset_zoom(hwnd, ptr);
+                            return LRESULT(0);
                         }
                     }
                 }
@@ -1334,11 +1555,21 @@ impl HostWindow {
 
                     // Periodic Working Set Trimming for Nexora and child WebView2 processes
                     let _ = crate::performance::memory::trim_working_set();
+                } else if !ptr.is_null() && wparam.0 == IDT_TAB_HOVER_PREVIEW {
+                    let _ = KillTimer(hwnd, IDT_TAB_HOVER_PREVIEW);
+                    (*ptr).hover_timer_active = false;
+                    if let Some(hovered_id) = (*ptr).hovered_tab_id {
+                        let tabs = (*ptr).tab_manager.borrow();
+                        if let Some(t) = tabs.get_tab(hovered_id) {
+                            log::debug!("[Tab Preview Card] Hovered Tab #{}: '{}' ({})", t.id, t.title, t.url);
+                        }
+                    }
                 }
                 LRESULT(0)
             }
             WM_CLOSE => {
                 let _ = KillTimer(hwnd, IDT_SUSPENSION_TIMER);
+                let _ = KillTimer(hwnd, IDT_TAB_HOVER_PREVIEW);
                 if !ptr.is_null() {
                     (*ptr).is_closing.store(true, Ordering::SeqCst);
 
@@ -1357,6 +1588,7 @@ impl HostWindow {
             }
             WM_DESTROY => {
                 let _ = KillTimer(hwnd, IDT_SUSPENSION_TIMER);
+                let _ = KillTimer(hwnd, IDT_TAB_HOVER_PREVIEW);
                 if !ptr.is_null() {
                     let ctx = Box::from_raw(ptr);
                     let _ = DeleteObject(ctx.omnibox_brush);
@@ -1366,6 +1598,413 @@ impl HostWindow {
                 LRESULT(0)
             }
             _ => DefWindowProcW(hwnd, msg, wparam, lparam),
+        }
+    }
+
+    fn apply_zoom_step(_hwnd: HWND, ptr: *mut WindowContext, zoom_in: bool) {
+        unsafe {
+            if ptr.is_null() { return; }
+            let mut tabs = (*ptr).tab_manager.borrow_mut();
+            if let Some(active) = tabs.get_active_tab_mut() {
+                let current_zoom = active.zoom_factor;
+                let active_id = active.id;
+                let active_url = active.url.clone();
+
+                let mut new_zoom = current_zoom;
+                if zoom_in {
+                    for &level in &ZOOM_LEVELS {
+                        if level > current_zoom + 0.01 {
+                            new_zoom = level;
+                            break;
+                        }
+                    }
+                    if (new_zoom - current_zoom).abs() < 0.001 {
+                        new_zoom = *ZOOM_LEVELS.last().unwrap();
+                    }
+                } else {
+                    for &level in ZOOM_LEVELS.iter().rev() {
+                        if level < current_zoom - 0.01 {
+                            new_zoom = level;
+                            break;
+                        }
+                    }
+                    if (new_zoom - current_zoom).abs() < 0.001 {
+                        new_zoom = *ZOOM_LEVELS.first().unwrap();
+                    }
+                }
+
+                active.set_zoom(new_zoom);
+                drop(tabs);
+
+                if let Some(ref webview) = (*ptr).webview {
+                    let _ = webview.set_tab_zoom(active_id, new_zoom);
+                }
+
+                // Persist zoom for origin
+                if !active_url.starts_with("nexora://") && !active_url.is_empty() {
+                    let origin = crate::storage::ZoomManager::extract_origin(&active_url);
+                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                        let db_path = paths.data_dir.join("nexora.db");
+                        if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                            let zm = crate::storage::ZoomManager::new(std::sync::Arc::new(conn));
+                            let _ = zm.set_zoom(&origin, new_zoom);
+                            log::info!("[Per-Site Zoom] Persisted zoom {:.0}% for origin {}", new_zoom * 100.0, origin);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn reset_zoom(_hwnd: HWND, ptr: *mut WindowContext) {
+        unsafe {
+            if ptr.is_null() { return; }
+            let mut tabs = (*ptr).tab_manager.borrow_mut();
+            if let Some(active) = tabs.get_active_tab_mut() {
+                let active_id = active.id;
+                let active_url = active.url.clone();
+                active.set_zoom(1.0);
+                drop(tabs);
+
+                if let Some(ref webview) = (*ptr).webview {
+                    let _ = webview.set_tab_zoom(active_id, 1.0);
+                }
+
+                if !active_url.starts_with("nexora://") && !active_url.is_empty() {
+                    let origin = crate::storage::ZoomManager::extract_origin(&active_url);
+                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                        let db_path = paths.data_dir.join("nexora.db");
+                        if let Ok(conn) = crate::storage::SqliteConnection::open(&db_path) {
+                            let zm = crate::storage::ZoomManager::new(std::sync::Arc::new(conn));
+                            let _ = zm.remove_zoom(&origin);
+                            log::info!("[Per-Site Zoom] Reset zoom to 100% for origin {}", origin);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    unsafe fn show_tab_context_menu(hwnd: HWND, ptr: *mut WindowContext, tab_id: usize, x: i32, y: i32) {
+        if ptr.is_null() { return; }
+        let mut pt = POINT { x, y };
+        let _ = ClientToScreen(hwnd, &mut pt);
+
+        let (is_pinned, is_muted) = {
+            let tabs = (*ptr).tab_manager.borrow();
+            if let Some(t) = tabs.get_tab(tab_id) {
+                (t.is_pinned, t.is_muted)
+            } else {
+                return;
+            }
+        };
+
+        if let Ok(hmenu) = CreatePopupMenu() {
+            let _ = AppendMenuW(hmenu, MF_STRING, IDM_NEW_TAB, w!("New Tab\tCtrl+T"));
+            let _ = AppendMenuW(hmenu, MF_STRING, IDM_TAB_DUPLICATE, w!("Duplicate Tab"));
+            let pin_text = if is_pinned { w!("Unpin Tab") } else { w!("Pin Tab") };
+            let _ = AppendMenuW(hmenu, MF_STRING, if is_pinned { IDM_TAB_UNPIN } else { IDM_TAB_PIN }, pin_text);
+            let _ = AppendMenuW(hmenu, MF_SEPARATOR, 0, PCWSTR::null());
+
+            let mute_text = if is_muted { w!("Unmute Tab") } else { w!("Mute Tab") };
+            let _ = AppendMenuW(hmenu, MF_STRING, if is_muted { IDM_TAB_UNMUTE } else { IDM_TAB_MUTE }, mute_text);
+            let _ = AppendMenuW(hmenu, MF_STRING, IDM_TAB_MUTE_OTHERS, w!("Mute Other Tabs"));
+            let _ = AppendMenuW(hmenu, MF_STRING, IDM_TAB_UNMUTE_ALL, w!("Unmute All Tabs"));
+            let _ = AppendMenuW(hmenu, MF_SEPARATOR, 0, PCWSTR::null());
+
+            let _ = AppendMenuW(hmenu, MF_STRING, IDM_TAB_CLOSE_TAB, w!("Close Tab\tCtrl+W"));
+            let _ = AppendMenuW(hmenu, MF_STRING, IDM_TAB_CLOSE_OTHERS, w!("Close Other Tabs"));
+            let _ = AppendMenuW(hmenu, MF_STRING, IDM_TAB_CLOSE_RIGHT, w!("Close Tabs to the Right"));
+
+            let cmd = TrackPopupMenuEx(
+                hmenu,
+                (TPM_RIGHTALIGN.0 | TPM_TOPALIGN.0 | TPM_RETURNCMD.0 | TPM_NONOTIFY.0) as u32,
+                pt.x,
+                pt.y,
+                hwnd,
+                None,
+            );
+            let _ = DestroyMenu(hmenu);
+
+            match cmd.0 as usize {
+                IDM_NEW_TAB => {
+                    let homepage = (*ptr).homepage.clone();
+                    let title = if homepage == "nexora://home" || homepage == "nexora://newtab" {
+                        "Nexora Home"
+                    } else {
+                        "New Tab"
+                    };
+                    let new_id = {
+                        let mut tabs = (*ptr).tab_manager.borrow_mut();
+                        let id = tabs.create_tab(&homepage, Some(title));
+                        tabs.switch_tab(id);
+                        id
+                    };
+                    let (x, y, w, h) = (*ptr).layout.webview_rect();
+                    let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
+                    if let Some(ref webview) = (*ptr).webview {
+                        let _ = webview.create_tab_view(new_id, &homepage, bounds, true);
+                        let _ = webview.switch_to_tab(new_id, bounds);
+                    }
+                    if let Some(ref chrome) = (*ptr).chrome {
+                        chrome.set_omnibox_text(&homepage);
+                        let count = (*ptr).tab_manager.borrow().tab_count();
+                        chrome.layout_controls(&(*ptr).layout, count);
+                    }
+                    let _ = InvalidateRect(hwnd, None, false);
+                }
+                IDM_TAB_DUPLICATE => {
+                    let mut tabs = (*ptr).tab_manager.borrow_mut();
+                    if let Some(new_id) = tabs.duplicate_tab(tab_id) {
+                        let dup_url = tabs.get_tab(new_id).map(|t| t.url.clone()).unwrap_or_default();
+                        let dup_title = tabs.get_tab(new_id).map(|t| t.title.clone()).unwrap_or_default();
+                        let dup_zoom = tabs.get_tab(new_id).map(|t| t.zoom_factor).unwrap_or(1.0);
+                        tabs.switch_tab(new_id);
+                        drop(tabs);
+
+                        let (x, y, w, h) = (*ptr).layout.webview_rect();
+                        let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
+                        if let Some(ref webview) = (*ptr).webview {
+                            let _ = webview.create_tab_view(new_id, &dup_url, bounds, true);
+                            let _ = webview.set_tab_zoom(new_id, dup_zoom);
+                            let _ = webview.switch_to_tab(new_id, bounds);
+                        }
+                        if let Some(ref chrome) = (*ptr).chrome {
+                            chrome.set_omnibox_text(&dup_url);
+                            let count = (*ptr).tab_manager.borrow().tab_count();
+                            chrome.layout_controls(&(*ptr).layout, count);
+                        }
+                        let full_title = format!("{} - Nexora", dup_title);
+                        let wide_title: Vec<u16> = full_title.encode_utf16().chain(std::iter::once(0)).collect();
+                        let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
+                            hwnd,
+                            windows::core::PCWSTR(wide_title.as_ptr()),
+                        );
+                        let _ = InvalidateRect(hwnd, None, false);
+                    }
+                }
+                IDM_TAB_PIN => {
+                    let mut tabs = (*ptr).tab_manager.borrow_mut();
+                    tabs.pin_tab(tab_id);
+                    drop(tabs);
+                    let _ = InvalidateRect(hwnd, None, false);
+                }
+                IDM_TAB_UNPIN => {
+                    let mut tabs = (*ptr).tab_manager.borrow_mut();
+                    tabs.unpin_tab(tab_id);
+                    drop(tabs);
+                    let _ = InvalidateRect(hwnd, None, false);
+                }
+                IDM_TAB_MUTE => {
+                    let mut tabs = (*ptr).tab_manager.borrow_mut();
+                    tabs.set_tab_muted(tab_id, true);
+                    drop(tabs);
+                    if let Some(ref webview) = (*ptr).webview {
+                        webview.set_tab_muted(tab_id, true);
+                    }
+                    let _ = InvalidateRect(hwnd, None, false);
+                }
+                IDM_TAB_UNMUTE => {
+                    let mut tabs = (*ptr).tab_manager.borrow_mut();
+                    tabs.set_tab_muted(tab_id, false);
+                    drop(tabs);
+                    if let Some(ref webview) = (*ptr).webview {
+                        webview.set_tab_muted(tab_id, false);
+                    }
+                    let _ = InvalidateRect(hwnd, None, false);
+                }
+                IDM_TAB_MUTE_OTHERS => {
+                    let mut tabs = (*ptr).tab_manager.borrow_mut();
+                    tabs.mute_other_tabs(tab_id);
+                    let other_ids: Vec<usize> = tabs.tabs().iter().filter(|t| t.id != tab_id).map(|t| t.id).collect();
+                    drop(tabs);
+                    if let Some(ref webview) = (*ptr).webview {
+                        for oid in other_ids {
+                            webview.set_tab_muted(oid, true);
+                        }
+                    }
+                    let _ = InvalidateRect(hwnd, None, false);
+                }
+                IDM_TAB_UNMUTE_ALL => {
+                    let mut tabs = (*ptr).tab_manager.borrow_mut();
+                    tabs.unmute_all_tabs();
+                    let all_ids: Vec<usize> = tabs.tabs().iter().map(|t| t.id).collect();
+                    drop(tabs);
+                    if let Some(ref webview) = (*ptr).webview {
+                        for aid in all_ids {
+                            webview.set_tab_muted(aid, false);
+                        }
+                    }
+                    let _ = InvalidateRect(hwnd, None, false);
+                }
+                IDM_TAB_CLOSE_TAB => {
+                    let mut tabs = (*ptr).tab_manager.borrow_mut();
+                    let new_active = tabs.close_tab(tab_id);
+                    let maybe_tab_info = new_active.and_then(|new_id| tabs.get_tab(new_id).map(|t| (new_id, t.url.clone(), t.title.clone())));
+                    drop(tabs);
+
+                    let (x, y, w, h) = (*ptr).layout.webview_rect();
+                    let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
+
+                    if let Some(ref webview) = (*ptr).webview {
+                        webview.close_tab_view(tab_id);
+                    }
+
+                    if let Some((active_id, url, title)) = maybe_tab_info {
+                        if let Some(ref mut chrome) = (*ptr).chrome {
+                            chrome.set_omnibox_text(&url);
+                        }
+                        let full_title = format!("{} - Nexora", title);
+                        let wide_title: Vec<u16> = full_title.encode_utf16().chain(std::iter::once(0)).collect();
+                        let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
+                            hwnd,
+                            windows::core::PCWSTR(wide_title.as_ptr()),
+                        );
+                        if let Some(ref webview) = (*ptr).webview {
+                            let _ = webview.switch_to_tab(active_id, bounds);
+                        }
+                    }
+                    let _ = InvalidateRect(hwnd, None, false);
+                }
+                IDM_TAB_CLOSE_OTHERS => {
+                    let mut tabs = (*ptr).tab_manager.borrow_mut();
+                    let closed = tabs.close_other_tabs(tab_id);
+                    tabs.switch_tab(tab_id);
+                    drop(tabs);
+
+                    if let Some(ref webview) = (*ptr).webview {
+                        for cid in closed {
+                            webview.close_tab_view(cid);
+                        }
+                        let (x, y, w, h) = (*ptr).layout.webview_rect();
+                        let bounds = RECT { left: x, top: y, right: x + w, bottom: y + h };
+                        let _ = webview.switch_to_tab(tab_id, bounds);
+                    }
+                    let _ = InvalidateRect(hwnd, None, false);
+                }
+                IDM_TAB_CLOSE_RIGHT => {
+                    let mut tabs = (*ptr).tab_manager.borrow_mut();
+                    let closed = tabs.close_tabs_to_right(tab_id);
+                    drop(tabs);
+
+                    if let Some(ref webview) = (*ptr).webview {
+                        for cid in closed {
+                            webview.close_tab_view(cid);
+                        }
+                    }
+                    let _ = InvalidateRect(hwnd, None, false);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    unsafe fn show_permissions_menu(hwnd: HWND, ptr: *mut WindowContext) {
+        if ptr.is_null() { return; }
+        let omni = (*ptr).layout.omnibox_rect();
+        let mut pt = POINT { x: omni.0 + 8, y: omni.1 + omni.3 };
+        let _ = ClientToScreen(hwnd, &mut pt);
+
+        let active_url = {
+            let tabs = (*ptr).tab_manager.borrow();
+            tabs.get_active_tab().map(|t| t.url.clone()).unwrap_or_default()
+        };
+
+        if active_url.starts_with("nexora://") || active_url.is_empty() {
+            if let Ok(hmenu) = CreatePopupMenu() {
+                let _ = AppendMenuW(hmenu, MF_STRING, 0, w!("Nexora System Page - Full Trusted Permissions"));
+                let _ = TrackPopupMenuEx(hmenu, (TPM_RIGHTALIGN.0 | TPM_TOPALIGN.0 | TPM_RETURNCMD.0) as u32, pt.x, pt.y, hwnd, None);
+                let _ = DestroyMenu(hmenu);
+            }
+            return;
+        }
+
+        let origin = crate::privacy::PermissionsManager::normalize_origin(&active_url);
+
+        let paths = match crate::app::application::ApplicationPaths::resolve() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        let db_path = paths.data_dir.join("nexora.db");
+        let conn = match crate::storage::SqliteConnection::open(&db_path) {
+            Ok(c) => std::sync::Arc::new(c),
+            Err(_) => return,
+        };
+        let perm_mgr = crate::privacy::PermissionsManager::new(conn);
+
+        let cam_state = perm_mgr.get_permission(&origin, crate::privacy::PermissionKind::Camera).unwrap_or(crate::privacy::PermissionState::Prompt);
+        let mic_state = perm_mgr.get_permission(&origin, crate::privacy::PermissionKind::Microphone).unwrap_or(crate::privacy::PermissionState::Prompt);
+        let geo_state = perm_mgr.get_permission(&origin, crate::privacy::PermissionKind::Geolocation).unwrap_or(crate::privacy::PermissionState::Prompt);
+        let notif_state = perm_mgr.get_permission(&origin, crate::privacy::PermissionKind::Notifications).unwrap_or(crate::privacy::PermissionState::Block);
+        let auto_state = perm_mgr.get_permission(&origin, crate::privacy::PermissionKind::Autoplay).unwrap_or(crate::privacy::PermissionState::Allow);
+
+        if let Ok(hmenu) = CreatePopupMenu() {
+            let title_info = format!("Permissions for {}", origin);
+            let wide_info: Vec<u16> = title_info.encode_utf16().chain(std::iter::once(0)).collect();
+            let _ = AppendMenuW(hmenu, MF_STRING, 0, PCWSTR(wide_info.as_ptr()));
+            let _ = AppendMenuW(hmenu, MF_STRING, 0, w!("Connection: Secure (TLS / HTTPS)"));
+            let _ = AppendMenuW(hmenu, MF_SEPARATOR, 0, PCWSTR::null());
+
+            let build_sub = |allow_id, ask_id, block_id, cur_state| {
+                if let Ok(sub) = CreatePopupMenu() {
+                    let a_flag = if cur_state == crate::privacy::PermissionState::Allow { MF_CHECKED.0 } else { MF_UNCHECKED.0 };
+                    let p_flag = if cur_state == crate::privacy::PermissionState::Prompt { MF_CHECKED.0 } else { MF_UNCHECKED.0 };
+                    let b_flag = if cur_state == crate::privacy::PermissionState::Block { MF_CHECKED.0 } else { MF_UNCHECKED.0 };
+                    let _ = AppendMenuW(sub, MENU_ITEM_FLAGS(MF_STRING.0 | a_flag), allow_id, w!("Allow"));
+                    let _ = AppendMenuW(sub, MENU_ITEM_FLAGS(MF_STRING.0 | p_flag), ask_id, w!("Ask (Default)"));
+                    let _ = AppendMenuW(sub, MENU_ITEM_FLAGS(MF_STRING.0 | b_flag), block_id, w!("Block"));
+                    sub
+                } else {
+                    windows::Win32::UI::WindowsAndMessaging::HMENU::default()
+                }
+            };
+
+            let cam_sub = build_sub(IDM_PERM_CAMERA_ALLOW, IDM_PERM_CAMERA_ASK, IDM_PERM_CAMERA_BLOCK, cam_state);
+            let mic_sub = build_sub(IDM_PERM_MIC_ALLOW, IDM_PERM_MIC_ASK, IDM_PERM_MIC_BLOCK, mic_state);
+            let geo_sub = build_sub(IDM_PERM_GEO_ALLOW, IDM_PERM_GEO_ASK, IDM_PERM_GEO_BLOCK, geo_state);
+            let notif_sub = build_sub(IDM_PERM_NOTIF_ALLOW, IDM_PERM_NOTIF_ASK, IDM_PERM_NOTIF_BLOCK, notif_state);
+            let auto_sub = build_sub(IDM_PERM_AUTOPLAY_ALLOW, IDM_PERM_AUTOPLAY_ASK, IDM_PERM_AUTOPLAY_BLOCK, auto_state);
+
+            let _ = AppendMenuW(hmenu, MENU_ITEM_FLAGS(MF_POPUP.0 | MF_STRING.0), cam_sub.0 as usize, w!("Camera"));
+            let _ = AppendMenuW(hmenu, MENU_ITEM_FLAGS(MF_POPUP.0 | MF_STRING.0), mic_sub.0 as usize, w!("Microphone"));
+            let _ = AppendMenuW(hmenu, MENU_ITEM_FLAGS(MF_POPUP.0 | MF_STRING.0), geo_sub.0 as usize, w!("Location"));
+            let _ = AppendMenuW(hmenu, MENU_ITEM_FLAGS(MF_POPUP.0 | MF_STRING.0), notif_sub.0 as usize, w!("Notifications"));
+            let _ = AppendMenuW(hmenu, MENU_ITEM_FLAGS(MF_POPUP.0 | MF_STRING.0), auto_sub.0 as usize, w!("Autoplay"));
+
+            let _ = AppendMenuW(hmenu, MF_SEPARATOR, 0, PCWSTR::null());
+            let _ = AppendMenuW(hmenu, MF_STRING, IDM_PERM_RESET_SITE, w!("Reset Permissions for This Site"));
+
+            let cmd = TrackPopupMenuEx(
+                hmenu,
+                (TPM_RIGHTALIGN.0 | TPM_TOPALIGN.0 | TPM_RETURNCMD.0 | TPM_NONOTIFY.0) as u32,
+                pt.x,
+                pt.y,
+                hwnd,
+                None,
+            );
+            let _ = DestroyMenu(hmenu);
+
+            match cmd.0 as usize {
+                IDM_PERM_CAMERA_ALLOW => { let _ = perm_mgr.set_permission(&origin, crate::privacy::PermissionKind::Camera, crate::privacy::PermissionState::Allow); }
+                IDM_PERM_CAMERA_ASK => { let _ = perm_mgr.set_permission(&origin, crate::privacy::PermissionKind::Camera, crate::privacy::PermissionState::Prompt); }
+                IDM_PERM_CAMERA_BLOCK => { let _ = perm_mgr.set_permission(&origin, crate::privacy::PermissionKind::Camera, crate::privacy::PermissionState::Block); }
+                IDM_PERM_MIC_ALLOW => { let _ = perm_mgr.set_permission(&origin, crate::privacy::PermissionKind::Microphone, crate::privacy::PermissionState::Allow); }
+                IDM_PERM_MIC_ASK => { let _ = perm_mgr.set_permission(&origin, crate::privacy::PermissionKind::Microphone, crate::privacy::PermissionState::Prompt); }
+                IDM_PERM_MIC_BLOCK => { let _ = perm_mgr.set_permission(&origin, crate::privacy::PermissionKind::Microphone, crate::privacy::PermissionState::Block); }
+                IDM_PERM_GEO_ALLOW => { let _ = perm_mgr.set_permission(&origin, crate::privacy::PermissionKind::Geolocation, crate::privacy::PermissionState::Allow); }
+                IDM_PERM_GEO_ASK => { let _ = perm_mgr.set_permission(&origin, crate::privacy::PermissionKind::Geolocation, crate::privacy::PermissionState::Prompt); }
+                IDM_PERM_GEO_BLOCK => { let _ = perm_mgr.set_permission(&origin, crate::privacy::PermissionKind::Geolocation, crate::privacy::PermissionState::Block); }
+                IDM_PERM_NOTIF_ALLOW => { let _ = perm_mgr.set_permission(&origin, crate::privacy::PermissionKind::Notifications, crate::privacy::PermissionState::Allow); }
+                IDM_PERM_NOTIF_ASK => { let _ = perm_mgr.set_permission(&origin, crate::privacy::PermissionKind::Notifications, crate::privacy::PermissionState::Prompt); }
+                IDM_PERM_NOTIF_BLOCK => { let _ = perm_mgr.set_permission(&origin, crate::privacy::PermissionKind::Notifications, crate::privacy::PermissionState::Block); }
+                IDM_PERM_AUTOPLAY_ALLOW => { let _ = perm_mgr.set_permission(&origin, crate::privacy::PermissionKind::Autoplay, crate::privacy::PermissionState::Allow); }
+                IDM_PERM_AUTOPLAY_ASK => { let _ = perm_mgr.set_permission(&origin, crate::privacy::PermissionKind::Autoplay, crate::privacy::PermissionState::Prompt); }
+                IDM_PERM_AUTOPLAY_BLOCK => { let _ = perm_mgr.set_permission(&origin, crate::privacy::PermissionKind::Autoplay, crate::privacy::PermissionState::Block); }
+                IDM_PERM_RESET_SITE => {
+                    let _ = perm_mgr.clear_all_for_origin(&origin);
+                }
+                _ => {}
+            }
         }
     }
 }

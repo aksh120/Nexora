@@ -25,7 +25,7 @@ pub const IDC_OMNIBOX: usize = 1005;
 pub const EM_SETSEL: u32 = 0x00B1;
 
 pub const ATLAS_ICON_SIZE: i32 = 48;
-pub const ATLAS_TOTAL_WIDTH: i32 = 1488;
+pub const ATLAS_TOTAL_WIDTH: i32 = 1920;
 pub const ATLAS_TOTAL_HEIGHT: i32 = 48;
 const ATLAS_BYTES: &[u8] = include_bytes!("../../assets/branding/chrome_icons_atlas.bin");
 
@@ -60,12 +60,22 @@ pub const ICON_CAP_CLOSE_NORMAL: usize = 27;
 pub const ICON_CAP_CLOSE_HOVER: usize = 28;
 pub const ICON_FWD_DISABLED: usize = 29;
 pub const ICON_BACK_DISABLED: usize = 30;
+pub const ICON_VOLUME2_NORMAL: usize = 31;
+pub const ICON_VOLUME2_HOVER: usize = 32;
+pub const ICON_VOLUMEX_NORMAL: usize = 33;
+pub const ICON_VOLUMEX_HOVER: usize = 34;
+pub const ICON_PIN_NORMAL: usize = 35;
+pub const ICON_PIN_HOVER: usize = 36;
+pub const ICON_CHEVRON_UP: usize = 37;
+pub const ICON_CHEVRON_DOWN: usize = 38;
+pub const ICON_SEARCH_FIND: usize = 39;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChromeHitResult {
     BrandLogo,
     Tab(usize),
     TabClose(usize),
+    TabAudio(usize),
     NewTab,
     BtnBack,
     BtnForward,
@@ -73,6 +83,7 @@ pub enum ChromeHitResult {
     BtnHome,
     BtnBookmark,
     BtnMenu,
+    BtnShield,
     CaptionMinimize,
     CaptionMaximize,
     CaptionClose,
@@ -89,6 +100,8 @@ pub struct BrowserChrome {
     pub is_current_page_bookmarked: bool,
     atlas_dc: HDC,
     atlas_bmp: HBITMAP,
+    pub drag_source_idx: Option<usize>,
+    pub drag_insert_idx: Option<usize>,
 }
 
 struct OmniboxSubclassContext {
@@ -200,6 +213,8 @@ impl BrowserChrome {
                 is_current_page_bookmarked: false,
                 atlas_dc,
                 atlas_bmp,
+                drag_source_idx: None,
+                drag_insert_idx: None,
             })
         }
     }
@@ -285,20 +300,35 @@ impl BrowserChrome {
             }
 
             // Tabs
-            let rects = layout.calculate_tab_rects(tabs.len());
+            let rects = layout.calculate_tab_rects_for_tabs(tabs);
             for (i, (tx, ty, tw, th)) in rects.iter().enumerate() {
                 if x >= *tx && x < tx + tw && y >= *ty && y < ty + th {
-                    let tab_id = tabs[i].id;
+                    let tab = &tabs[i];
+                    let tab_id = tab.id;
+
+                    if tab.is_pinned {
+                        // In pinned tab: audio button hit if playing or muted
+                        if tab.is_playing_audio || tab.is_muted {
+                            return ChromeHitResult::TabAudio(tab_id);
+                        }
+                        return ChromeHitResult::Tab(tab_id);
+                    }
+
+                    // In normal tab:
+                    let has_audio = tab.is_playing_audio || tab.is_muted;
                     // Close button is in rightmost 24px of tab
                     if x >= (tx + tw - 24) {
                         return ChromeHitResult::TabClose(tab_id);
+                    }
+                    if has_audio && x >= (tx + tw - 44) && x < (tx + tw - 24) {
+                        return ChromeHitResult::TabAudio(tab_id);
                     }
                     return ChromeHitResult::Tab(tab_id);
                 }
             }
 
             // New Tab button hit
-            let new_tab_rect = layout.new_tab_button_rect(tabs.len());
+            let new_tab_rect = layout.new_tab_button_rect_for_tabs(tabs);
             if x >= new_tab_rect.0 && x < new_tab_rect.0 + new_tab_rect.2
                 && y >= new_tab_rect.1 && y < new_tab_rect.1 + new_tab_rect.3
             {
@@ -341,6 +371,11 @@ impl BrowserChrome {
             let menu = layout.menu_button_rect();
             if x >= menu.0 && x < menu.0 + menu.2 && y >= menu.1 && y < menu.1 + menu.3 {
                 return ChromeHitResult::BtnMenu;
+            }
+
+            let omnibox = layout.omnibox_rect();
+            if x >= omnibox.0 + 2 && x <= omnibox.0 + 28 && y >= omnibox.1 && y <= omnibox.1 + omnibox.3 {
+                return ChromeHitResult::BtnShield;
             }
         }
 
@@ -394,7 +429,7 @@ impl BrowserChrome {
             Self::draw_atlas_icon(mem_dc, self.atlas_dc, ICON_LOGO, logo.0, logo.1, logo.2, logo.3);
 
             // 5. Render Tabs
-            let tab_rects = layout.calculate_tab_rects(tabs.len());
+            let tab_rects = layout.calculate_tab_rects_for_tabs(tabs);
             SetBkMode(mem_dc, TRANSPARENT);
 
             for (i, tab) in tabs.iter().enumerate() {
@@ -433,63 +468,132 @@ impl BrowserChrome {
                     let _ = DeleteObject(accent_pen);
                 }
 
-                // Tab Title Text
-                let text_color = if is_active {
-                    self.theme.tab_text_active
+                if tab.is_pinned {
+                    // Pinned tab rendering (compact 38px width, centered icon, no close button)
+                    let has_audio = tab.is_playing_audio || tab.is_muted;
+                    let is_audio_hover = self.hovered_item == ChromeHitResult::TabAudio(tab.id);
+                    let icon_cx = tx + (tw - 16) / 2;
+                    let icon_cy = ty + (th - 16) / 2;
+
+                    if has_audio {
+                        let audio_idx = if tab.is_muted {
+                            if is_audio_hover { ICON_VOLUMEX_HOVER } else { ICON_VOLUMEX_NORMAL }
+                        } else {
+                            if is_audio_hover { ICON_VOLUME2_HOVER } else { ICON_VOLUME2_NORMAL }
+                        };
+                        Self::draw_atlas_icon(mem_dc, self.atlas_dc, audio_idx, icon_cx, icon_cy, 16, 16);
+                    } else {
+                        let pin_idx = if is_hovered { ICON_PIN_HOVER } else { ICON_PIN_NORMAL };
+                        Self::draw_atlas_icon(mem_dc, self.atlas_dc, pin_idx, icon_cx, icon_cy, 16, 16);
+                    }
                 } else {
-                    self.theme.tab_text_inactive
-                };
-                SetTextColor(mem_dc, text_color);
-
-                let mut title = tab.title.clone();
-                if tab.is_playing_audio {
-                    title = format!("\u{266A} {}", title);
-                } else if tab.is_suspended() {
-                    title = format!("[Zz] {}", title);
-                }
-
-                let mut wide_title: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
-                let mut text_rect = RECT {
-                    left: tx + 10,
-                    top: ty,
-                    right: tx + tw - 24, // Space for close button
-                    bottom: ty + th,
-                };
-                let title_slice_len = wide_title.len() - 1;
-                DrawTextW(
-                    mem_dc,
-                    &mut wide_title[..title_slice_len],
-                    &mut text_rect,
-                    DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS,
-                );
-
-                // Tab Close Button (Lucide X with Smooth Subpixel Antialiasing)
-                let is_close_hovered = self.hovered_item == ChromeHitResult::TabClose(tab.id);
-                let close_cx = tx + tw - 13;
-                let close_cy = ty + th / 2;
-                if is_close_hovered {
-                    let hover_brush = CreateSolidBrush(self.theme.button_hover_bg);
-                    let r = RECT {
-                        left: close_cx - 8,
-                        top: close_cy - 8,
-                        right: close_cx + 8,
-                        bottom: close_cy + 8,
+                    // Normal Tab Title Text
+                    let text_color = if is_active {
+                        self.theme.tab_text_active
+                    } else {
+                        self.theme.tab_text_inactive
                     };
-                    FillRect(mem_dc, &r, hover_brush);
-                    let _ = DeleteObject(hover_brush);
+                    SetTextColor(mem_dc, text_color);
+
+                    let mut title = tab.title.clone();
+                    if tab.is_suspended() {
+                        title = format!("[Zz] {}", title);
+                    }
+
+                    let has_audio = tab.is_playing_audio || tab.is_muted;
+                    let right_text_limit = if has_audio {
+                        tx + tw - 44
+                    } else {
+                        tx + tw - 24
+                    };
+
+                    let mut wide_title: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+                    let mut text_rect = RECT {
+                        left: tx + 10,
+                        top: ty,
+                        right: right_text_limit,
+                        bottom: ty + th,
+                    };
+                    let title_slice_len = wide_title.len() - 1;
+                    DrawTextW(
+                        mem_dc,
+                        &mut wide_title[..title_slice_len],
+                        &mut text_rect,
+                        DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS,
+                    );
+
+                    // Tab Audio Indicator/Button if active audio or muted
+                    if has_audio {
+                        let is_audio_hover = self.hovered_item == ChromeHitResult::TabAudio(tab.id);
+                        let audio_cx = tx + tw - 34;
+                        let audio_cy = ty + th / 2;
+                        if is_audio_hover {
+                            let hover_brush = CreateSolidBrush(self.theme.button_hover_bg);
+                            let r = RECT {
+                                left: audio_cx - 8,
+                                top: audio_cy - 8,
+                                right: audio_cx + 8,
+                                bottom: audio_cy + 8,
+                            };
+                            FillRect(mem_dc, &r, hover_brush);
+                            let _ = DeleteObject(hover_brush);
+                        }
+                        let audio_idx = if tab.is_muted {
+                            if is_audio_hover { ICON_VOLUMEX_HOVER } else { ICON_VOLUMEX_NORMAL }
+                        } else {
+                            if is_audio_hover { ICON_VOLUME2_HOVER } else { ICON_VOLUME2_NORMAL }
+                        };
+                        Self::draw_atlas_icon(mem_dc, self.atlas_dc, audio_idx, audio_cx - 8, audio_cy - 8, 16, 16);
+                    }
+
+                    // Tab Close Button (Lucide X with Smooth Subpixel Antialiasing)
+                    let is_close_hovered = self.hovered_item == ChromeHitResult::TabClose(tab.id);
+                    let close_cx = tx + tw - 13;
+                    let close_cy = ty + th / 2;
+                    if is_close_hovered {
+                        let hover_brush = CreateSolidBrush(self.theme.button_hover_bg);
+                        let r = RECT {
+                            left: close_cx - 8,
+                            top: close_cy - 8,
+                            right: close_cx + 8,
+                            bottom: close_cy + 8,
+                        };
+                        FillRect(mem_dc, &r, hover_brush);
+                        let _ = DeleteObject(hover_brush);
+                    }
+                    let close_idx = if is_close_hovered {
+                        ICON_CLOSE_HOVER
+                    } else if is_active {
+                        ICON_CLOSE_ACTIVE
+                    } else {
+                        ICON_CLOSE_NORMAL
+                    };
+                    Self::draw_atlas_icon(mem_dc, self.atlas_dc, close_idx, close_cx - 8, close_cy - 8, 16, 16);
                 }
-                let close_idx = if is_close_hovered {
-                    ICON_CLOSE_HOVER
-                } else if is_active {
-                    ICON_CLOSE_ACTIVE
+            }
+
+            // Draw Drag Insertion Indicator Line if actively dragging a tab
+            if let Some(insert_idx) = self.drag_insert_idx {
+                let insert_x = if insert_idx == 0 {
+                    if !tab_rects.is_empty() { tab_rects[0].0 } else { 0 }
+                } else if insert_idx <= tab_rects.len() {
+                    let prev = &tab_rects[insert_idx - 1];
+                    prev.0 + prev.2
                 } else {
-                    ICON_CLOSE_NORMAL
+                    0
                 };
-                Self::draw_atlas_icon(mem_dc, self.atlas_dc, close_idx, close_cx - 8, close_cy - 8, 16, 16);
+                if insert_x > 0 {
+                    let ins_pen = CreatePen(PS_SOLID, 2, self.theme.accent_color);
+                    let _ = SelectObject(mem_dc, ins_pen);
+                    let _ = MoveToEx(mem_dc, insert_x, 2, None);
+                    let _ = LineTo(mem_dc, insert_x, TAB_BAR_HEIGHT - 2);
+                    let _ = SelectObject(mem_dc, div_pen);
+                    let _ = DeleteObject(ins_pen);
+                }
             }
 
             // 6. Render New Tab "+" Button (Lucide Plus)
-            let new_tab = layout.new_tab_button_rect(tabs.len());
+            let new_tab = layout.new_tab_button_rect_for_tabs(tabs);
             let is_new_tab_hovered = self.hovered_item == ChromeHitResult::NewTab;
             if is_new_tab_hovered {
                 let hover_brush = CreateSolidBrush(self.theme.button_hover_bg);
@@ -626,6 +730,17 @@ impl BrowserChrome {
             let _ = DeleteObject(border_pen);
 
             // Render Lucide ShieldCheck security icon on the left of omnibox
+            if self.hovered_item == ChromeHitResult::BtnShield {
+                let h_brush = CreateSolidBrush(self.theme.button_hover_bg);
+                let r = RECT {
+                    left: omnibox.0 + 5,
+                    top: omnibox.1 + (omnibox.3 - 22) / 2,
+                    right: omnibox.0 + 29,
+                    bottom: omnibox.1 + (omnibox.3 + 22) / 2,
+                };
+                FillRect(mem_dc, &r, h_brush);
+                let _ = DeleteObject(h_brush);
+            }
             Self::draw_atlas_icon(mem_dc, self.atlas_dc, ICON_SHIELD_CHECK, omnibox.0 + 8, omnibox.1 + (omnibox.3 - 18) / 2, 18, 18);
 
             // Clean up GDI objects

@@ -511,6 +511,64 @@ impl WebViewEngine {
         self.execute_script(script)
     }
 
+    pub fn set_tab_muted(&self, tab_id: usize, muted: bool) {
+        let views = self.tab_views.borrow();
+        if let Some(view) = views.get(&tab_id) {
+            unsafe {
+                if let Ok(wv8) = view.webview.cast::<ICoreWebView2_8>() {
+                    let _ = wv8.SetIsMuted(BOOL(if muted { 1 } else { 0 }));
+                }
+            }
+            let script = format!(
+                "try {{ document.querySelectorAll('audio, video').forEach(el => {{ el.muted = {}; }}); }} catch(e) {{}}",
+                muted
+            );
+            let wide = pwstr_from_str(&script);
+            unsafe {
+                let _ = view.webview.ExecuteScript(PCWSTR(wide.0), None);
+            }
+        }
+    }
+
+    pub fn get_tab_muted(&self, tab_id: usize) -> bool {
+        let views = self.tab_views.borrow();
+        if let Some(view) = views.get(&tab_id) {
+            unsafe {
+                if let Ok(wv8) = view.webview.cast::<ICoreWebView2_8>() {
+                    let mut is_muted = BOOL(0);
+                    if wv8.IsMuted(&mut is_muted).is_ok() {
+                        return is_muted.as_bool();
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    pub fn set_tab_zoom(&self, tab_id: usize, zoom: f64) -> Result<()> {
+        let views = self.tab_views.borrow();
+        if let Some(view) = views.get(&tab_id) {
+            unsafe {
+                view.controller.SetZoomFactor(zoom)
+                    .map_err(|e| NexoraError::Engine(format!("SetZoomFactor failed: {}", e)))?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn get_tab_zoom(&self, tab_id: usize) -> f64 {
+        let views = self.tab_views.borrow();
+        if let Some(view) = views.get(&tab_id) {
+            unsafe {
+                let mut zoom = 1.0;
+                if view.controller.ZoomFactor(&mut zoom).is_ok() {
+                    return zoom;
+                }
+            }
+        }
+        1.0
+    }
+
     fn render_internal_page(&self, clean_url: &str) -> String {
         let clean = clean_url.trim_end_matches('/');
         if clean == "nexora://home" || clean == "nexora://newtab" || clean == "nexora:" || clean.is_empty() {

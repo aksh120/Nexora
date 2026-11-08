@@ -3,10 +3,13 @@ pub const TOOLBAR_HEIGHT: i32 = 42;
 pub const TOP_CHROME_HEIGHT: i32 = TAB_BAR_HEIGHT + TOOLBAR_HEIGHT; // 78px
 pub const TAB_MIN_WIDTH: i32 = 110;
 pub const TAB_MAX_WIDTH: i32 = 220;
+pub const PINNED_TAB_WIDTH: i32 = 38;
 pub const BUTTON_WIDTH: i32 = 32;
 pub const BUTTON_HEIGHT: i32 = 30;
 pub const BUTTON_GAP: i32 = 4;
 pub const OMNIBOX_HEIGHT: i32 = 30;
+
+use crate::tabs::Tab;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BrowserLayout {
@@ -59,6 +62,50 @@ impl BrowserLayout {
         }
 
         rects
+    }
+
+    pub fn calculate_tab_rects_for_tabs(&self, tabs: &[Tab]) -> Vec<(i32, i32, i32, i32)> {
+        if tabs.is_empty() {
+            return Vec::new();
+        }
+        let pinned_count = tabs.iter().filter(|t| t.is_pinned).count();
+        let normal_count = tabs.len() - pinned_count;
+
+        let pinned_total_width = (pinned_count as i32) * (PINNED_TAB_WIDTH + 2);
+        let available_width = (self.window_width - 150 - 50 - 38 - pinned_total_width).max(100);
+
+        let normal_tab_width = if normal_count > 0 {
+            (available_width / (normal_count as i32)).clamp(TAB_MIN_WIDTH, TAB_MAX_WIDTH)
+        } else {
+            TAB_MAX_WIDTH
+        };
+
+        let mut rects = Vec::with_capacity(tabs.len());
+        let y = 3;
+        let h = TAB_BAR_HEIGHT - 3;
+        let mut current_x = 38;
+
+        for tab in tabs {
+            let width = if tab.is_pinned {
+                PINNED_TAB_WIDTH
+            } else {
+                normal_tab_width
+            };
+            rects.push((current_x, y, width, h));
+            current_x += width + 2;
+        }
+
+        rects
+    }
+
+    pub fn new_tab_button_rect_for_tabs(&self, tabs: &[Tab]) -> (i32, i32, i32, i32) {
+        let rects = self.calculate_tab_rects_for_tabs(tabs);
+        let x = if let Some(last) = rects.last() {
+            last.0 + last.2 + 4
+        } else {
+            38
+        };
+        (x, 5, 26, TAB_BAR_HEIGHT - 8)
     }
 
     pub fn caption_minimize_rect(&self) -> (i32, i32, i32, i32) {
