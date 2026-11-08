@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/branding/logo.svg" width="380" alt="Nexora - The Quantum Prism Logo"/>
+  <img src="assets/branding/logo.svg" width="380" alt="Nexora Logo"/>
 </p>
 
 # Contributing to NEXORA

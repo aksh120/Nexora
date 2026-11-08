@@ -1,4 +1,4 @@
-# Generates multi-resolution .ico and .png icons for Nexora - The Quantum Prism
+# Generates multi-resolution .ico and .png icons for Nexora
 Add-Type -AssemblyName System.Drawing
 
 function Draw-QuantumPrismBitmap([int]$size) {
@@ -155,5 +155,5 @@ $icoMs.Dispose()
 [System.IO.File]::WriteAllBytes("assets/branding/icon.ico", $icoBytes)
 [System.IO.File]::WriteAllBytes("assets/icons/nexora.ico", $icoBytes)
 
-Write-Host "Successfully generated Quantum Prism .ico files ($($icoBytes.Length) bytes, 7 resolutions: 16 to 256px)"
+Write-Host "Successfully generated Nexora official .ico files ($($icoBytes.Length) bytes, 7 resolutions: 16 to 256px)"
 

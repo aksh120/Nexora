@@ -4,7 +4,7 @@ fn main() {
         let mut res = winres::WindowsResource::new();
         res.set_icon("assets/branding/icon.ico");
         res.set_manifest_file("assets/manifest/nexora.manifest");
-        res.set("FileDescription", "Nexora - The Quantum Prism Streaming-First Browser");
+        res.set("FileDescription", "Nexora");
         res.set("ProductName", "Nexora");
         res.set("ProductVersion", env!("CARGO_PKG_VERSION"));
         res.set("FileVersion", env!("CARGO_PKG_VERSION"));

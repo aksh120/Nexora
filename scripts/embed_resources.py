@@ -58,3 +58,4 @@ if __name__ == '__main__':
     for t in targets:
         if os.path.exists(t):
             embed(t, ico)
+

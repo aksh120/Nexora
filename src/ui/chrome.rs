@@ -1,10 +1,11 @@
 use windows::core::{w, PCWSTR};
-use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    Arc, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateFontW, CreatePen, CreateSolidBrush,
-    DeleteDC, DeleteObject, DrawTextW, Ellipse, FillRect, LineTo, MoveToEx, Polygon, SelectObject,
-    SetBkMode, SetTextColor, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER,
-    FW_NORMAL, HDC, HFONT, PS_NULL, PS_SOLID, SRCCOPY, TRANSPARENT,
+    AlphaBlend, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateDIBSection, CreateFontW,
+    CreatePen, CreateSolidBrush, DeleteDC, DeleteObject, DrawTextW, FillRect, GetDC, LineTo, MoveToEx,
+    ReleaseDC, SelectObject, SetBkMode, SetTextColor, AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO,
+    BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, DIB_RGB_COLORS, DT_END_ELLIPSIS, DT_LEFT,
+    DT_SINGLELINE, DT_VCENTER, FW_NORMAL, HBITMAP, HDC, HFONT, PS_SOLID, SRCCOPY, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_RETURN};
@@ -22,6 +23,41 @@ use crate::ui::theme::{rgb, ThemePalette};
 
 pub const IDC_OMNIBOX: usize = 1005;
 pub const EM_SETSEL: u32 = 0x00B1;
+
+pub const ATLAS_ICON_SIZE: i32 = 24;
+pub const ATLAS_TOTAL_WIDTH: i32 = 696;
+pub const ATLAS_TOTAL_HEIGHT: i32 = 24;
+const ATLAS_BYTES: &[u8] = include_bytes!("../../assets/branding/chrome_icons_atlas.bin");
+
+pub const ICON_LOGO: usize = 0;
+pub const ICON_BACK_NORMAL: usize = 1;
+pub const ICON_BACK_HOVER: usize = 2;
+pub const ICON_FWD_NORMAL: usize = 3;
+pub const ICON_FWD_HOVER: usize = 4;
+pub const ICON_RELOAD_NORMAL: usize = 5;
+pub const ICON_RELOAD_HOVER: usize = 6;
+pub const ICON_HOME_NORMAL: usize = 7;
+pub const ICON_HOME_HOVER: usize = 8;
+pub const ICON_SHIELD_CHECK: usize = 9;
+pub const ICON_BM_OUTLINE_NORMAL: usize = 10;
+pub const ICON_BM_OUTLINE_HOVER: usize = 11;
+pub const ICON_BM_FILLED_NORMAL: usize = 12;
+pub const ICON_BM_FILLED_HOVER: usize = 13;
+pub const ICON_MENU_NORMAL: usize = 14;
+pub const ICON_MENU_HOVER: usize = 15;
+pub const ICON_PLUS_NORMAL: usize = 16;
+pub const ICON_PLUS_HOVER: usize = 17;
+pub const ICON_CLOSE_NORMAL: usize = 18;
+pub const ICON_CLOSE_ACTIVE: usize = 19;
+pub const ICON_CLOSE_HOVER: usize = 20;
+pub const ICON_CAP_MIN_NORMAL: usize = 21;
+pub const ICON_CAP_MIN_HOVER: usize = 22;
+pub const ICON_CAP_MAX_NORMAL: usize = 23;
+pub const ICON_CAP_MAX_HOVER: usize = 24;
+pub const ICON_CAP_RESTORE_NORMAL: usize = 25;
+pub const ICON_CAP_RESTORE_HOVER: usize = 26;
+pub const ICON_CAP_CLOSE_NORMAL: usize = 27;
+pub const ICON_CAP_CLOSE_HOVER: usize = 28;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChromeHitResult {
@@ -49,6 +85,8 @@ pub struct BrowserChrome {
     font: HFONT,
     pub theme: ThemePalette,
     pub is_current_page_bookmarked: bool,
+    atlas_dc: HDC,
+    atlas_bmp: HBITMAP,
 }
 
 struct OmniboxSubclassContext {
@@ -119,6 +157,38 @@ impl BrowserChrome {
             SetWindowLongPtrW(hwnd_omnibox, GWLP_USERDATA, Box::into_raw(context) as isize);
             SetWindowLongPtrW(hwnd_omnibox, GWLP_WNDPROC, Self::omnibox_subclass_proc as *const () as isize);
 
+            // Initialize Hardware 32-bit Vector Icon Atlas
+            let screen_dc = GetDC(None);
+            let atlas_dc = CreateCompatibleDC(screen_dc);
+            let bmi = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: ATLAS_TOTAL_WIDTH,
+                    biHeight: -ATLAS_TOTAL_HEIGHT,
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    biSizeImage: (ATLAS_TOTAL_WIDTH * ATLAS_TOTAL_HEIGHT * 4) as u32,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
+            let atlas_bmp = CreateDIBSection(
+                screen_dc,
+                &bmi,
+                DIB_RGB_COLORS,
+                &mut bits,
+                None,
+                0,
+            ).map_err(|e| NexoraError::Win32(format!("Failed to create DIB section for icon atlas: {}", e)))?;
+
+            if !bits.is_null() && !atlas_bmp.is_invalid() {
+                std::ptr::copy_nonoverlapping(ATLAS_BYTES.as_ptr(), bits as *mut u8, ATLAS_BYTES.len());
+            }
+            let _ = SelectObject(atlas_dc, atlas_bmp);
+            let _ = ReleaseDC(None, screen_dc);
+
             Ok(Self {
                 hwnd_parent: parent,
                 hwnd_omnibox,
@@ -126,6 +196,8 @@ impl BrowserChrome {
                 font,
                 theme,
                 is_current_page_bookmarked: false,
+                atlas_dc,
+                atlas_bmp,
             })
         }
     }
@@ -315,12 +387,9 @@ impl BrowserChrome {
             let _ = MoveToEx(mem_dc, 0, TOP_CHROME_HEIGHT - 1, None);
             let _ = LineTo(mem_dc, layout.window_width, TOP_CHROME_HEIGHT - 1);
 
-            // 4. Render Brand Logo (Official Orbital Ribbon N)
+            // 4. Render Brand Logo (Official Orbital Ribbon N from Master Vector Atlas)
             let logo = layout.brand_logo_rect();
-            let is_logo_hovered = self.hovered_item == ChromeHitResult::BrandLogo;
-            let logo_cx = logo.0 + logo.2 / 2;
-            let logo_cy = logo.1 + logo.3 / 2;
-            Self::draw_brand_logo(mem_dc, logo_cx, logo_cy, is_logo_hovered);
+            Self::draw_atlas_icon(mem_dc, self.atlas_dc, ICON_LOGO, logo.0, logo.1, logo.2, logo.3);
 
             // 5. Render Tabs
             let tab_rects = layout.calculate_tab_rects(tabs.len());
@@ -392,7 +461,7 @@ impl BrowserChrome {
                     DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS,
                 );
 
-                // Close Button (Lucide X)
+                // Tab Close Button (Lucide X with Smooth Subpixel Antialiasing)
                 let is_close_hovered = self.hovered_item == ChromeHitResult::TabClose(tab.id);
                 let close_cx = tx + tw - 13;
                 let close_cy = ty + th / 2;
@@ -407,17 +476,17 @@ impl BrowserChrome {
                     FillRect(mem_dc, &r, hover_brush);
                     let _ = DeleteObject(hover_brush);
                 }
-                let close_color = if is_close_hovered {
-                    self.theme.accent_color
+                let close_idx = if is_close_hovered {
+                    ICON_CLOSE_HOVER
                 } else if is_active {
-                    rgb(180, 180, 180)
+                    ICON_CLOSE_ACTIVE
                 } else {
-                    rgb(120, 120, 120)
+                    ICON_CLOSE_NORMAL
                 };
-                Self::draw_vector_x(mem_dc, close_cx, close_cy, close_color);
+                Self::draw_atlas_icon(mem_dc, self.atlas_dc, close_idx, close_cx - 7, close_cy - 7, 14, 14);
             }
 
-            // 5. Render New Tab "+" Button
+            // 6. Render New Tab "+" Button (Lucide Plus)
             let new_tab = layout.new_tab_button_rect(tabs.len());
             let is_new_tab_hovered = self.hovered_item == ChromeHitResult::NewTab;
             if is_new_tab_hovered {
@@ -431,33 +500,41 @@ impl BrowserChrome {
                 FillRect(mem_dc, &r, hover_brush);
                 let _ = DeleteObject(hover_brush);
             }
-            let plus_cx = new_tab.0 + new_tab.2 / 2;
-            let plus_cy = new_tab.1 + new_tab.3 / 2;
-            let plus_color = if is_new_tab_hovered { self.theme.accent_color } else { rgb(180, 165, 170) };
-            Self::draw_vector_plus(mem_dc, plus_cx, plus_cy, plus_color);
+            let plus_idx = if is_new_tab_hovered { ICON_PLUS_HOVER } else { ICON_PLUS_NORMAL };
+            let plus_x = new_tab.0 + (new_tab.2 - 16) / 2;
+            let plus_y = new_tab.1 + (new_tab.3 - 16) / 2;
+            Self::draw_atlas_icon(mem_dc, self.atlas_dc, plus_idx, plus_x, plus_y, 16, 16);
 
-            // 6. Render Custom Caption Buttons on Top-Right
+            // 7. Render Custom Caption Buttons on Top-Right
             let min_rect = layout.caption_minimize_rect();
             let max_rect = layout.caption_maximize_rect();
             let close_rect = layout.caption_close_rect();
 
             // Minimize
-            if self.hovered_item == ChromeHitResult::CaptionMinimize {
+            let is_min_hover = self.hovered_item == ChromeHitResult::CaptionMinimize;
+            if is_min_hover {
                 let h_brush = CreateSolidBrush(self.theme.button_hover_bg);
                 let r = RECT { left: min_rect.0, top: min_rect.1, right: min_rect.0 + min_rect.2, bottom: min_rect.1 + min_rect.3 };
                 FillRect(mem_dc, &r, h_brush);
                 let _ = DeleteObject(h_brush);
             }
-            Self::draw_caption_minimize(mem_dc, min_rect.0 + min_rect.2 / 2, min_rect.1 + min_rect.3 / 2, rgb(190, 175, 180));
+            let min_idx = if is_min_hover { ICON_CAP_MIN_HOVER } else { ICON_CAP_MIN_NORMAL };
+            Self::draw_atlas_icon(mem_dc, self.atlas_dc, min_idx, min_rect.0 + (min_rect.2 - 14) / 2, min_rect.1 + (min_rect.3 - 14) / 2, 14, 14);
 
-            // Maximize
-            if self.hovered_item == ChromeHitResult::CaptionMaximize {
+            // Maximize / Restore
+            let is_max_hover = self.hovered_item == ChromeHitResult::CaptionMaximize;
+            if is_max_hover {
                 let h_brush = CreateSolidBrush(self.theme.button_hover_bg);
                 let r = RECT { left: max_rect.0, top: max_rect.1, right: max_rect.0 + max_rect.2, bottom: max_rect.1 + max_rect.3 };
                 FillRect(mem_dc, &r, h_brush);
                 let _ = DeleteObject(h_brush);
             }
-            Self::draw_caption_maximize(mem_dc, max_rect.0 + max_rect.2 / 2, max_rect.1 + max_rect.3 / 2, is_maximized, rgb(190, 175, 180));
+            let max_idx = if is_maximized {
+                if is_max_hover { ICON_CAP_RESTORE_HOVER } else { ICON_CAP_RESTORE_NORMAL }
+            } else {
+                if is_max_hover { ICON_CAP_MAX_HOVER } else { ICON_CAP_MAX_NORMAL }
+            };
+            Self::draw_atlas_icon(mem_dc, self.atlas_dc, max_idx, max_rect.0 + (max_rect.2 - 14) / 2, max_rect.1 + (max_rect.3 - 14) / 2, 14, 14);
 
             // Close
             let is_close_hover = self.hovered_item == ChromeHitResult::CaptionClose;
@@ -467,56 +544,46 @@ impl BrowserChrome {
                 FillRect(mem_dc, &r, red_brush);
                 let _ = DeleteObject(red_brush);
             }
-            let close_icon_color = if is_close_hover { rgb(255, 255, 255) } else { rgb(190, 175, 180) };
-            Self::draw_caption_close(mem_dc, close_rect.0 + close_rect.2 / 2, close_rect.1 + close_rect.3 / 2, close_icon_color);
+            let cap_close_idx = if is_close_hover { ICON_CAP_CLOSE_HOVER } else { ICON_CAP_CLOSE_NORMAL };
+            Self::draw_atlas_icon(mem_dc, self.atlas_dc, cap_close_idx, close_rect.0 + (close_rect.2 - 14) / 2, close_rect.1 + (close_rect.3 - 14) / 2, 14, 14);
 
-            // 7. Render Navigation Toolbar Buttons with Clean Vector Icons
+            // 8. Render Navigation Toolbar Buttons with Antialiased Vector Lucide Icons
             // Back Button
             let back = layout.back_button_rect();
-            Self::render_nav_button(mem_dc, back, self.hovered_item == ChromeHitResult::BtnBack, self.theme.button_hover_bg, |dc, cx, cy, col| {
-                Self::draw_vector_back(dc, cx, cy, col);
-            });
+            let is_back_hover = self.hovered_item == ChromeHitResult::BtnBack;
+            Self::render_toolbar_button(mem_dc, self.atlas_dc, back, is_back_hover, self.theme.button_hover_bg, if is_back_hover { ICON_BACK_HOVER } else { ICON_BACK_NORMAL });
 
             // Forward Button
             let fwd = layout.forward_button_rect();
-            Self::render_nav_button(mem_dc, fwd, self.hovered_item == ChromeHitResult::BtnForward, self.theme.button_hover_bg, |dc, cx, cy, col| {
-                Self::draw_vector_forward(dc, cx, cy, col);
-            });
+            let is_fwd_hover = self.hovered_item == ChromeHitResult::BtnForward;
+            Self::render_toolbar_button(mem_dc, self.atlas_dc, fwd, is_fwd_hover, self.theme.button_hover_bg, if is_fwd_hover { ICON_FWD_HOVER } else { ICON_FWD_NORMAL });
 
             // Reload Button
             let reload = layout.reload_button_rect();
-            Self::render_nav_button(mem_dc, reload, self.hovered_item == ChromeHitResult::BtnReload, self.theme.button_hover_bg, |dc, cx, cy, col| {
-                Self::draw_vector_reload(dc, cx, cy, col);
-            });
+            let is_reload_hover = self.hovered_item == ChromeHitResult::BtnReload;
+            Self::render_toolbar_button(mem_dc, self.atlas_dc, reload, is_reload_hover, self.theme.button_hover_bg, if is_reload_hover { ICON_RELOAD_HOVER } else { ICON_RELOAD_NORMAL });
 
             // Home Button
             let home = layout.home_button_rect();
-            Self::render_nav_button(mem_dc, home, self.hovered_item == ChromeHitResult::BtnHome, self.theme.button_hover_bg, |dc, cx, cy, col| {
-                Self::draw_vector_home(dc, cx, cy, col);
-            });
+            let is_home_hover = self.hovered_item == ChromeHitResult::BtnHome;
+            Self::render_toolbar_button(mem_dc, self.atlas_dc, home, is_home_hover, self.theme.button_hover_bg, if is_home_hover { ICON_HOME_HOVER } else { ICON_HOME_NORMAL });
 
-            // Bookmark Button (Lucide Bookmark Ribbon)
+            // Bookmark Button (Dynamic Fill Status)
             let bm = layout.bookmark_button_rect();
-            let is_bm_hovered = self.hovered_item == ChromeHitResult::BtnBookmark;
-            let is_bm_filled = self.is_current_page_bookmarked;
-            Self::render_nav_button(mem_dc, bm, is_bm_hovered, self.theme.button_hover_bg, |dc, cx, cy, col| {
-                let bm_color = if is_bm_hovered {
-                    rgb(244, 63, 94)
-                } else if is_bm_filled {
-                    rgb(225, 29, 72)
-                } else {
-                    col
-                };
-                Self::draw_vector_bookmark(dc, cx, cy, bm_color, is_bm_filled);
-            });
+            let is_bm_hover = self.hovered_item == ChromeHitResult::BtnBookmark;
+            let bm_idx = if self.is_current_page_bookmarked {
+                if is_bm_hover { ICON_BM_FILLED_HOVER } else { ICON_BM_FILLED_NORMAL }
+            } else {
+                if is_bm_hover { ICON_BM_OUTLINE_HOVER } else { ICON_BM_OUTLINE_NORMAL }
+            };
+            Self::render_toolbar_button(mem_dc, self.atlas_dc, bm, is_bm_hover, self.theme.button_hover_bg, bm_idx);
 
             // Menu Button
             let menu = layout.menu_button_rect();
-            Self::render_nav_button(mem_dc, menu, self.hovered_item == ChromeHitResult::BtnMenu, self.theme.button_hover_bg, |dc, cx, cy, col| {
-                Self::draw_vector_menu(dc, cx, cy, col);
-            });
+            let is_menu_hover = self.hovered_item == ChromeHitResult::BtnMenu;
+            Self::render_toolbar_button(mem_dc, self.atlas_dc, menu, is_menu_hover, self.theme.button_hover_bg, if is_menu_hover { ICON_MENU_HOVER } else { ICON_MENU_NORMAL });
 
-            // 8. Render Omnibox Container Frame
+            // 9. Render Omnibox Container Frame
             let omnibox = layout.omnibox_rect();
             let omni_bg_brush = CreateSolidBrush(self.theme.omnibox_bg);
             let omni_rect = RECT {
@@ -539,12 +606,7 @@ impl BrowserChrome {
             let _ = DeleteObject(border_pen);
 
             // Render Lucide ShieldCheck security icon on the left of omnibox
-            Self::draw_vector_shield_check(
-                mem_dc,
-                omnibox.0 + 14,
-                omnibox.1 + omnibox.3 / 2,
-                rgb(16, 185, 129), // Restrained emerald green
-            );
+            Self::draw_atlas_icon(mem_dc, self.atlas_dc, ICON_SHIELD_CHECK, omnibox.0 + 8, omnibox.1 + (omnibox.3 - 16) / 2, 16, 16);
 
             // Clean up GDI objects
             let _ = SelectObject(mem_dc, old_pen);
@@ -570,339 +632,64 @@ impl BrowserChrome {
         }
     }
 
-    // --- Vector Drawing Helpers ---
+    // --- Vector Icon Atlas Drawing Helpers ---
 
-    unsafe fn render_nav_button<F>(hdc: HDC, rect: (i32, i32, i32, i32), is_hovered: bool, hover_bg: windows::Win32::Foundation::COLORREF, draw_icon: F)
-    where
-        F: FnOnce(HDC, i32, i32, windows::Win32::Foundation::COLORREF),
-    {
+    unsafe fn draw_atlas_icon(
+        mem_dc: HDC,
+        atlas_dc: HDC,
+        icon_idx: usize,
+        dest_x: i32,
+        dest_y: i32,
+        dest_w: i32,
+        dest_h: i32,
+    ) {
+        let src_x = (icon_idx as i32) * ATLAS_ICON_SIZE;
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
+        let _ = AlphaBlend(
+            mem_dc,
+            dest_x,
+            dest_y,
+            dest_w,
+            dest_h,
+            atlas_dc,
+            src_x,
+            0,
+            ATLAS_ICON_SIZE,
+            ATLAS_ICON_SIZE,
+            blend,
+        );
+    }
+
+    unsafe fn render_toolbar_button(
+        mem_dc: HDC,
+        atlas_dc: HDC,
+        rect: (i32, i32, i32, i32),
+        is_hovered: bool,
+        hover_bg: windows::Win32::Foundation::COLORREF,
+        icon_idx: usize,
+    ) {
         if is_hovered {
             let h_brush = CreateSolidBrush(hover_bg);
-            let r = RECT { left: rect.0, top: rect.1, right: rect.0 + rect.2, bottom: rect.1 + rect.3 };
-            FillRect(hdc, &r, h_brush);
+            let r = RECT {
+                left: rect.0 + 2,
+                top: rect.1 + 2,
+                right: rect.0 + rect.2 - 2,
+                bottom: rect.1 + rect.3 - 2,
+            };
+            FillRect(mem_dc, &r, h_brush);
             let _ = DeleteObject(h_brush);
         }
 
-        let cx = rect.0 + rect.2 / 2;
-        let cy = rect.1 + rect.3 / 2;
-        let icon_color = if is_hovered { rgb(225, 29, 72) } else { rgb(190, 175, 180) };
-        draw_icon(hdc, cx, cy, icon_color);
-    }
-
-    unsafe fn draw_vector_back(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
-        let pen = CreatePen(PS_SOLID, 2, color);
-        let old_pen = SelectObject(hdc, pen);
-
-        // Shadcn/Lucide ArrowLeft: horizontal shaft + 45-degree arrow wings
-        let _ = MoveToEx(hdc, cx + 6, cy, None);
-        let _ = LineTo(hdc, cx - 6, cy);
-
-        let _ = MoveToEx(hdc, cx - 1, cy - 5, None);
-        let _ = LineTo(hdc, cx - 6, cy);
-        let _ = LineTo(hdc, cx - 1, cy + 5);
-
-        let _ = SelectObject(hdc, old_pen);
-        let _ = DeleteObject(pen);
-    }
-
-    unsafe fn draw_vector_forward(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
-        let pen = CreatePen(PS_SOLID, 2, color);
-        let old_pen = SelectObject(hdc, pen);
-
-        // Shadcn/Lucide ArrowRight: horizontal shaft + 45-degree arrow wings
-        let _ = MoveToEx(hdc, cx - 6, cy, None);
-        let _ = LineTo(hdc, cx + 6, cy);
-
-        let _ = MoveToEx(hdc, cx + 1, cy - 5, None);
-        let _ = LineTo(hdc, cx + 6, cy);
-        let _ = LineTo(hdc, cx + 1, cy + 5);
-
-        let _ = SelectObject(hdc, old_pen);
-        let _ = DeleteObject(pen);
-    }
-
-    unsafe fn draw_vector_reload(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
-        let pen = CreatePen(PS_SOLID, 2, color);
-        let old_pen = SelectObject(hdc, pen);
-
-        // Shadcn/Lucide RotateCw: smooth circular arc
-        let arc_pts = [
-            (cx + 4, cy - 3),
-            (cx + 1, cy - 5),
-            (cx - 3, cy - 4),
-            (cx - 5, cy - 1),
-            (cx - 5, cy + 2),
-            (cx - 3, cy + 5),
-            (cx + 1, cy + 5),
-            (cx + 4, cy + 3),
-            (cx + 5, cy),
-        ];
-
-        let _ = MoveToEx(hdc, arc_pts[0].0, arc_pts[0].1, None);
-        for pt in &arc_pts[1..] {
-            let _ = LineTo(hdc, pt.0, pt.1);
-        }
-
-        // Arrow tip at top right pointing clockwise
-        let _ = MoveToEx(hdc, cx + 1, cy - 5, None);
-        let _ = LineTo(hdc, cx + 5, cy - 3);
-        let _ = LineTo(hdc, cx + 4, cy + 1);
-
-        let _ = SelectObject(hdc, old_pen);
-        let _ = DeleteObject(pen);
-    }
-
-    unsafe fn draw_vector_home(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
-        let pen = CreatePen(PS_SOLID, 2, color);
-        let old_pen = SelectObject(hdc, pen);
-
-        // Shadcn/Lucide Home: crisp pitched roof
-        let _ = MoveToEx(hdc, cx - 6, cy - 1, None);
-        let _ = LineTo(hdc, cx, cy - 7);
-        let _ = LineTo(hdc, cx + 6, cy - 1);
-
-        // Walls with bottom doorway opening
-        let _ = MoveToEx(hdc, cx - 5, cy, None);
-        let _ = LineTo(hdc, cx - 5, cy + 6);
-        let _ = LineTo(hdc, cx - 2, cy + 6);
-        let _ = LineTo(hdc, cx - 2, cy + 2);
-        let _ = LineTo(hdc, cx + 2, cy + 2);
-        let _ = LineTo(hdc, cx + 2, cy + 6);
-        let _ = LineTo(hdc, cx + 5, cy + 6);
-        let _ = LineTo(hdc, cx + 5, cy);
-
-        let _ = SelectObject(hdc, old_pen);
-        let _ = DeleteObject(pen);
-    }
-
-    unsafe fn draw_vector_bookmark(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF, is_filled: bool) {
-        // Lucide Bookmark ribbon icon with bottom notch
-        let pts = [
-            POINT { x: cx - 5, y: cy - 7 },
-            POINT { x: cx + 5, y: cy - 7 },
-            POINT { x: cx + 5, y: cy + 7 },
-            POINT { x: cx, y: cy + 3 },
-            POINT { x: cx - 5, y: cy + 7 },
-        ];
-
-        if is_filled {
-            let brush = CreateSolidBrush(color);
-            let old_brush = SelectObject(hdc, brush);
-            let pen = CreatePen(PS_SOLID, 1, color);
-            let old_pen = SelectObject(hdc, pen);
-            let _ = windows::Win32::Graphics::Gdi::Polygon(hdc, &pts);
-            let _ = SelectObject(hdc, old_brush);
-            let _ = SelectObject(hdc, old_pen);
-            let _ = DeleteObject(brush);
-            let _ = DeleteObject(pen);
-        } else {
-            let pen = CreatePen(PS_SOLID, 2, color);
-            let old_pen = SelectObject(hdc, pen);
-            let stock_brush = windows::Win32::Graphics::Gdi::GetStockObject(windows::Win32::Graphics::Gdi::HOLLOW_BRUSH);
-            let old_brush = SelectObject(hdc, stock_brush);
-            let _ = windows::Win32::Graphics::Gdi::Polygon(hdc, &pts);
-            let _ = SelectObject(hdc, old_brush);
-            let _ = SelectObject(hdc, old_pen);
-            let _ = DeleteObject(pen);
-        }
-    }
-
-    unsafe fn draw_vector_shield_check(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
-        let pen = CreatePen(PS_SOLID, 1, color);
-        let old_pen = SelectObject(hdc, pen);
-
-        // Shield contour
-        let pts = [
-            POINT { x: cx - 5, y: cy - 6 },
-            POINT { x: cx + 5, y: cy - 6 },
-            POINT { x: cx + 5, y: cy + 1 },
-            POINT { x: cx, y: cy + 6 },
-            POINT { x: cx - 5, y: cy + 1 },
-        ];
-        let stock_brush = windows::Win32::Graphics::Gdi::GetStockObject(windows::Win32::Graphics::Gdi::HOLLOW_BRUSH);
-        let old_brush = SelectObject(hdc, stock_brush);
-        let _ = windows::Win32::Graphics::Gdi::Polygon(hdc, &pts);
-        let _ = SelectObject(hdc, old_brush);
-
-        // Checkmark inside shield
-        let _ = MoveToEx(hdc, cx - 3, cy, None);
-        let _ = LineTo(hdc, cx - 1, cy + 2);
-        let _ = LineTo(hdc, cx + 3, cy - 2);
-
-        let _ = SelectObject(hdc, old_pen);
-        let _ = DeleteObject(pen);
-    }
-
-    unsafe fn draw_vector_x(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
-        let pen = CreatePen(PS_SOLID, 1, color);
-        let old_pen = SelectObject(hdc, pen);
-
-        let _ = MoveToEx(hdc, cx - 4, cy - 4, None);
-        let _ = LineTo(hdc, cx + 5, cy + 5);
-
-        let _ = MoveToEx(hdc, cx + 4, cy - 4, None);
-        let _ = LineTo(hdc, cx - 5, cy + 5);
-
-        let _ = SelectObject(hdc, old_pen);
-        let _ = DeleteObject(pen);
-    }
-
-    unsafe fn draw_vector_menu(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
-        let pen = CreatePen(PS_SOLID, 2, color);
-        let old_pen = SelectObject(hdc, pen);
-
-        // Shadcn/Lucide Menu: 3 crisp horizontal bars
-        let _ = MoveToEx(hdc, cx - 6, cy - 5, None);
-        let _ = LineTo(hdc, cx + 6, cy - 5);
-
-        let _ = MoveToEx(hdc, cx - 6, cy, None);
-        let _ = LineTo(hdc, cx + 6, cy);
-
-        let _ = MoveToEx(hdc, cx - 6, cy + 5, None);
-        let _ = LineTo(hdc, cx + 6, cy + 5);
-
-        let _ = SelectObject(hdc, old_pen);
-        let _ = DeleteObject(pen);
-    }
-
-    unsafe fn draw_vector_plus(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
-        let pen = CreatePen(PS_SOLID, 2, color);
-        let old_pen = SelectObject(hdc, pen);
-
-        let _ = MoveToEx(hdc, cx, cy - 5, None);
-        let _ = LineTo(hdc, cx, cy + 5);
-
-        let _ = MoveToEx(hdc, cx - 5, cy, None);
-        let _ = LineTo(hdc, cx + 5, cy);
-
-        let _ = SelectObject(hdc, old_pen);
-        let _ = DeleteObject(pen);
-    }
-
-    unsafe fn draw_caption_minimize(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
-        let pen = CreatePen(PS_SOLID, 1, color);
-        let old_pen = SelectObject(hdc, pen);
-
-        let _ = MoveToEx(hdc, cx - 5, cy, None);
-        let _ = LineTo(hdc, cx + 5, cy);
-
-        let _ = SelectObject(hdc, old_pen);
-        let _ = DeleteObject(pen);
-    }
-
-    unsafe fn draw_caption_maximize(hdc: HDC, cx: i32, cy: i32, is_maximized: bool, color: windows::Win32::Foundation::COLORREF) {
-        let pen = CreatePen(PS_SOLID, 1, color);
-        let old_pen = SelectObject(hdc, pen);
-
-        if !is_maximized {
-            // Single square box
-            let _ = MoveToEx(hdc, cx - 5, cy - 5, None);
-            let _ = LineTo(hdc, cx + 5, cy - 5);
-            let _ = LineTo(hdc, cx + 5, cy + 5);
-            let _ = LineTo(hdc, cx - 5, cy + 5);
-            let _ = LineTo(hdc, cx - 5, cy - 5);
-        } else {
-            // Restore overlapping squares
-            // Back square
-            let _ = MoveToEx(hdc, cx - 2, cy - 5, None);
-            let _ = LineTo(hdc, cx + 5, cy - 5);
-            let _ = LineTo(hdc, cx + 5, cy + 2);
-
-            // Front square
-            let _ = MoveToEx(hdc, cx - 5, cy - 2, None);
-            let _ = LineTo(hdc, cx + 2, cy - 2);
-            let _ = LineTo(hdc, cx + 2, cy + 5);
-            let _ = LineTo(hdc, cx - 5, cy + 5);
-            let _ = LineTo(hdc, cx - 5, cy - 2);
-        }
-
-        let _ = SelectObject(hdc, old_pen);
-        let _ = DeleteObject(pen);
-    }
-
-    unsafe fn draw_caption_close(hdc: HDC, cx: i32, cy: i32, color: windows::Win32::Foundation::COLORREF) {
-        let pen = CreatePen(PS_SOLID, 1, color);
-        let old_pen = SelectObject(hdc, pen);
-
-        let _ = MoveToEx(hdc, cx - 5, cy - 5, None);
-        let _ = LineTo(hdc, cx + 5, cy + 5);
-
-        let _ = MoveToEx(hdc, cx + 5, cy - 5, None);
-        let _ = LineTo(hdc, cx - 5, cy + 5);
-
-        let _ = SelectObject(hdc, old_pen);
-        let _ = DeleteObject(pen);
-    }
-
-    unsafe fn draw_brand_logo(hdc: HDC, cx: i32, cy: i32, is_hovered: bool) {
-        let null_pen = CreatePen(PS_NULL, 0, rgb(0, 0, 0));
-        let old_pen = SelectObject(hdc, null_pen);
-
-        // 1. Back arc of silver orbital ring
-        let silver_pen = CreatePen(PS_SOLID, 1, if is_hovered { rgb(255, 255, 255) } else { rgb(212, 212, 216) });
-        let old_silver = SelectObject(hdc, silver_pen);
-        let _ = Arc(hdc, cx - 11, cy - 8, cx + 11, cy + 8, cx - 7, cy + 6, cx + 8, cy - 5);
-        let _ = SelectObject(hdc, old_silver);
-        let _ = DeleteObject(silver_pen);
-
-        // 2. Left slanted leg - Crimson
-        let left_brush = CreateSolidBrush(if is_hovered { rgb(255, 60, 95) } else { rgb(225, 29, 72) });
-        let old_brush = SelectObject(hdc, left_brush);
-        let left_pts = [
-            POINT { x: cx - 6, y: cy + 7 },
-            POINT { x: cx - 3, y: cy - 7 },
-            POINT { x: cx - 1, y: cy - 7 },
-            POINT { x: cx - 4, y: cy + 7 },
-        ];
-        let _ = Polygon(hdc, &left_pts);
-
-        // 3. Fold crease top accent - Coral/Pink
-        let crease_brush = CreateSolidBrush(if is_hovered { rgb(255, 185, 195) } else { rgb(253, 164, 175) });
-        let _ = SelectObject(hdc, crease_brush);
-        let crease_pts = [
-            POINT { x: cx - 3, y: cy - 7 },
-            POINT { x: cx, y: cy - 7 },
-            POINT { x: cx - 2, y: cy - 3 },
-            POINT { x: cx - 4, y: cy - 3 },
-        ];
-        let _ = Polygon(hdc, &crease_pts);
-
-        // 4. Center bold diagonal - Deep Crimson
-        let diag_brush = CreateSolidBrush(if is_hovered { rgb(244, 63, 94) } else { rgb(180, 15, 55) });
-        let _ = SelectObject(hdc, diag_brush);
-        let diag_pts = [
-            POINT { x: cx - 2, y: cy - 7 },
-            POINT { x: cx + 1, y: cy - 7 },
-            POINT { x: cx + 6, y: cy + 7 },
-            POINT { x: cx + 3, y: cy + 7 },
-        ];
-        let _ = Polygon(hdc, &diag_pts);
-
-        // 5. Right slanted leg - Crimson
-        let right_brush = CreateSolidBrush(if is_hovered { rgb(255, 60, 95) } else { rgb(225, 29, 72) });
-        let _ = SelectObject(hdc, right_brush);
-        let right_pts = [
-            POINT { x: cx + 4, y: cy - 7 },
-            POINT { x: cx + 7, y: cy - 7 },
-            POINT { x: cx + 5, y: cy + 7 },
-            POINT { x: cx + 2, y: cy + 7 },
-        ];
-        let _ = Polygon(hdc, &right_pts);
-
-        // 6. Front arc of silver orbital ring (sweeping across the right leg)
-        let front_silver_pen = CreatePen(PS_SOLID, 1, if is_hovered { rgb(255, 255, 255) } else { rgb(240, 240, 245) });
-        let _ = SelectObject(hdc, front_silver_pen);
-        let _ = Arc(hdc, cx - 11, cy - 8, cx + 11, cy + 8, cx + 8, cy - 5, cx - 7, cy + 6);
-        let _ = DeleteObject(front_silver_pen);
-
-        // Clean up GDI objects
-        let _ = SelectObject(hdc, old_brush);
-        let _ = SelectObject(hdc, old_pen);
-        let _ = DeleteObject(left_brush);
-        let _ = DeleteObject(crease_brush);
-        let _ = DeleteObject(diag_brush);
-        let _ = DeleteObject(right_brush);
-        let _ = DeleteObject(null_pen);
+        let icon_w = 20;
+        let icon_h = 20;
+        let icon_x = rect.0 + (rect.2 - icon_w) / 2;
+        let icon_y = rect.1 + (rect.3 - icon_h) / 2;
+        Self::draw_atlas_icon(mem_dc, atlas_dc, icon_idx, icon_x, icon_y, icon_w, icon_h);
     }
 
     unsafe extern "system" fn omnibox_subclass_proc(
@@ -979,6 +766,8 @@ impl Drop for BrowserChrome {
                 let _ = Box::from_raw(ptr);
                 SetWindowLongPtrW(self.hwnd_omnibox, GWLP_USERDATA, 0);
             }
+            let _ = DeleteDC(self.atlas_dc);
+            let _ = DeleteObject(self.atlas_bmp);
             let _ = DeleteObject(self.font);
         }
     }

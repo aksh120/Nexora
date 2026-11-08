@@ -27,6 +27,11 @@ use crate::tabs::TabManager;
 use crate::ui::theme::{ThemeMode, ThemePalette};
 
 fn main() {
+    // 0. Ensure explicit AppUserModelID so Windows Taskbar groups under Nexora with proper app branding
+    unsafe {
+        let _ = windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID(windows::core::w!("Nexora.Browser"));
+    }
+
     // 1. Initialize core application lifecycle, logging, and directories
     let app = match Application::init() {
         Ok(app) => app,

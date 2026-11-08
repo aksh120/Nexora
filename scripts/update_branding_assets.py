@@ -29,3 +29,4 @@ with open(logo_path, 'w', encoding='utf-8') as f:
     f.write(logo_svg)
 
 print("Updated assets/branding/icon.svg and assets/branding/logo.svg successfully!")
+

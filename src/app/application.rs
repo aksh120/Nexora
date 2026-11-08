@@ -56,7 +56,7 @@ impl Application {
         log::info!("  EngineData Dir: {:?}", paths.engine_data_dir);
 
         // Set explicit AppUserModelID so Windows Taskbar pins, jump lists, and grouping
-        // strictly associate with Nexora and show The Quantum Prism icon without duplication.
+        // strictly associate with Nexora and show the official Nexora icon without duplication.
         #[cfg(windows)]
         unsafe {
             use windows::core::w;
