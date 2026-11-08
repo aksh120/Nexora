@@ -1,24 +1,24 @@
 ﻿{
     "Version":  "0.1.0",
-    "BuildDate":  "2026-11-08T16:49:40.7589088+05:30",
+    "BuildDate":  "2026-11-08T17:51:33.6431927+05:30",
     "Target":  "x86_64-pc-windows-gnu",
     "Binary":  {
                    "Name":  "Nexora.exe",
                    "SizeBytes":  1533952,
                    "SizeMB":  1.46,
-                   "SHA256":  "7D3E47A288B4700F2D296751485556DF1BC9B87CC02AE26C52B5227723414610"
+                   "SHA256":  "3693A0C3FA45B58F7467D9C4EEBDD4E0B24819AFF9D19A9169B7524D5308AC99"
                },
     "PortableArchive":  {
                             "Name":  "Nexora-v0.1.0-windows-x64-portable.zip",
-                            "SizeBytes":  1381235,
+                            "SizeBytes":  1381798,
                             "SizeMB":  1.32,
-                            "SHA256":  "5646075198058A54C58BA64517087ED853F87464A6C5AA6B63001A79E0F19ADD"
+                            "SHA256":  "469E5E0E7196639322CAB7A3C5D2DF207EB6FE49CB8BC6A623DFEB0E8B13D9A1"
                         },
     "InstallerExe":  {
                          "Name":  "Nexora-Setup-v0.1.0.exe",
-                         "SizeBytes":  3111424,
+                         "SizeBytes":  3113472,
                          "SizeMB":  2.97,
-                         "SHA256":  "E214FAD587D4433BAAEE96DA78ED965AB152B25BCA625F535CC6BAD731F19465"
+                         "SHA256":  "5C711A6E0719AC1CFCE7C95F5297D5A1FEF4617A96D1F6CA80ABF6570D346CBF"
                      },
     "Optimizations":  [
                           "opt-level=3",
