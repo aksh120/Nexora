@@ -70,13 +70,31 @@ Write-Host "Path:   $zipPath" -ForegroundColor Gray
 Write-Host "Size:   $zipSizeMB MB" -ForegroundColor Gray
 Write-Host "SHA256: $zipSha256" -ForegroundColor Gray
 
-# 4. Check for Inno Setup Compiler (ISCC)
+# 4. Build Native Windows Installer Setup Executable (.exe)
+Write-Host "`nBuilding native Windows installer executable..." -ForegroundColor Cyan
+$installerManifest = Join-Path $projectRoot "installer\Cargo.toml"
+& cargo build --release --manifest-path $installerManifest
+$builtInstaller = Join-Path $projectRoot "installer\target\release\NexoraSetup.exe"
+$distInstaller = Join-Path $distDir "Nexora-Setup-v$Version.exe"
+$rootInstaller = Join-Path $projectRoot "NexoraSetup.exe"
+
+if (Test-Path $builtInstaller) {
+    Copy-Item -Path $builtInstaller -Destination $distInstaller -Force
+    Copy-Item -Path $builtInstaller -Destination $rootInstaller -Force
+    Write-Host "Native installer executable created at: $distInstaller" -ForegroundColor Green
+    
+    # Also brand installer executables with icon and versioninfo
+    if (Test-Path $pythonExe) {
+        & $pythonExe (Join-Path $projectRoot "scripts\embed_resources.py")
+    }
+}
+
+# Optional: Inno Setup Compiler (ISCC) if installed
 $isccPaths = @(
     "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
     "C:\Program Files\Inno Setup 6\ISCC.exe",
     (Get-Command iscc.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)
 )
-
 $iscc = $isccPaths | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 
 if ($iscc) {
@@ -84,11 +102,10 @@ if ($iscc) {
     $issFile = Join-Path $projectRoot "installer\nexora_setup.iss"
     Write-Host "Compiling installer from: $issFile" -ForegroundColor Cyan
     & $iscc $issFile
-} else {
-    Write-Host "`nNote: Inno Setup (ISCC.exe) not found on PATH. The installer script is authored at installer/nexora_setup.iss." -ForegroundColor Gray
 }
 
 # 5. Generate Release Manifest JSON
+$installerItem = if (Test-Path $distInstaller) { Get-Item $distInstaller } else { $null }
 $manifest = [PSCustomObject]@{
     Version         = $Version
     BuildDate       = (Get-Date).ToString("o")
@@ -105,7 +122,14 @@ $manifest = [PSCustomObject]@{
         SizeMB      = $zipSizeMB
         SHA256      = $zipSha256
     }
-    InstallerScript = "installer/nexora_setup.iss"
+    InstallerExe = if ($installerItem) {
+        [PSCustomObject]@{
+            Name      = [System.IO.Path]::GetFileName($distInstaller)
+            SizeBytes = $installerItem.Length
+            SizeMB    = [Math]::Round($installerItem.Length / 1MB, 2)
+            SHA256    = (Get-FileHash -Path $distInstaller -Algorithm SHA256).Hash
+        }
+    } else { $null }
     Optimizations   = @("opt-level=3", "lto=thin", "panic=abort", "strip=true", "codegen-units=1")
 }
 
