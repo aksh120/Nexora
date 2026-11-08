@@ -24,8 +24,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTALIGN, TPM_TOPALIGN,
     WINDOW_EX_STYLE, WM_CLOSE, WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED,
     WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE,
-    WM_MOUSEWHEEL, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT, WM_RBUTTONUP, WM_SIZE,
-    WM_TIMER, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
+    WM_MOUSEWHEEL, WM_MOVE, WM_NCCALCSIZE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT, WM_RBUTTONUP, WM_SIZE,
+    WM_TIMER, WNDCLASSEXW, WS_CLIPCHILDREN, WS_OVERLAPPEDWINDOW,
     HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTLEFT, HTRIGHT, HTTOP,
     HTTOPLEFT, HTTOPRIGHT, MENU_ITEM_FLAGS, MF_CHECKED, MF_POPUP, MF_SEPARATOR, MF_STRING, MF_UNCHECKED,
 };
@@ -109,6 +109,7 @@ pub struct WindowContext {
     pub drag_tab_idx: Option<usize>,
     pub hovered_tab_id: Option<usize>,
     pub hover_timer_active: bool,
+    pub streaming_engine_mode: crate::app::config::StreamingEngineMode,
 }
 
 impl WindowContext {
@@ -133,6 +134,7 @@ impl HostWindow {
         tab_manager: Rc<RefCell<TabManager>>,
         smart_suspension: bool,
         suspension_timeout_minutes: u32,
+        streaming_engine_mode: crate::app::config::StreamingEngineMode,
     ) -> Result<Self> {
         let is_closing = Arc::new(AtomicBool::new(false));
 
@@ -218,7 +220,7 @@ impl HostWindow {
                 WINDOW_EX_STYLE(0),
                 class_name,
                 PCWSTR(wide_title.as_ptr()),
-                WS_OVERLAPPEDWINDOW,
+                WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
                 width,
@@ -284,6 +286,7 @@ impl HostWindow {
                 drag_tab_idx: None,
                 hovered_tab_id: None,
                 hover_timer_active: false,
+                streaming_engine_mode,
             });
 
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(context) as isize);
@@ -336,11 +339,15 @@ impl HostWindow {
                     let ptr = GetWindowLongPtrW(hwnd_parent, GWLP_USERDATA) as *mut WindowContext;
                     if !ptr.is_null() {
                         let target = Omnibox::parse_input(&text, &(*ptr).default_search_engine);
-                        let dest_url = match target {
+                        let mut dest_url = match target {
                             crate::navigation::NavigationTarget::Url(u) => u,
                             crate::navigation::NavigationTarget::Search { url, .. } => url,
                             crate::navigation::NavigationTarget::Internal(u) => u,
                         };
+
+                        if let Some(intercepted) = crate::media::stream_engine::should_intercept_video_stream(&dest_url, (*ptr).streaming_engine_mode) {
+                            dest_url = intercepted;
+                        }
 
                         let active_id = (*ptr).tab_manager.borrow().active_tab_id().unwrap_or(1);
                         if let Some(ref webview) = (*ptr).webview {
@@ -538,12 +545,21 @@ impl HostWindow {
                                 let (wx, wy, ww, wh) = (*ptr).layout.webview_rect();
                                 let _ = webview.set_bounds(wx, wy, ww, wh);
                             }
+                            webview.notify_parent_position_changed();
                         }
 
                         let _ = InvalidateRect(hwnd, None, false);
                     }
                 }
                 LRESULT(0)
+            }
+            WM_MOVE => {
+                if !ptr.is_null() {
+                    if let Some(ref webview) = (*ptr).webview {
+                        webview.notify_parent_position_changed();
+                    }
+                }
+                DefWindowProcW(hwnd, msg, wparam, lparam)
             }
             WM_MOUSEMOVE => {
                 let mut tme = TRACKMOUSEEVENT {
@@ -1234,8 +1250,12 @@ impl HostWindow {
                             if let Some(ref webview) = (*ptr).webview {
                                 let (wx, wy, ww, wh) = (*ptr).layout.webview_rect();
                                 let _ = webview.set_bounds(wx, wy, ww, wh);
+                                webview.notify_parent_position_changed();
                             }
                         } else {
+                            if let Some(ref chrome) = (*ptr).chrome {
+                                chrome.set_omnibox_visible(false);
+                            }
                             let (_, _, w, h) = (*ptr).fullscreen.enter_fullscreen(hwnd);
                             (*ptr).layout = BrowserLayout::new(w, h);
                             if let Some(ref chrome) = (*ptr).chrome {
@@ -1243,6 +1263,7 @@ impl HostWindow {
                             }
                             if let Some(ref webview) = (*ptr).webview {
                                 let _ = webview.set_bounds(0, 0, w, h);
+                                webview.notify_parent_position_changed();
                             }
                         }
                         let _ = InvalidateRect(hwnd, None, false);
@@ -1261,6 +1282,7 @@ impl HostWindow {
                         if let Some(ref webview) = (*ptr).webview {
                             let (wx, wy, ww, wh) = (*ptr).layout.webview_rect();
                             let _ = webview.set_bounds(wx, wy, ww, wh);
+                            webview.notify_parent_position_changed();
                         }
                         let _ = InvalidateRect(hwnd, None, false);
                         return LRESULT(0);
@@ -2073,6 +2095,7 @@ mod tests {
             tab_mgr.clone(),
             true,
             10,
+            crate::app::config::StreamingEngineMode::Standard,
         );
         assert!(window.is_ok(), "HostWindow creation should succeed");
         let window = window.unwrap();

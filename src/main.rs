@@ -200,6 +200,7 @@ fn main() {
         tab_manager.clone(),
         app.config.smart_suspension,
         app.config.suspension_timeout_minutes,
+        app.config.streaming_engine_mode,
     ) {
         Ok(window) => {
             window.set_recovery_manager(recovery_mgr.clone(), session_mgr.clone());

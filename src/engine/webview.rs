@@ -151,13 +151,17 @@ impl WebViewEngine {
 
         let is_internal = initial_url.starts_with("nexora://") || initial_url.is_empty() || initial_url == "about:blank";
         let initial_title = if is_internal {
-            match initial_url {
-                "nexora://settings" => "Settings",
-                "nexora://diagnostics" => "Diagnostics",
-                "nexora://bookmarks" => "Bookmarks",
-                "nexora://history" => "History",
-                _ => "Nexora Home",
-            }.to_string()
+            if initial_url.starts_with("nexora://player") {
+                "Native Hardware Player".to_string()
+            } else {
+                match initial_url {
+                    "nexora://settings" => "Settings",
+                    "nexora://diagnostics" => "Diagnostics",
+                    "nexora://bookmarks" => "Bookmarks",
+                    "nexora://history" => "History",
+                    _ => "Nexora Home",
+                }.to_string()
+            }
         } else {
             "New Tab".to_string()
         };
@@ -290,6 +294,16 @@ impl WebViewEngine {
         Ok(())
     }
 
+    pub fn notify_parent_position_changed(&self) {
+        if let Some(active_id) = self.active_tab_id.get() {
+            if let Some(view) = self.tab_views.borrow().get(&active_id) {
+                unsafe {
+                    let _ = view.controller.NotifyParentWindowPositionChanged();
+                }
+            }
+        }
+    }
+
     pub fn navigate(&self, target_url: &str) -> Result<()> {
         let active_id = unsafe {
             let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
@@ -314,6 +328,7 @@ impl WebViewEngine {
             || clean_url == "nexora://diagnostics"
             || clean_url == "nexora://bookmarks"
             || clean_url == "nexora://history"
+            || clean_url.starts_with("nexora://player")
             || clean_url.is_empty();
 
         if is_internal {
@@ -647,6 +662,10 @@ impl WebViewEngine {
                 Vec::new()
             };
             crate::storage::HistoryUi::render_html(&history)
+        } else if clean.starts_with("nexora://player") {
+            let video_id = crate::media::stream_engine::extract_youtube_video_id(clean).unwrap_or_else(|| "live".to_string());
+            let mode_str = if clean.contains("mode=hybrid") { "hybrid" } else { "native" };
+            crate::media::player_ui::PlayerUi::render_html(&video_id, mode_str)
         } else {
             format!("<html><body style='background:#121214;color:#f4f4f5;'>Page not found: {}</body></html>", clean)
         }
@@ -674,6 +693,16 @@ impl WebViewEngine {
                             windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
                         ) as *mut crate::browser::host_window::WindowContext;
                         if !ptr.is_null() {
+                            // Intercept video streams if NativeD3D11 or HybridStealth mode is active
+                            if let Some(intercept_url) = crate::media::stream_engine::should_intercept_video_stream(&url_str, (*ptr).streaming_engine_mode) {
+                                log::info!("[Streaming Core] Intercepting video navigation to player: {} -> {}", url_str, intercept_url);
+                                let _ = args.SetCancel(windows::Win32::Foundation::BOOL(1));
+                                if let Some(ref webview_eng) = (*ptr).webview {
+                                    let _ = webview_eng.navigate_tab(tab_id, &intercept_url);
+                                }
+                                return Ok(());
+                            }
+
                             let is_active = (*ptr).tab_manager.borrow().active_tab_id() == Some(tab_id);
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             if let Some(tab) = tabs.get_tab_mut(tab_id) {
@@ -968,6 +997,9 @@ impl WebViewEngine {
                         ) as *mut crate::browser::host_window::WindowContext;
                         if !ptr.is_null() {
                             if entering_fs {
+                                if let Some(ref chrome) = (*ptr).chrome {
+                                    chrome.set_omnibox_visible(false);
+                                }
                                 let (_, _, w, h) = (*ptr).fullscreen.enter_fullscreen(hwnd_parent);
                                 (*ptr).layout = crate::ui::layout::BrowserLayout::new(w, h);
                                 if let Some(ref chrome) = (*ptr).chrome {
@@ -975,8 +1007,10 @@ impl WebViewEngine {
                                 }
                                 let rect = RECT { left: 0, top: 0, right: w, bottom: h };
                                 let _ = ctl_for_fs.SetBounds(rect);
+                                let _ = ctl_for_fs.NotifyParentWindowPositionChanged();
                                 if let Some(ref webview) = (*ptr).webview {
                                     let _ = webview.set_bounds(0, 0, w, h);
+                                    webview.notify_parent_position_changed();
                                 }
                             } else {
                                 let (_, _, w, h) = (*ptr).fullscreen.exit_fullscreen(hwnd_parent);
@@ -989,8 +1023,10 @@ impl WebViewEngine {
                                 let (wx, wy, ww, wh) = (*ptr).layout.webview_rect();
                                 let rect = RECT { left: wx, top: wy, right: wx + ww, bottom: wy + wh };
                                 let _ = ctl_for_fs.SetBounds(rect);
+                                let _ = ctl_for_fs.NotifyParentWindowPositionChanged();
                                 if let Some(ref webview) = (*ptr).webview {
                                     let _ = webview.set_bounds(wx, wy, ww, wh);
+                                    webview.notify_parent_position_changed();
                                 }
                             }
                             let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
@@ -1379,6 +1415,15 @@ impl WebViewEngine {
                     config.media_cache_limit_mb = (n as u32).clamp(16, 2048);
                 }
             }
+            "streaming_engine_mode" => {
+                if let Some(s) = val.as_str() {
+                    config.streaming_engine_mode = match s {
+                        "native" => crate::app::config::StreamingEngineMode::NativeD3D11,
+                        "hybrid" => crate::app::config::StreamingEngineMode::HybridStealth,
+                        _ => crate::app::config::StreamingEngineMode::Standard,
+                    };
+                }
+            }
             unknown => {
                 log::warn!("[Settings IPC] Unrecognized configuration key: {}", unknown);
                 return;
@@ -1427,6 +1472,9 @@ impl WebViewEngine {
                             config.tracker_protection_enabled,
                         ));
                     }
+                    "streaming_engine_mode" => {
+                        (*ptr).streaming_engine_mode = config.streaming_engine_mode;
+                    }
                     _ => {}
                 }
             }
@@ -1453,6 +1501,7 @@ mod tests {
             tab_mgr,
             true,
             10,
+            crate::app::config::StreamingEngineMode::Standard,
         )
         .expect("HostWindow creation failed in test");
 

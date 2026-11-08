@@ -6,9 +6,13 @@ pub mod fullscreen;
 pub mod gpu;
 pub mod media_monitor;
 pub mod pip;
+pub mod player_ui;
+pub mod stream_engine;
 
 pub use drm::{DrmDiagnostics, DrmSupportStatus, DrmSystem};
 pub use fullscreen::FullscreenController;
 pub use gpu::{GpuCapabilities, GpuVendor};
 pub use media_monitor::MediaMonitor;
 pub use pip::PipWindow;
+pub use player_ui::PlayerUi;
+pub use stream_engine::{extract_youtube_video_id, should_intercept_video_stream, VideoStreamInfo};

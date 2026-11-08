@@ -241,8 +241,15 @@ impl BrowserChrome {
 
     pub fn set_omnibox_visible(&self, visible: bool) {
         unsafe {
-            let cmd = if visible { SW_SHOW } else { SW_HIDE };
-            let _ = ShowWindow(self.hwnd_omnibox, cmd);
+            if visible {
+                let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(self.hwnd_omnibox, true);
+                let _ = ShowWindow(self.hwnd_omnibox, SW_SHOW);
+            } else {
+                let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(self.hwnd_omnibox, false);
+                let _ = ShowWindow(self.hwnd_omnibox, SW_HIDE);
+                // Relocate offscreen so it cannot receive clicks or leak visually into fullscreen video
+                let _ = MoveWindow(self.hwnd_omnibox, -5000, -5000, 10, 10, false);
+            }
         }
     }
 
@@ -264,6 +271,13 @@ impl BrowserChrome {
 
     pub fn layout_controls(&self, layout: &BrowserLayout, _tab_count: usize) {
         unsafe {
+            // Guard: If omnibox is hidden, keep it relocated offscreen
+            let is_vis = windows::Win32::UI::WindowsAndMessaging::IsWindowVisible(self.hwnd_omnibox).as_bool();
+            if !is_vis {
+                let _ = MoveWindow(self.hwnd_omnibox, -5000, -5000, 10, 10, false);
+                return;
+            }
+
             let omnibox = layout.omnibox_rect();
             // Inset edit control inside the rendered omnibox container frame, leaving 28px on left for ShieldCheck
             let _ = MoveWindow(
