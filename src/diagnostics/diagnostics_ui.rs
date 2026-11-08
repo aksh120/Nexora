@@ -70,6 +70,8 @@ impl DiagnosticsUi {
 
         let total_sys_mb = snapshot.system_memory.total_phys_mb();
         let avail_sys_mb = snapshot.system_memory.avail_phys_mb();
+        let total_sys_gb = total_sys_mb / 1024.0;
+        let avail_sys_gb = avail_sys_mb / 1024.0;
         let sys_load_pct = snapshot.system_memory.memory_load_percent;
 
         let pressure_badge = match snapshot.pressure_level {
@@ -370,11 +372,11 @@ impl DiagnosticsUi {
             <div class="card-body">
                 <div class="row">
                     <span class="label">Total System Physical RAM</span>
-                    <span class="value">{total_sys_mb} MB</span>
+                    <span class="value">{total_sys_mb:.0} MB ({total_sys_gb:.1} GB)</span>
                 </div>
                 <div class="row">
                     <span class="label">Available Physical RAM</span>
-                    <span class="value">{avail_sys_mb} MB</span>
+                    <span class="value">{avail_sys_mb:.0} MB ({avail_sys_gb:.1} GB)</span>
                 </div>
                 <div class="row">
                     <span class="label">System Memory Load</span>

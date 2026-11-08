@@ -10,6 +10,7 @@ use webview2_com::*;
 use crate::core::error::{NexoraError, Result};
 
 pub struct WebViewEngine {
+    pub hwnd: HWND,
     _environment: ICoreWebView2Environment,
     controller: ICoreWebView2Controller,
     webview: ICoreWebView2,
@@ -104,6 +105,7 @@ impl WebViewEngine {
         }
 
         let engine = Self {
+            hwnd,
             _environment: environment,
             controller,
             webview,
@@ -159,12 +161,30 @@ impl WebViewEngine {
             let html = crate::settings::SettingsUi::render_html(&config);
             return self.navigate_to_string(&html);
         } else if clean_url == "nexora://diagnostics" {
+            let (total_tabs, active_title, active_url, suspended_tabs, adblock_stats) = unsafe {
+                let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                    self.hwnd,
+                    windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                ) as *mut crate::browser::host_window::WindowContext;
+                if !ptr.is_null() {
+                    let tabs = (*ptr).tab_manager.borrow();
+                    let total = tabs.tab_count();
+                    let suspended = tabs.tabs().iter().filter(|t| t.is_suspended()).count();
+                    let (title, url) = tabs.get_active_tab()
+                        .map(|t| (t.title.clone(), t.url.clone()))
+                        .unwrap_or(("Nexora Diagnostics".to_string(), "nexora://diagnostics".to_string()));
+                    let stats = (*ptr).adblock_engine.get_stats();
+                    (total, title, url, suspended, stats)
+                } else {
+                    (1, "Nexora Diagnostics".to_string(), "nexora://diagnostics".to_string(), 0, Default::default())
+                }
+            };
             let snapshot = crate::diagnostics::DiagnosticsSnapshot::capture(
-                1,
-                "Nexora Diagnostics",
-                "nexora://diagnostics",
-                0,
-                Default::default(),
+                total_tabs,
+                &active_title,
+                &active_url,
+                suspended_tabs,
+                adblock_stats,
                 false,
             );
             let html = crate::diagnostics::DiagnosticsUi::render_html(&snapshot);
@@ -409,16 +429,17 @@ impl WebViewEngine {
                         if !ptr.is_null() {
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             if let Some(active) = tabs.get_active_tab_mut() {
-                                // Guard: Never allow an external page title to overwrite an internal page
-                                if !active.url.starts_with("nexora://") {
-                                    active.title = title_str.clone();
-                                    let full_title = format!("{} - Nexora", title_str);
-                                    let wide_title: Vec<u16> = full_title.encode_utf16().chain(std::iter::once(0)).collect();
-                                    let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
-                                        hwnd_parent,
-                                        windows::core::PCWSTR(wide_title.as_ptr()),
-                                    );
-                                }
+                                active.title = title_str.clone();
+                                let full_title = if title_str.ends_with("- Nexora") {
+                                    title_str.clone()
+                                } else {
+                                    format!("{} - Nexora", title_str)
+                                };
+                                let wide_title: Vec<u16> = full_title.encode_utf16().chain(std::iter::once(0)).collect();
+                                let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
+                                    hwnd_parent,
+                                    windows::core::PCWSTR(wide_title.as_ptr()),
+                                );
                             }
                             drop(tabs);
                             let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
@@ -920,12 +941,30 @@ impl WebViewEngine {
                                         let _ = s.NavigateToString(PCWSTR(wide.0));
                                     }
                                 } else if url == "nexora://diagnostics" {
+                                    let (total_tabs, active_title, active_url, suspended_tabs, adblock_stats) = {
+                                        let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                                            hwnd,
+                                            windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                                        ) as *mut crate::browser::host_window::WindowContext;
+                                        if !ptr.is_null() {
+                                            let tabs = (*ptr).tab_manager.borrow();
+                                            let total = tabs.tab_count();
+                                            let suspended = tabs.tabs().iter().filter(|t| t.is_suspended()).count();
+                                            let (title, url) = tabs.get_active_tab()
+                                                .map(|t| (t.title.clone(), t.url.clone()))
+                                                .unwrap_or(("Nexora Diagnostics".to_string(), "nexora://diagnostics".to_string()));
+                                            let stats = (*ptr).adblock_engine.get_stats();
+                                            (total, title, url, suspended, stats)
+                                        } else {
+                                            (1, "Nexora Diagnostics".to_string(), "nexora://diagnostics".to_string(), 0, Default::default())
+                                        }
+                                    };
                                     let snapshot = crate::diagnostics::DiagnosticsSnapshot::capture(
-                                        1,
-                                        "Nexora Diagnostics",
-                                        "nexora://diagnostics",
-                                        0,
-                                        Default::default(),
+                                        total_tabs,
+                                        &active_title,
+                                        &active_url,
+                                        suspended_tabs,
+                                        adblock_stats,
                                         false,
                                     );
                                     let html = crate::diagnostics::DiagnosticsUi::render_html(&snapshot);

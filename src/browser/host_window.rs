@@ -509,6 +509,38 @@ impl HostWindow {
                     };
 
                     match hit {
+                        ChromeHitResult::BrandLogo => {
+                            let homepage = (*ptr).homepage.clone();
+                            let title = if homepage == "nexora://home" || homepage == "nexora://newtab" {
+                                "Nexora Home"
+                            } else {
+                                "New Tab"
+                            };
+                            let full_title = format!("{} - Nexora", title);
+                            let wide_title: Vec<u16> = full_title.encode_utf16().chain(std::iter::once(0)).collect();
+                            let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
+                                hwnd,
+                                windows::core::PCWSTR(wide_title.as_ptr()),
+                            );
+
+                            let mut tabs = (*ptr).tab_manager.borrow_mut();
+                            if let Some(active) = tabs.get_active_tab_mut() {
+                                active.url = homepage.clone();
+                                active.title = title.to_string();
+                            }
+                            drop(tabs);
+
+                            if let Some(ref mut chrome) = (*ptr).chrome {
+                                chrome.set_omnibox_text(&homepage);
+                                chrome.set_is_bookmarked(false);
+                            }
+
+                            if let Some(ref webview) = (*ptr).webview {
+                                let _ = webview.navigate(&homepage);
+                            }
+
+                            let _ = InvalidateRect(hwnd, None, false);
+                        }
                         ChromeHitResult::CaptionMinimize => {
                             let _ = ShowWindow(hwnd, SW_MINIMIZE);
                         }
@@ -685,6 +717,12 @@ impl HostWindow {
                                             active.url = "nexora://bookmarks".to_string();
                                             active.title = "Bookmarks - Nexora".to_string();
                                         }
+                                        drop(tabs);
+                                        let wide_title: Vec<u16> = "Bookmarks - Nexora".encode_utf16().chain(std::iter::once(0)).collect();
+                                        let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
+                                            hwnd,
+                                            windows::core::PCWSTR(wide_title.as_ptr()),
+                                        );
                                         let _ = InvalidateRect(hwnd, None, false);
                                     }
                                     IDM_HISTORY => {
@@ -699,6 +737,12 @@ impl HostWindow {
                                             active.url = "nexora://history".to_string();
                                             active.title = "History - Nexora".to_string();
                                         }
+                                        drop(tabs);
+                                        let wide_title: Vec<u16> = "History - Nexora".encode_utf16().chain(std::iter::once(0)).collect();
+                                        let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
+                                            hwnd,
+                                            windows::core::PCWSTR(wide_title.as_ptr()),
+                                        );
                                         let _ = InvalidateRect(hwnd, None, false);
                                     }
                                     IDM_SETTINGS => {
@@ -713,6 +757,12 @@ impl HostWindow {
                                             active.url = "nexora://settings".to_string();
                                             active.title = "Settings - Nexora".to_string();
                                         }
+                                        drop(tabs);
+                                        let wide_title: Vec<u16> = "Settings - Nexora".encode_utf16().chain(std::iter::once(0)).collect();
+                                        let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
+                                            hwnd,
+                                            windows::core::PCWSTR(wide_title.as_ptr()),
+                                        );
                                         let _ = InvalidateRect(hwnd, None, false);
                                     }
                                     IDM_DIAGNOSTICS => {
@@ -727,6 +777,12 @@ impl HostWindow {
                                             active.url = "nexora://diagnostics".to_string();
                                             active.title = "Diagnostics - Nexora".to_string();
                                         }
+                                        drop(tabs);
+                                        let wide_title: Vec<u16> = "Diagnostics - Nexora".encode_utf16().chain(std::iter::once(0)).collect();
+                                        let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
+                                            hwnd,
+                                            windows::core::PCWSTR(wide_title.as_ptr()),
+                                        );
                                         let _ = InvalidateRect(hwnd, None, false);
                                     }
                                     IDM_EXIT => {
@@ -839,6 +895,13 @@ impl HostWindow {
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             let _ = tabs.create_tab(&homepage, Some(title));
                             drop(tabs);
+
+                            let full_title = format!("{} - Nexora", title);
+                            let wide_title: Vec<u16> = full_title.encode_utf16().chain(std::iter::once(0)).collect();
+                            let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
+                                hwnd,
+                                windows::core::PCWSTR(wide_title.as_ptr()),
+                            );
 
                             if let Some(ref mut chrome) = (*ptr).chrome {
                                 chrome.set_omnibox_text(&homepage);

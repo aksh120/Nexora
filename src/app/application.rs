@@ -55,6 +55,20 @@ impl Application {
         log::info!("  Logs Dir:       {:?}", paths.logs_dir);
         log::info!("  EngineData Dir: {:?}", paths.engine_data_dir);
 
+        // Set explicit AppUserModelID so Windows Taskbar pins, jump lists, and grouping
+        // strictly associate with Nexora and show The Quantum Prism icon without duplication.
+        #[cfg(windows)]
+        unsafe {
+            use windows::core::w;
+            use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
+            let app_id = w!("Nexora.Browser.App.1");
+            if let Err(e) = SetCurrentProcessExplicitAppUserModelID(app_id) {
+                log::warn!("Could not set explicit AppUserModelID: {}", e);
+            } else {
+                log::info!("Explicit AppUserModelID 'Nexora.Browser.App.1' applied.");
+            }
+        }
+
         // Set Per-Monitor V2 DPI Awareness for crisp UI scaling on Windows 10 & 11
         #[cfg(windows)]
         unsafe {

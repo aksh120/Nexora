@@ -35,13 +35,17 @@ impl BrowserLayout {
         (0, TOP_CHROME_HEIGHT, self.window_width, h)
     }
 
+    pub fn brand_logo_rect(&self) -> (i32, i32, i32, i32) {
+        (8, (TAB_BAR_HEIGHT - 22) / 2, 22, 22)
+    }
+
     pub fn calculate_tab_rects(&self, tab_count: usize) -> Vec<(i32, i32, i32, i32)> {
         if tab_count == 0 {
             return Vec::new();
         }
 
-        // Available space for tabs leaving room for "+" button and caption buttons (138px)
-        let available_width = (self.window_width - 150 - 50).max(100);
+        // Available space for tabs leaving room for brand logo (38px), "+" button and caption buttons (138px)
+        let available_width = (self.window_width - 150 - 50 - 38).max(100);
         let ideal_width = available_width / (tab_count as i32);
         let tab_width = ideal_width.clamp(TAB_MIN_WIDTH, TAB_MAX_WIDTH);
 
@@ -50,7 +54,7 @@ impl BrowserLayout {
         let h = TAB_BAR_HEIGHT - 3;
 
         for i in 0..tab_count {
-            let x = 6 + (i as i32) * (tab_width + 2);
+            let x = 38 + (i as i32) * (tab_width + 2);
             rects.push((x, y, tab_width, h));
         }
 
@@ -74,7 +78,7 @@ impl BrowserLayout {
         let x = if let Some(last) = tabs.last() {
             last.0 + last.2 + 4
         } else {
-            6
+            38
         };
         (x, 5, 26, TAB_BAR_HEIGHT - 8)
     }

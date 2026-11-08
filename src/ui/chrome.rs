@@ -2,9 +2,9 @@ use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateFontW, CreatePen, CreateSolidBrush,
-    DeleteDC, DeleteObject, DrawTextW, FillRect, LineTo, MoveToEx, SelectObject,
+    DeleteDC, DeleteObject, DrawTextW, Ellipse, FillRect, LineTo, MoveToEx, Polygon, SelectObject,
     SetBkMode, SetTextColor, DT_CENTER, DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER,
-    FW_NORMAL, HDC, HFONT, PS_SOLID, SRCCOPY, TRANSPARENT,
+    FW_NORMAL, HDC, HFONT, PS_NULL, PS_SOLID, SRCCOPY, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_RETURN};
@@ -25,6 +25,7 @@ pub const EM_SETSEL: u32 = 0x00B1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChromeHitResult {
+    BrandLogo,
     Tab(usize),
     TabClose(usize),
     NewTab,
@@ -189,6 +190,12 @@ impl BrowserChrome {
     ) -> ChromeHitResult {
         // 1. Top Title Bar & Tab Strip
         if y >= 0 && y <= TAB_BAR_HEIGHT {
+            // Brand Logo
+            let logo = layout.brand_logo_rect();
+            if x >= logo.0 && x < logo.0 + logo.2 && y >= logo.1 && y < logo.1 + logo.3 {
+                return ChromeHitResult::BrandLogo;
+            }
+
             // Caption Buttons on Top-Right
             let close_rect = layout.caption_close_rect();
             if x >= close_rect.0 && x < close_rect.0 + close_rect.2 {
@@ -308,7 +315,14 @@ impl BrowserChrome {
             let _ = MoveToEx(mem_dc, 0, TOP_CHROME_HEIGHT - 1, None);
             let _ = LineTo(mem_dc, layout.window_width, TOP_CHROME_HEIGHT - 1);
 
-            // 4. Render Tabs
+            // 4. Render Brand Logo (The Quantum Prism)
+            let logo = layout.brand_logo_rect();
+            let is_logo_hovered = self.hovered_item == ChromeHitResult::BrandLogo;
+            let logo_cx = logo.0 + logo.2 / 2;
+            let logo_cy = logo.1 + logo.3 / 2;
+            Self::draw_quantum_prism_logo(mem_dc, logo_cx, logo_cy, is_logo_hovered);
+
+            // 5. Render Tabs
             let tab_rects = layout.calculate_tab_rects(tabs.len());
             SetBkMode(mem_dc, TRANSPARENT);
 
@@ -772,6 +786,58 @@ impl BrowserChrome {
 
         let _ = SelectObject(hdc, old_pen);
         let _ = DeleteObject(pen);
+    }
+
+    unsafe fn draw_quantum_prism_logo(hdc: HDC, cx: i32, cy: i32, is_hovered: bool) {
+        let null_pen = CreatePen(PS_NULL, 0, rgb(0, 0, 0));
+        let old_pen = SelectObject(hdc, null_pen);
+
+        // 1. Left facet - Crimson
+        let left_brush = CreateSolidBrush(if is_hovered { rgb(255, 60, 95) } else { rgb(225, 29, 72) });
+        let old_brush = SelectObject(hdc, left_brush);
+        let left_pts = [
+            POINT { x: cx - 7, y: cy - 2 },
+            POINT { x: cx, y: cy - 8 },
+            POINT { x: cx, y: cy + 1 },
+            POINT { x: cx - 7, y: cy + 7 },
+        ];
+        let _ = Polygon(hdc, &left_pts);
+
+        // 2. Right facet - Coral / Pink Accent
+        let right_brush = CreateSolidBrush(if is_hovered { rgb(255, 185, 195) } else { rgb(253, 164, 175) });
+        let _ = SelectObject(hdc, right_brush);
+        let right_pts = [
+            POINT { x: cx, y: cy - 8 },
+            POINT { x: cx + 7, y: cy - 2 },
+            POINT { x: cx + 7, y: cy + 7 },
+            POINT { x: cx, y: cy + 1 },
+        ];
+        let _ = Polygon(hdc, &right_pts);
+
+        // 3. Bottom facet - Deep Crimson Base
+        let base_brush = CreateSolidBrush(if is_hovered { rgb(244, 63, 94) } else { rgb(180, 15, 55) });
+        let _ = SelectObject(hdc, base_brush);
+        let base_pts = [
+            POINT { x: cx - 7, y: cy + 7 },
+            POINT { x: cx, y: cy + 1 },
+            POINT { x: cx + 7, y: cy + 7 },
+            POINT { x: cx, y: cy + 8 },
+        ];
+        let _ = Polygon(hdc, &base_pts);
+
+        // 4. Center refraction core - Pure white glow
+        let white_brush = CreateSolidBrush(rgb(255, 255, 255));
+        let _ = SelectObject(hdc, white_brush);
+        let _ = Ellipse(hdc, cx - 2, cy - 2, cx + 2, cy + 2);
+
+        // Clean up GDI objects
+        let _ = SelectObject(hdc, old_brush);
+        let _ = SelectObject(hdc, old_pen);
+        let _ = DeleteObject(left_brush);
+        let _ = DeleteObject(right_brush);
+        let _ = DeleteObject(base_brush);
+        let _ = DeleteObject(white_brush);
+        let _ = DeleteObject(null_pen);
     }
 
     unsafe extern "system" fn omnibox_subclass_proc(

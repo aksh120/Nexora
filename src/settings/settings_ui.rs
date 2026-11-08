@@ -61,7 +61,7 @@ impl SettingsUi {
                 --bg-input: #FFFFFF;
                 --border: #E0E0E0;
                 --border-subtle: #EEEEEE;
-                --border-focus: #0078D4;
+                --border-focus: #E11D48;
                 --text-primary: #202124;
                 --text-secondary: #5F6368;
                 --text-muted: #80868B;
