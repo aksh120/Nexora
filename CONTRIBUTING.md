@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/branding/logo.svg" width="380" alt="Nexora - The Quantum Prism Logo"/>
+</p>
+
 # Contributing to NEXORA
 
 Thank you for your interest in contributing to **NEXORA**! We are building the fastest, leanest, streaming-first desktop browser for Windows, and we welcome contributions from developers who care deeply about performance, native systems programming, and user privacy.

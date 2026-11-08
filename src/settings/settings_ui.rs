@@ -430,9 +430,17 @@ impl SettingsUi {
     <!-- Sidebar -->
     <div class="sidebar">
         <div class="sidebar-header">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0078D4" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            <svg viewBox="0 0 100 100" width="24" height="24" fill="none">
+                <defs>
+                    <linearGradient id="prism-settings-logo" x1="0" y1="0" x2="100" y2="100">
+                        <stop offset="0%" stop-color="#FF385C"/>
+                        <stop offset="100%" stop-color="#E11D48"/>
+                    </linearGradient>
+                </defs>
+                <polygon points="20,15 55,15 35,85 15,85" fill="url(#prism-settings-logo)"/>
+                <polygon points="55,15 75,65 55,65 35,15" fill="#FDA4AF" opacity="0.85"/>
+                <polygon points="85,85 50,85 70,15 90,15" fill="url(#prism-settings-logo)"/>
+                <circle cx="50" cy="50" r="4" fill="#FFFFFF"/>
             </svg>
             <h1>Settings</h1>
             <span class="version-tag">v{version}</span>
@@ -691,8 +699,24 @@ impl SettingsUi {
 
             <!-- 6. ABOUT -->
             <div id="about" class="section">
-                <h2 class="section-title">About Nexora Browser</h2>
-                <p class="section-desc">Version details, core architecture, and factory reset</p>
+                <div style="display: flex; align-items: center; gap: 18px; margin-bottom: 22px;">
+                    <svg viewBox="0 0 100 100" width="56" height="56" fill="none">
+                        <defs>
+                            <linearGradient id="prism-about-logo" x1="0" y1="0" x2="100" y2="100">
+                                <stop offset="0%" stop-color="#FF385C"/>
+                                <stop offset="100%" stop-color="#E11D48"/>
+                            </linearGradient>
+                        </defs>
+                        <polygon points="20,15 55,15 35,85 15,85" fill="url(#prism-about-logo)"/>
+                        <polygon points="55,15 75,65 55,65 35,15" fill="#FDA4AF" opacity="0.85"/>
+                        <polygon points="85,85 50,85 70,15 90,15" fill="url(#prism-about-logo)"/>
+                        <circle cx="50" cy="50" r="4" fill="#FFFFFF"/>
+                    </svg>
+                    <div>
+                        <h2 class="section-title" style="margin-bottom: 4px;">About Nexora Browser</h2>
+                        <p class="section-desc">Powered by The Quantum Prism Core • Built for Windows</p>
+                    </div>
+                </div>
 
                 <div class="settings-card">
                     <div class="setting-row">

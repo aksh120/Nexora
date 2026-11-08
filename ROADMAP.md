@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/branding/logo.svg" width="380" alt="Nexora - The Quantum Prism Logo"/>
+</p>
+
 # NEXORA Engineering Roadmap
 
 This document outlines the strategic roadmap and future engineering milestones for the **NEXORA** desktop browser.

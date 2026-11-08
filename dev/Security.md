@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../assets/branding/logo.svg" width="380" alt="Nexora - The Quantum Prism Logo"/>
+</p>
+
 # NEXORA: Security Architecture & Threat Model
 ## Ultra-Lightweight, Streaming-First Desktop Browser
 

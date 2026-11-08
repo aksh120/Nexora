@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../assets/branding/logo.svg" width="380" alt="Nexora - The Quantum Prism Logo"/>
+</p>
+
 # NEXORA: Master Engineering & Product Plan
 ## Ultra-Lightweight, Streaming-First Desktop Browser
 

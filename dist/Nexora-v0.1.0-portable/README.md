@@ -1,16 +1,9 @@
 <div align="center">
 
-```
-  ███╗   ██╗███████╗██╗  ██╗ ██████╗ ██████╗  █████╗ 
-  ████╗  ██║██╔════╝╚██╗██╔╝██╔═══██╗██╔══██╗██╔══██╗
-  ██╔██╗ ██║█████╗   ╚███╔╝ ██║   ██║██████╔╝███████║
-  ██║╚██╗██║██╔══╝   ██╔██╗ ██║   ██║██╔══██╗██╔══██║
-  ██║ ╚████║███████╗██╔╝ ██╗╚██████╔╝██║  ██║██║  ██║
-  ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝
-```
+<img src="assets/branding/logo.svg" width="460" alt="Nexora - The Quantum Prism Streaming-First Desktop Browser"/>
 
 ### **The Ultra-Lightweight, Streaming-First Desktop Browser**
-*Engineered for Windows 10 & 11 in Pure Rust*
+*Engineered for Windows 10 & 11 in Pure Rust • Powered by The Quantum Prism Core*
 
 [![Release](https://img.shields.io/badge/release-v0.1.0-00E5FF.svg?style=for-the-badge&logo=rust)](https://github.com/Nexora/Nexora/releases)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-F74C00.svg?style=for-the-badge&logo=rust)](https://www.rust-lang.org/)

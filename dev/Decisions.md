@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../assets/branding/logo.svg" width="380" alt="Nexora - The Quantum Prism Logo"/>
+</p>
+
 # NEXORA: Architecture Decision Records (ADR)
 ## Chronological Record of Technical & Engineering Decisions
 

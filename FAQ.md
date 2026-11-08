@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/branding/logo.svg" width="380" alt="Nexora - The Quantum Prism Logo"/>
+</p>
+
 # Frequently Asked Questions (FAQ)
 
 ### 1. What is NEXORA and why does it exist?

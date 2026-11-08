@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/branding/logo.svg" width="380" alt="Nexora - The Quantum Prism Logo"/>
+</p>
+
 # Security Policy & Threat Model
 
 NEXORA treats user privacy and browser security with uncompromising rigor. Because browsers operate directly on untrusted remote code, NEXORA employs defense-in-depth isolation across its process, network, and storage boundaries.

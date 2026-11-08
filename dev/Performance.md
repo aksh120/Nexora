@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../assets/branding/logo.svg" width="380" alt="Nexora - The Quantum Prism Logo"/>
+</p>
+
 # NEXORA: Performance Engineering & Benchmark Specification
 ## Ultra-Lightweight, Streaming-First Desktop Browser
 

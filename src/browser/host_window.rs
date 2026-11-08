@@ -31,6 +31,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 pub const WM_MOUSELEAVE: u32 = 0x02A3;
 pub const EM_SETSEL: u32 = 0x00B1;
+pub const WM_SETICON: u32 = 0x0080;
+pub const ICON_BIG: usize = 1;
+pub const ICON_SMALL: usize = 0;
 
 pub const IDM_NEW_TAB: usize = 2001;
 pub const IDM_BOOKMARKS: usize = 2002;
@@ -96,6 +99,39 @@ impl HostWindow {
             // Window background brush
             let bg_brush: HBRUSH = CreateSolidBrush(theme.window_bg);
 
+            // Load application icon (The Quantum Prism)
+            let mut hicon = windows::Win32::UI::WindowsAndMessaging::LoadIconW(
+                hinstance,
+                PCWSTR(1 as *const u16),
+            )
+            .unwrap_or_default();
+
+            if hicon.is_invalid() {
+                if let Ok(exe_path) = std::env::current_exe() {
+                    let candidates = [
+                        std::path::PathBuf::from("assets/branding/icon.ico"),
+                        exe_path.parent().map(|p| p.join("assets/branding/icon.ico")).unwrap_or_default(),
+                        exe_path.parent().and_then(|p| p.parent()).and_then(|p| p.parent()).map(|p| p.join("assets/branding/icon.ico")).unwrap_or_default(),
+                    ];
+                    for path in &candidates {
+                        if path.exists() {
+                            let path_wide: Vec<u16> = path.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
+                            if let Ok(handle) = windows::Win32::UI::WindowsAndMessaging::LoadImageW(
+                                None,
+                                PCWSTR(path_wide.as_ptr()),
+                                windows::Win32::UI::WindowsAndMessaging::IMAGE_ICON,
+                                0,
+                                0,
+                                windows::Win32::UI::WindowsAndMessaging::LR_LOADFROMFILE | windows::Win32::UI::WindowsAndMessaging::LR_DEFAULTSIZE,
+                            ) {
+                                hicon = windows::Win32::UI::WindowsAndMessaging::HICON(handle.0);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
             let wnd_class = WNDCLASSEXW {
                 cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
                 style: windows::Win32::UI::WindowsAndMessaging::WNDCLASS_STYLES(0),
@@ -103,7 +139,7 @@ impl HostWindow {
                 cbClsExtra: 0,
                 cbWndExtra: 0,
                 hInstance: hinstance,
-                hIcon: windows::Win32::UI::WindowsAndMessaging::HICON::default(),
+                hIcon: hicon,
                 hCursor: windows::Win32::UI::WindowsAndMessaging::LoadCursorW(
                     None,
                     windows::Win32::UI::WindowsAndMessaging::IDC_ARROW,
@@ -112,7 +148,7 @@ impl HostWindow {
                 hbrBackground: bg_brush,
                 lpszMenuName: PCWSTR::null(),
                 lpszClassName: class_name,
-                hIconSm: windows::Win32::UI::WindowsAndMessaging::HICON::default(),
+                hIconSm: hicon,
             };
 
             let _ = RegisterClassExW(&wnd_class);
@@ -134,6 +170,12 @@ impl HostWindow {
                 None,
             )
             .map_err(|e| NexoraError::Win32(format!("Failed to create host window: {}", e)))?;
+
+            // Set window and taskbar icons
+            if !hicon.is_invalid() {
+                let _ = SendMessageW(hwnd, WM_SETICON, WPARAM(ICON_BIG), LPARAM(hicon.0 as isize));
+                let _ = SendMessageW(hwnd, WM_SETICON, WPARAM(ICON_SMALL), LPARAM(hicon.0 as isize));
+            }
 
             // Apply native dark title bar if theme is dark
             ThemePalette::apply_to_window(hwnd, theme.is_dark);

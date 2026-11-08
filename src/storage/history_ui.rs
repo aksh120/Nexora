@@ -384,9 +384,17 @@ impl HistoryUi {
 <body>
     <div class="top-bar">
         <div class="brand-section">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#0078D4" stroke-width="2.2">
-                <circle cx="12" cy="12" r="10"/>
-                <polyline points="12 6 12 12 16 14"/>
+            <svg viewBox="0 0 100 100" width="22" height="22" fill="none">
+                <defs>
+                    <linearGradient id="prism-hist-logo" x1="0" y1="0" x2="100" y2="100">
+                        <stop offset="0%" stop-color="#FF385C"/>
+                        <stop offset="100%" stop-color="#E11D48"/>
+                    </linearGradient>
+                </defs>
+                <polygon points="20,15 55,15 35,85 15,85" fill="url(#prism-hist-logo)"/>
+                <polygon points="55,15 75,65 55,65 35,15" fill="#FDA4AF" opacity="0.85"/>
+                <polygon points="85,85 50,85 70,15 90,15" fill="url(#prism-hist-logo)"/>
+                <circle cx="50" cy="50" r="4" fill="#FFFFFF"/>
             </svg>
             <h1>History</h1>
             <span class="count-pill">{total_count} records</span>

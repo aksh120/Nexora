@@ -319,8 +319,17 @@ impl DiagnosticsUi {
 <body>
     <div class="header">
         <div class="brand">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#E11D48" stroke-width="2.2">
-                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+            <svg viewBox="0 0 100 100" width="24" height="24" fill="none">
+                <defs>
+                    <linearGradient id="prism-diag-logo" x1="0" y1="0" x2="100" y2="100">
+                        <stop offset="0%" stop-color="#FF385C"/>
+                        <stop offset="100%" stop-color="#E11D48"/>
+                    </linearGradient>
+                </defs>
+                <polygon points="20,15 55,15 35,85 15,85" fill="url(#prism-diag-logo)"/>
+                <polygon points="55,15 75,65 55,65 35,15" fill="#FDA4AF" opacity="0.85"/>
+                <polygon points="85,85 50,85 70,15 90,15" fill="url(#prism-diag-logo)"/>
+                <circle cx="50" cy="50" r="4" fill="#FFFFFF"/>
             </svg>
             <h1>NEXORA DIAGNOSTICS</h1>
             <span class="version-badge">v{version}</span>
