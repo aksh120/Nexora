@@ -1379,6 +1379,20 @@ impl WebViewEngine {
                         let _ = default_cfg.save(&paths.app_data_dir);
                     }
                 }
+                "restart_browser" => {
+                    log::info!("[IPC Action] Restarting browser on user request...");
+                    if let Ok(exe_path) = std::env::current_exe() {
+                        let _ = std::process::Command::new(exe_path).spawn();
+                    }
+                    unsafe {
+                        let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+                            hwnd,
+                            windows::Win32::UI::WindowsAndMessaging::WM_CLOSE,
+                            windows::Win32::Foundation::WPARAM(0),
+                            windows::Win32::Foundation::LPARAM(0),
+                        );
+                    }
+                }
                 other => {
                     log::warn!("[WebView2 IPC] Unhandled action: {}", other);
                 }

@@ -34,6 +34,7 @@ impl SettingsUi {
         let storage_icon_svg = LucideIcon::HardDrive.to_svg(16, 2.0, "currentColor");
         let about_icon_svg = LucideIcon::Sparkles.to_svg(16, 2.0, "currentColor");
         let search_icon_svg = LucideIcon::Search.to_svg(14, 2.0, "currentColor");
+        let refresh_icon_svg = LucideIcon::RefreshCw.to_svg(20, 2.0, "currentColor");
         let logo_svg = BrandIdentity::monogram_svg(24);
         let shared_css = DesignTokens::shared_css(true);
 
@@ -320,6 +321,114 @@ impl SettingsUi {
             font-size: 13px;
             color: var(--text-secondary);
             margin-bottom: 20px;
+        }}
+
+        /* Restart Modal Popup */
+        .modal-overlay {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.72);
+            backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }}
+
+        .modal-overlay.active {{
+            display: flex;
+        }}
+
+        .modal-card {{
+            background: #121216;
+            border: 1px solid rgba(225, 29, 72, 0.35);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75), 0 0 24px rgba(225, 29, 72, 0.12);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 480px;
+            padding: 24px;
+            color: var(--text-primary);
+        }}
+
+        .modal-header {{
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 16px;
+        }}
+
+        .modal-icon-wrap {{
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: rgba(225, 29, 72, 0.15);
+            border: 1px solid rgba(225, 29, 72, 0.35);
+            color: #f43f5e;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }}
+
+        .modal-title-wrap {{
+            flex: 1;
+        }}
+
+        .modal-title {{
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }}
+
+        .modal-subtitle {{
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }}
+
+        .modal-close-btn {{
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 22px;
+            cursor: pointer;
+            padding: 4px;
+            line-height: 1;
+            transition: color 0.15s ease;
+        }}
+
+        .modal-close-btn:hover {{
+            color: var(--text-primary);
+        }}
+
+        .modal-body {{
+            font-size: 13px;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            margin-bottom: 22px;
+        }}
+
+        .modal-body strong {{
+            color: var(--text-primary);
+        }}
+
+        .modal-info-box {{
+            margin-top: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid #22222a;
+            border-radius: 8px;
+            padding: 12px 14px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }}
+
+        .modal-footer {{
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
         }}
 
         /* Toast notification */
@@ -739,6 +848,32 @@ impl SettingsUi {
         </div>
     </div>
 
+    <!-- Restart Required Modal Popup -->
+    <div id="restart-modal" class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-icon-wrap">
+                    {refresh_icon_svg}
+                </div>
+                <div class="modal-title-wrap">
+                    <div class="modal-title">Restart Required</div>
+                    <div class="modal-subtitle">Streaming Core Architecture Switch</div>
+                </div>
+                <button class="modal-close-btn" onclick="closeRestartModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="restart-modal-msg">Streaming core switched to <strong>Native D3D11 Video Player Engine</strong>.</p>
+                <div class="modal-info-box">
+                    Please restart Nexora to apply the selected hardware video pipeline and release active GPU swapchains cleanly.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost btn-sm" onclick="closeRestartModal()">Restart Later</button>
+                <button class="btn btn-primary btn-sm" onclick="restartBrowser()">Restart Now</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Notification Toast -->
     <div class="toast" id="toast"></div>
 
@@ -788,6 +923,34 @@ impl SettingsUi {
             }}
         }}
 
+        function openRestartModal(label) {{
+            const modal = document.getElementById('restart-modal');
+            const msg = document.getElementById('restart-modal-msg');
+            if (msg) {{
+                msg.innerHTML = "Streaming core switched to <strong>" + label + "</strong>.";
+            }}
+            if (modal) {{
+                modal.classList.add('active');
+            }}
+        }}
+
+        function closeRestartModal() {{
+            const modal = document.getElementById('restart-modal');
+            if (modal) {{
+                modal.classList.remove('active');
+            }}
+        }}
+
+        function restartBrowser() {{
+            if (window.chrome && window.chrome.webview) {{
+                window.chrome.webview.postMessage(JSON.stringify({{
+                    action: "restart_browser"
+                }}));
+            }} else {{
+                window.location.reload();
+            }}
+        }}
+
         function selectEngine(mode) {{
             saveSetting('streaming_engine_mode', mode, true);
             document.querySelectorAll('.engine-card').forEach(el => el.classList.remove('selected'));
@@ -802,6 +965,7 @@ impl SettingsUi {
             if (mode === 'native_d3d11' || mode === 'native') label = "Native D3D11 Video Player Engine (< 60 MB)";
             if (mode === 'hybrid_stealth' || mode === 'hybrid') label = "Hybrid Stealth Core (Dual Engine)";
             showToast("Streaming Core switched to: " + label);
+            openRestartModal(label);
         }}
 
         function clearHistory() {{
@@ -886,6 +1050,7 @@ impl SettingsUi {
             storage_icon_svg = storage_icon_svg,
             about_icon_svg = about_icon_svg,
             search_icon_svg = search_icon_svg,
+            refresh_icon_svg = refresh_icon_svg,
             logo_svg = logo_svg,
             homepage_escaped = homepage_escaped,
             google_sel = if default_engine == "Google" { "selected" } else { "" },
@@ -942,5 +1107,6 @@ mod tests {
         assert!(html.contains("Streaming Core"));
         assert!(html.contains("About Nexora"));
         assert!(html.contains("search-bar-wrap"));
+        assert!(html.contains("restart-modal"));
     }
 }
