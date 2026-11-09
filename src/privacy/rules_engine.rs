@@ -173,6 +173,10 @@ impl RulesEngine {
         // 5. Critical Whitelist (Ensure major streaming services and search engines never break)
         let whitelisted = [
             "youtube.com",
+            "www.youtube.com",
+            "youtube-nocookie.com",
+            "www.youtube-nocookie.com",
+            "youtu.be",
             "googlevideo.com",
             "ytimg.com",
             "netflix.com",

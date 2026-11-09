@@ -24,7 +24,7 @@ impl VideoStreamInfo {
     pub fn for_id(video_id: &str) -> Self {
         let clean_id = video_id.trim();
         let embed = format!(
-            "https://www.youtube-nocookie.com/embed/{}?autoplay=1&enablejsapi=1&origin=https://nexora.local&modestbranding=1&rel=0&iv_load_policy=3&playsinline=1",
+            "https://www.youtube.com/embed/{}?autoplay=1&enablejsapi=1&modestbranding=1&rel=0&iv_load_policy=3&playsinline=1",
             clean_id
         );
         let direct = format!(

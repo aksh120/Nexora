@@ -34,6 +34,7 @@ impl PlayerUi {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
     <title>Nexora Cinema - {clean_id}</title>
     <style>
         {shared_css}
@@ -196,7 +197,8 @@ impl PlayerUi {
         <iframe
             id="stream-viewport"
             class="video-stream"
-            src="https://www.youtube-nocookie.com/embed/{clean_id}?autoplay=1&enablejsapi=1&origin=https://nexora.local&modestbranding=1&rel=0&iv_load_policy=3&playsinline=1"
+            src="https://www.youtube.com/embed/{clean_id}?autoplay=1&enablejsapi=1&modestbranding=1&rel=0&iv_load_policy=3&playsinline=1"
+            referrerpolicy="strict-origin-when-cross-origin"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowfullscreen>
         </iframe>
@@ -241,6 +243,7 @@ mod tests {
         let html = PlayerUi::render_html("y1PDr1SraAA", "native_d3d11");
         assert!(html.contains("y1PDr1SraAA"));
         assert!(html.contains("Native D3D11 / WMF Video Engine"));
-        assert!(html.contains("youtube-nocookie.com/embed/y1PDr1SraAA"));
+        assert!(html.contains("youtube.com/embed/y1PDr1SraAA"));
+        assert!(html.contains("strict-origin-when-cross-origin"));
     }
 }

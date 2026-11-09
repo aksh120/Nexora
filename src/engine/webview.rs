@@ -1188,6 +1188,16 @@ impl WebViewEngine {
                         let mut uri = PWSTR::null();
                         if req.Uri(&mut uri).is_ok() {
                             let url_str = string_from_pcwstr(&PCWSTR(uri.0));
+
+                            // Ensure YouTube iframe embeds always receive a valid Referer header in WebView2
+                            if url_str.contains("youtube.com") || url_str.contains("youtube-nocookie.com") || url_str.contains("googlevideo.com") {
+                                if let Ok(headers) = req.Headers() {
+                                    let ref_key = pwstr_from_str("Referer");
+                                    let ref_val = pwstr_from_str("https://www.youtube.com/");
+                                    let _ = headers.SetHeader(PCWSTR(ref_key.0), PCWSTR(ref_val.0));
+                                }
+                            }
+
                             let (should_block, category) = adblock.should_block(&url_str);
                             if should_block {
                                 log::info!("[AdBlock Intercept Tab #{}] Blocked {:?}: {}", tab_id, category, url_str);
