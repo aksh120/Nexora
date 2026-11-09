@@ -112,7 +112,7 @@ pub fn extract_youtube_video_id(url: &str) -> Option<String> {
 /// Determines whether a navigation target should be redirected to the Native Stream Player
 /// according to the active `StreamingEngineMode`.
 pub fn should_intercept_video_stream(url: &str, mode: StreamingEngineMode) -> Option<String> {
-    if url.contains("no_intercept=1") || url.starts_with("nexora://player") {
+    if url.contains("no_intercept=1") || url.contains("mode=") || url.starts_with("nexora://player") {
         return None;
     }
 
@@ -176,6 +176,11 @@ mod tests {
         // Bypassed if no_intercept=1 present
         assert_eq!(
             should_intercept_video_stream("https://www.youtube.com/watch?v=y1PDr1SraAA&no_intercept=1", StreamingEngineMode::HybridStealth),
+            None
+        );
+        // Bypassed if already in cinema mode flag
+        assert_eq!(
+            should_intercept_video_stream("https://www.youtube.com/watch?v=y1PDr1SraAA&mode=native_d3d11", StreamingEngineMode::NativeD3D11),
             None
         );
     }

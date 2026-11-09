@@ -321,6 +321,16 @@ impl WebViewEngine {
 
     pub fn navigate_tab(&self, tab_id: usize, target_url: &str) -> Result<()> {
         let clean_url = target_url.trim_end_matches('/');
+
+        // Intercept nexora://player directly to genuine YouTube origin to prevent iframe embed blocks
+        if clean_url.starts_with("nexora://player") {
+            let video_id = crate::media::stream_engine::extract_youtube_video_id(clean_url).unwrap_or_else(|| "dQw4w9WgXcQ".to_string());
+            let mode_str = if clean_url.contains("mode=hybrid") { "hybrid_stealth" } else { "native_d3d11" };
+            let yt_target = format!("https://www.youtube.com/watch?v={}&mode={}", video_id, mode_str);
+            log::info!("[Streaming Core] Directing nexora://player to native hardware stream: {}", yt_target);
+            return self.navigate_tab(tab_id, &yt_target);
+        }
+
         let is_internal = clean_url == "nexora://home"
             || clean_url == "nexora://newtab"
             || clean_url == "nexora:"
@@ -328,7 +338,6 @@ impl WebViewEngine {
             || clean_url == "nexora://diagnostics"
             || clean_url == "nexora://bookmarks"
             || clean_url == "nexora://history"
-            || clean_url.starts_with("nexora://player")
             || clean_url.is_empty();
 
         if is_internal {
@@ -723,11 +732,16 @@ impl WebViewEngine {
                             tabs.set_loading(tab_id, true);
                             if let Some(tab) = tabs.get_tab_mut(tab_id) {
                                 if !tab.url.starts_with("nexora://") {
-                                    tab.url = url_str.clone();
-                                    tab.push_history(&url_str);
+                                    let display_url = if url_str.contains("&mode=native_d3d11") || url_str.contains("&mode=hybrid_stealth") {
+                                        url_str.replace("&mode=native_d3d11", "").replace("&mode=hybrid_stealth", "")
+                                    } else {
+                                        url_str.clone()
+                                    };
+                                    tab.url = display_url.clone();
+                                    tab.push_history(&display_url);
                                     if is_active {
                                         if let Some(ref chrome) = (*ptr).chrome {
-                                            chrome.set_omnibox_text(&url_str);
+                                            chrome.set_omnibox_text(&display_url);
                                         }
                                     }
                                 }
@@ -772,11 +786,16 @@ impl WebViewEngine {
                             tabs.set_loading(tab_id, true);
                             if let Some(tab) = tabs.get_tab_mut(tab_id) {
                                 if !tab.url.starts_with("nexora://") {
-                                    tab.url = url_str.clone();
-                                    tab.push_history(&url_str);
+                                    let display_url = if url_str.contains("&mode=native_d3d11") || url_str.contains("&mode=hybrid_stealth") {
+                                        url_str.replace("&mode=native_d3d11", "").replace("&mode=hybrid_stealth", "")
+                                    } else {
+                                        url_str.clone()
+                                    };
+                                    tab.url = display_url.clone();
+                                    tab.push_history(&display_url);
                                     if is_active {
                                         if let Some(ref chrome) = (*ptr).chrome {
-                                            chrome.set_omnibox_text(&url_str);
+                                            chrome.set_omnibox_text(&display_url);
                                         }
                                     }
                                 }
@@ -786,6 +805,18 @@ impl WebViewEngine {
                                 (*ptr).start_loader_timer(hwnd_parent);
                             }
                             let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
+
+                            // Auto-inject Cinema Mode HUD & stealth styling on video watch pages
+                            let is_cinema = url_str.contains("youtube.com/watch") &&
+                                ((*ptr).streaming_engine_mode != crate::app::config::StreamingEngineMode::Standard || url_str.contains("mode=native_d3d11") || url_str.contains("mode=hybrid"));
+                            if is_cinema {
+                                let is_hybrid = (*ptr).streaming_engine_mode == crate::app::config::StreamingEngineMode::HybridStealth || url_str.contains("mode=hybrid");
+                                let mode_str = if is_hybrid { "hybrid_stealth" } else { "native_d3d11" };
+                                let vid = crate::media::stream_engine::extract_youtube_video_id(&url_str).unwrap_or_else(|| "dQw4w9WgXcQ".to_string());
+                                let script = crate::media::PlayerUi::generate_cinema_script(&vid, mode_str);
+                                let wide_script = pwstr_from_str(&script);
+                                let _ = sender.ExecuteScript(PCWSTR(wide_script.0), None);
+                            }
                         }
                     }
                 }
@@ -824,7 +855,13 @@ impl WebViewEngine {
                             drop(tabs);
 
                             if is_active {
-                                let full_title = format!("{} - Nexora", title_str);
+                                let is_cinema = (*ptr).streaming_engine_mode != crate::app::config::StreamingEngineMode::Standard
+                                    && (title_str.to_lowercase().contains("youtube") || title_str.contains("Nexora Cinema"));
+                                let full_title = if is_cinema && !title_str.contains("Nexora Cinema") {
+                                    format!("Nexora Cinema - {}", title_str)
+                                } else {
+                                    format!("{} - Nexora", title_str)
+                                };
                                 let wide_title: Vec<u16> = full_title.encode_utf16().chain(std::iter::once(0)).collect();
                                 let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
                                     hwnd_parent,
@@ -869,14 +906,19 @@ impl WebViewEngine {
                                 tabs.set_loading(tab_id, false);
                                 if let Some(tab) = tabs.get_tab_mut(tab_id) {
                                     if !tab.url.starts_with("nexora://") {
-                                        tab.url = url_str.clone();
-                                        tab.push_history(&url_str);
+                                        let display_url = if url_str.contains("&mode=native_d3d11") || url_str.contains("&mode=hybrid_stealth") {
+                                            url_str.replace("&mode=native_d3d11", "").replace("&mode=hybrid_stealth", "")
+                                        } else {
+                                            url_str.clone()
+                                        };
+                                        tab.url = display_url.clone();
+                                        tab.push_history(&display_url);
                                         if !title_str.trim().is_empty() && title_str != "about:blank" && !title_str.starts_with("data:") {
                                             tab.title = title_str.clone();
                                         }
                                         if is_active {
                                             if let Some(ref chrome) = (*ptr).chrome {
-                                                chrome.set_omnibox_text(&url_str);
+                                                chrome.set_omnibox_text(&display_url);
                                             }
                                         }
                                     }
@@ -903,6 +945,18 @@ impl WebViewEngine {
                                     (*ptr).stop_loader_timer(hwnd_parent);
                                 }
                                 let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
+
+                                // Auto-inject Cinema Mode HUD & stealth styling on video watch pages
+                                let is_cinema = url_str.contains("youtube.com/watch") &&
+                                    ((*ptr).streaming_engine_mode != crate::app::config::StreamingEngineMode::Standard || url_str.contains("mode=native_d3d11") || url_str.contains("mode=hybrid"));
+                                if is_cinema {
+                                    let is_hybrid = (*ptr).streaming_engine_mode == crate::app::config::StreamingEngineMode::HybridStealth || url_str.contains("mode=hybrid");
+                                    let mode_str = if is_hybrid { "hybrid_stealth" } else { "native_d3d11" };
+                                    let vid = crate::media::stream_engine::extract_youtube_video_id(&url_str).unwrap_or_else(|| "dQw4w9WgXcQ".to_string());
+                                    let script = crate::media::PlayerUi::generate_cinema_script(&vid, mode_str);
+                                    let wide_script = pwstr_from_str(&script);
+                                    let _ = s.ExecuteScript(PCWSTR(wide_script.0), None);
+                                }
                             }
 
                             if !url_str.starts_with("nexora://") {

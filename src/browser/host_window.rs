@@ -414,8 +414,17 @@ impl HostWindow {
                         // Update active tab URL
                         let mut tabs = (*ptr).tab_manager.borrow_mut();
                         if let Some(active) = tabs.get_active_tab_mut() {
-                            active.url = dest_url.clone();
-                            active.push_history(&dest_url);
+                            let clean_history_url = if dest_url.starts_with("nexora://player") {
+                                if let Some(vid) = crate::media::stream_engine::extract_youtube_video_id(&dest_url) {
+                                    format!("https://www.youtube.com/watch?v={}", vid)
+                                } else {
+                                    dest_url.clone()
+                                }
+                            } else {
+                                dest_url.clone()
+                            };
+                            active.url = clean_history_url.clone();
+                            active.push_history(&clean_history_url);
                         }
                         drop(tabs);
 
