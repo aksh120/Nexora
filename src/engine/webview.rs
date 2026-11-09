@@ -783,7 +783,7 @@ impl WebViewEngine {
                         if !ptr.is_null() {
                             let is_active = (*ptr).tab_manager.borrow().active_tab_id() == Some(tab_id);
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
-                            tabs.set_loading(tab_id, true);
+                            tabs.set_loading(tab_id, false);
                             if let Some(tab) = tabs.get_tab_mut(tab_id) {
                                 if !tab.url.starts_with("nexora://") {
                                     let display_url = if url_str.contains("&mode=native_d3d11") || url_str.contains("&mode=hybrid_stealth") {
@@ -802,7 +802,7 @@ impl WebViewEngine {
                             }
                             drop(tabs);
                             if is_active {
-                                (*ptr).start_loader_timer(hwnd_parent);
+                                (*ptr).stop_loader_timer(hwnd_parent);
                             }
                             let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
 

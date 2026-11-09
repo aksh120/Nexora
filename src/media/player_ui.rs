@@ -273,6 +273,47 @@ impl PlayerUi {
                 background: #000000 !important;
             }}
 
+            body.nexora-cinema-mode #movie_player {{
+                position: fixed !important;
+                top: 44px !important;
+                left: 0 !important;
+                width: 100vw !important;
+                height: calc(100vh - 44px) !important;
+                max-width: 100vw !important;
+                max-height: calc(100vh - 44px) !important;
+                z-index: 2000000000 !important;
+                background: #000000 !important;
+            }}
+
+            body.nexora-cinema-mode .html5-video-container {{
+                width: 100% !important;
+                height: 100% !important;
+                position: absolute !important;
+                top: 0 !important;
+                left: 0 !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+            }}
+
+            body.nexora-cinema-mode video.html5-main-video {{
+                width: 100% !important;
+                height: 100% !important;
+                object-fit: contain !important;
+                position: absolute !important;
+                top: 0 !important;
+                left: 0 !important;
+                display: block !important;
+            }}
+
+            body.nexora-cinema-mode .ytp-chrome-bottom {{
+                width: calc(100vw - 24px) !important;
+                left: 12px !important;
+                bottom: 0 !important;
+                position: absolute !important;
+            }}
+
+            /* Suppress YouTube UI bloat and shopping popups */
             body.nexora-cinema-mode ytd-masthead,
             body.nexora-cinema-mode #masthead-container,
             body.nexora-cinema-mode #secondary,
@@ -283,79 +324,17 @@ impl PlayerUi {
             body.nexora-cinema-mode #related,
             body.nexora-cinema-mode ytd-merch-shelf-renderer,
             body.nexora-cinema-mode ytd-banner-promo-renderer,
+            body.nexora-cinema-mode .ytp-suggested-action,
+            body.nexora-cinema-mode .ytp-featured-product,
+            body.nexora-cinema-mode .ytp-cards-teaser,
+            body.nexora-cinema-mode .ytp-ce-element,
+            body.nexora-cinema-mode .ytp-paid-content-overlay,
+            body.nexora-cinema-mode .ytp-shopping-button,
             body.nexora-cinema-mode #clarify-box,
             body.nexora-cinema-mode tp-yt-app-drawer,
             body.nexora-cinema-mode #guide,
             body.nexora-cinema-mode ytd-miniplayer {{
                 display: none !important;
-            }}
-
-            body.nexora-cinema-mode ytd-app {{
-                background: #000000 !important;
-            }}
-
-            body.nexora-cinema-mode #page-manager {{
-                margin-top: 0 !important;
-                padding-top: 44px !important;
-                background: #000000 !important;
-            }}
-
-            body.nexora-cinema-mode ytd-watch-flexy {{
-                padding: 0 !important;
-                margin: 0 !important;
-                max-width: 100vw !important;
-                width: 100vw !important;
-                height: calc(100vh - 44px) !important;
-                max-height: calc(100vh - 44px) !important;
-                overflow: hidden !important;
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                background: #000000 !important;
-            }}
-
-            body.nexora-cinema-mode #columns {{
-                max-width: 100vw !important;
-                width: 100vw !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                display: flex !important;
-                justify-content: center !important;
-                background: #000000 !important;
-            }}
-
-            body.nexora-cinema-mode #primary,
-            body.nexora-cinema-mode #primary-inner {{
-                max-width: 100vw !important;
-                width: 100vw !important;
-                padding: 0 !important;
-                margin: 0 !important;
-                background: #000000 !important;
-            }}
-
-            body.nexora-cinema-mode #full-bleed-container,
-            body.nexora-cinema-mode #player-container-outer,
-            body.nexora-cinema-mode #player-container-inner,
-            body.nexora-cinema-mode #player-container,
-            body.nexora-cinema-mode #player {{
-                max-height: calc(100vh - 44px) !important;
-                height: calc(100vh - 44px) !important;
-                width: 100vw !important;
-                max-width: 100vw !important;
-                position: relative !important;
-                background: #000000 !important;
-            }}
-
-            body.nexora-cinema-mode .html5-video-player {{
-                width: 100% !important;
-                height: 100% !important;
-                background: #000000 !important;
-            }}
-
-            body.nexora-cinema-mode video.video-stream {{
-                width: 100% !important;
-                height: 100% !important;
-                object-fit: contain !important;
             }}
 
             #nexora-cinema-hud {{
@@ -446,51 +425,139 @@ impl PlayerUi {
         if (!hud) {{
             hud = document.createElement('div');
             hud.id = 'nexora-cinema-hud';
-            document.body.prepend(hud);
+            document.documentElement.appendChild(hud);
+        }}
+
+        while (hud.firstChild) {{
+            hud.removeChild(hud.firstChild);
         }}
 
         const params = new URLSearchParams(window.location.search);
         const curVid = params.get('v') || defaultVid;
 
-        hud.innerHTML = `
-            <div class="nexora-hud-left">
-                <span class="nexora-hud-badge">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
-                    ${{modeTitle}}
-                </span>
-                <span style="font-size: 13px; font-weight: 500; color: #fff;">
-                    Video Stream: <span id="nexora-stream-label" style="font-family: Consolas, monospace; color: #cbd5e1;">${{curVid}}</span>
-                </span>
-            </div>
+        // Left Container
+        const leftDiv = document.createElement('div');
+        leftDiv.className = 'nexora-hud-left';
 
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <div class="nexora-hud-metrics">
-                    <span>Direct3D 11 NVDEC:</span>
-                    <span class="nexora-hud-pill">Active (60 FPS)</span>
-                    <span>Host RAM:</span>
-                    <span class="nexora-hud-pill">${{ramMetric}}</span>
-                    <span>CPU:</span>
-                    <span class="nexora-hud-pill">~1.4%</span>
-                </div>
+        // Badge
+        const badge = document.createElement('span');
+        badge.className = 'nexora-hud-badge';
 
-                <button class="nexora-btn-return" id="nexora-toggle-btn">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-                    <span id="nexora-toggle-text">Return to Web</span>
-                </button>
-            </div>
-        `;
+        const badgeSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        badgeSvg.setAttribute("width", "14");
+        badgeSvg.setAttribute("height", "14");
+        badgeSvg.setAttribute("viewBox", "0 0 24 24");
+        badgeSvg.setAttribute("fill", "none");
+        badgeSvg.setAttribute("stroke", "#f43f5e");
+        badgeSvg.setAttribute("stroke-width", "2");
+        badgeSvg.setAttribute("stroke-linecap", "round");
+        badgeSvg.setAttribute("stroke-linejoin", "round");
+        const p1 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        p1.setAttribute("d", "m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z");
+        const p2 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        p2.setAttribute("d", "m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65");
+        const p3 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        p3.setAttribute("d", "m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65");
+        badgeSvg.appendChild(p1);
+        badgeSvg.appendChild(p2);
+        badgeSvg.appendChild(p3);
+        badge.appendChild(badgeSvg);
 
-        const btn = document.getElementById('nexora-toggle-btn');
-        const text = document.getElementById('nexora-toggle-text');
-        btn.onclick = () => {{
+        const badgeText = document.createTextNode(" " + modeTitle);
+        badge.appendChild(badgeText);
+        leftDiv.appendChild(badge);
+
+        // Stream info
+        const streamInfo = document.createElement('span');
+        streamInfo.style.fontSize = "13px";
+        streamInfo.style.fontWeight = "500";
+        streamInfo.style.color = "#ffffff";
+        streamInfo.appendChild(document.createTextNode("Video Stream: "));
+        const streamLabel = document.createElement('span');
+        streamLabel.id = 'nexora-stream-label';
+        streamLabel.style.fontFamily = 'Consolas, monospace';
+        streamLabel.style.color = '#cbd5e1';
+        streamLabel.textContent = curVid;
+        streamInfo.appendChild(streamLabel);
+        leftDiv.appendChild(streamInfo);
+        hud.appendChild(leftDiv);
+
+        // Right Container
+        const rightDiv = document.createElement('div');
+        rightDiv.style.display = "flex";
+        rightDiv.style.alignItems = "center";
+        rightDiv.style.gap = "12px";
+
+        const metrics = document.createElement('div');
+        metrics.className = 'nexora-hud-metrics';
+
+        const lbl1 = document.createElement('span');
+        lbl1.textContent = "Direct3D 11 NVDEC:";
+        const pill1 = document.createElement('span');
+        pill1.className = 'nexora-hud-pill';
+        pill1.textContent = "Active (60 FPS)";
+
+        const lbl2 = document.createElement('span');
+        lbl2.textContent = "Host RAM:";
+        const pill2 = document.createElement('span');
+        pill2.className = 'nexora-hud-pill';
+        pill2.textContent = ramMetric;
+
+        const lbl3 = document.createElement('span');
+        lbl3.textContent = "CPU:";
+        const pill3 = document.createElement('span');
+        pill3.className = 'nexora-hud-pill';
+        pill3.textContent = "~1.4%";
+
+        metrics.appendChild(lbl1);
+        metrics.appendChild(pill1);
+        metrics.appendChild(lbl2);
+        metrics.appendChild(pill2);
+        metrics.appendChild(lbl3);
+        metrics.appendChild(pill3);
+        rightDiv.appendChild(metrics);
+
+        // Toggle button
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'nexora-btn-return';
+        toggleBtn.id = 'nexora-toggle-btn';
+
+        const btnSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        btnSvg.setAttribute("width", "14");
+        btnSvg.setAttribute("height", "14");
+        btnSvg.setAttribute("viewBox", "0 0 24 24");
+        btnSvg.setAttribute("fill", "none");
+        btnSvg.setAttribute("stroke", "currentColor");
+        btnSvg.setAttribute("stroke-width", "2");
+        btnSvg.setAttribute("stroke-linecap", "round");
+        btnSvg.setAttribute("stroke-linejoin", "round");
+        const bp1 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        bp1.setAttribute("d", "m12 19-7-7 7-7");
+        const bp2 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        bp2.setAttribute("d", "M19 12H5");
+        btnSvg.appendChild(bp1);
+        btnSvg.appendChild(bp2);
+        toggleBtn.appendChild(btnSvg);
+
+        const btnText = document.createElement('span');
+        btnText.id = 'nexora-toggle-text';
+        btnText.textContent = "Return to Web";
+        toggleBtn.appendChild(btnText);
+
+        toggleBtn.onclick = () => {{
             const active = document.body.classList.toggle('nexora-cinema-mode');
-            text.textContent = active ? "Return to Web" : "Enable Cinema Mode";
+            btnText.textContent = active ? "Return to Web" : "Enable Cinema Mode";
+            window.dispatchEvent(new Event('resize'));
         }};
+
+        rightDiv.appendChild(toggleBtn);
+        hud.appendChild(rightDiv);
     }}
 
     injectStyles();
     document.body.classList.add('nexora-cinema-mode');
     renderHud();
+    window.dispatchEvent(new Event('resize'));
 
     // YouTube SPA navigation listener
     window.addEventListener('yt-navigate-finish', () => {{
@@ -500,6 +567,7 @@ impl PlayerUi {
         const curVid = params.get('v') || defaultVid;
         const lbl = document.getElementById('nexora-stream-label');
         if (lbl) lbl.textContent = curVid;
+        window.dispatchEvent(new Event('resize'));
     }});
 
     // Auto-skip ads if any slip through
