@@ -679,7 +679,7 @@ impl WebViewEngine {
             crate::storage::HistoryUi::render_html(&history)
         } else if clean.starts_with("nexora://player") {
             let video_id = crate::media::stream_engine::extract_youtube_video_id(clean).unwrap_or_else(|| "live".to_string());
-            let mode_str = if clean.contains("mode=hybrid") { "hybrid" } else { "native" };
+            let mode_str = if clean.contains("mode=hybrid") { "hybrid_stealth" } else { "native_d3d11" };
             crate::media::player_ui::PlayerUi::render_html(&video_id, mode_str)
         } else {
             format!("<html><body style='background:#121214;color:#f4f4f5;'>Page not found: {}</body></html>", clean)
@@ -1457,10 +1457,12 @@ impl WebViewEngine {
                 }
             }
             "streaming_engine_mode" => {
-                if let Some(s) = val.as_str() {
+                if let Ok(mode) = serde_json::from_value::<crate::app::config::StreamingEngineMode>(val.clone()) {
+                    config.streaming_engine_mode = mode;
+                } else if let Some(s) = val.as_str() {
                     config.streaming_engine_mode = match s {
-                        "native" => crate::app::config::StreamingEngineMode::NativeD3D11,
-                        "hybrid" => crate::app::config::StreamingEngineMode::HybridStealth,
+                        "native_d3d11" | "native" => crate::app::config::StreamingEngineMode::NativeD3D11,
+                        "hybrid_stealth" | "hybrid" => crate::app::config::StreamingEngineMode::HybridStealth,
                         _ => crate::app::config::StreamingEngineMode::Standard,
                     };
                 }
@@ -1586,6 +1588,24 @@ mod tests {
         WebViewEngine::handle_ipc_message(dummy_hwnd, 1, None, msg_timeout);
         let config3 = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
         assert_eq!(config3.suspension_timeout_minutes, 25);
+
+        // Test streaming_engine_mode setting with native_d3d11
+        let msg_streaming = r#"{"action":"save_setting","key":"streaming_engine_mode","value":"native_d3d11"}"#;
+        WebViewEngine::handle_ipc_message(dummy_hwnd, 1, None, msg_streaming);
+        let config4 = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
+        assert_eq!(config4.streaming_engine_mode, crate::app::config::StreamingEngineMode::NativeD3D11);
+
+        // Test streaming_engine_mode setting with hybrid_stealth
+        let msg_hybrid = r#"{"action":"save_setting","key":"streaming_engine_mode","value":"hybrid_stealth"}"#;
+        WebViewEngine::handle_ipc_message(dummy_hwnd, 1, None, msg_hybrid);
+        let config5 = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
+        assert_eq!(config5.streaming_engine_mode, crate::app::config::StreamingEngineMode::HybridStealth);
+
+        // Test streaming_engine_mode setting back to standard
+        let msg_std = r#"{"action":"save_setting","key":"streaming_engine_mode","value":"standard"}"#;
+        WebViewEngine::handle_ipc_message(dummy_hwnd, 1, None, msg_std);
+        let config6 = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
+        assert_eq!(config6.streaming_engine_mode, crate::app::config::StreamingEngineMode::Standard);
 
         // Reset to default
         let reset_msg = r#"{"action":"reset_defaults"}"#;

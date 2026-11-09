@@ -775,7 +775,7 @@ impl SettingsUi {
             }}
         }}
 
-        function saveSetting(key, value) {{
+        function saveSetting(key, value, suppressToast) {{
             if (window.chrome && window.chrome.webview) {{
                 window.chrome.webview.postMessage(JSON.stringify({{
                     action: "save_setting",
@@ -783,11 +783,13 @@ impl SettingsUi {
                     value: value
                 }}));
             }}
-            showToast("Setting saved automatically");
+            if (!suppressToast) {{
+                showToast("Setting saved automatically");
+            }}
         }}
 
         function selectEngine(mode) {{
-            saveSetting('streaming_engine_mode', mode);
+            saveSetting('streaming_engine_mode', mode, true);
             document.querySelectorAll('.engine-card').forEach(el => el.classList.remove('selected'));
             document.querySelectorAll('.radio-circle').forEach(el => el.classList.remove('selected'));
             const target = document.getElementById('card-engine-' + mode);
@@ -797,8 +799,8 @@ impl SettingsUi {
                 if (radio) radio.classList.add('selected');
             }}
             let label = "Standard Multi-Controller (Default)";
-            if (mode === 'native_d3d11') label = "Native D3D11 Video Player Engine (< 60 MB)";
-            if (mode === 'hybrid_stealth') label = "Hybrid Stealth Core (Dual Engine)";
+            if (mode === 'native_d3d11' || mode === 'native') label = "Native D3D11 Video Player Engine (< 60 MB)";
+            if (mode === 'hybrid_stealth' || mode === 'hybrid') label = "Hybrid Stealth Core (Dual Engine)";
             showToast("Streaming Core switched to: " + label);
         }}
 

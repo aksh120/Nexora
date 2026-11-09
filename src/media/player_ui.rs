@@ -12,7 +12,7 @@ pub struct PlayerUi;
 impl PlayerUi {
     pub fn render_html(video_id: &str, mode: &str) -> String {
         let clean_id = video_id.trim();
-        let is_hybrid = mode == "hybrid_stealth";
+        let is_hybrid = mode == "hybrid_stealth" || mode == "hybrid";
         let mode_title = if is_hybrid {
             "Hybrid Stealth Core (Dormant Webview)"
         } else {
