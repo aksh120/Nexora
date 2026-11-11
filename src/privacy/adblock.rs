@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use crate::privacy::rules_engine::{FilterDecision, RuleCategory, RulesEngine};
 
 /// Snapshot of blocked resource statistics
@@ -31,7 +31,7 @@ impl AdBlockStats {
 pub struct AdBlockEngine {
     pub enabled: bool,
     pub block_trackers: bool,
-    rules: RulesEngine,
+    rules: RwLock<RulesEngine>,
     total_inspected: AtomicUsize,
     blocked_ads: AtomicUsize,
     blocked_trackers: AtomicUsize,
@@ -44,7 +44,7 @@ impl Default for AdBlockEngine {
         Self {
             enabled: true,
             block_trackers: true,
-            rules: RulesEngine::new(),
+            rules: RwLock::new(RulesEngine::new()),
             total_inspected: AtomicUsize::new(0),
             blocked_ads: AtomicUsize::new(0),
             blocked_trackers: AtomicUsize::new(0),
@@ -59,7 +59,7 @@ impl AdBlockEngine {
         Self {
             enabled,
             block_trackers,
-            rules: RulesEngine::new(),
+            rules: RwLock::new(RulesEngine::new()),
             total_inspected: AtomicUsize::new(0),
             blocked_ads: AtomicUsize::new(0),
             blocked_trackers: AtomicUsize::new(0),
@@ -77,7 +77,11 @@ impl AdBlockEngine {
 
         self.total_inspected.fetch_add(1, Ordering::Relaxed);
 
-        let decision = self.rules.evaluate(url);
+        let decision = if let Ok(guard) = self.rules.read() {
+            guard.evaluate(url)
+        } else {
+            FilterDecision::Allow
+        };
 
         match decision {
             FilterDecision::Allow => (false, None),
@@ -133,16 +137,32 @@ impl AdBlockEngine {
         self.blocked_miners.store(0, Ordering::Relaxed);
     }
 
-    pub fn add_custom_rule(&mut self, domain: &str, category: RuleCategory) {
-        self.rules.add_domain_rule(domain, category);
+    pub fn add_custom_rule(&self, domain: &str, category: RuleCategory) {
+        if let Ok(mut guard) = self.rules.write() {
+            guard.add_domain_rule(domain, category);
+        }
     }
 
-    pub fn add_whitelist_domain(&mut self, domain: &str) {
-        self.rules.add_whitelist(domain);
+    pub fn add_whitelist_domain(&self, domain: &str) {
+        if let Ok(mut guard) = self.rules.write() {
+            guard.add_whitelist(domain);
+        }
+    }
+
+    pub fn reload_custom_rules(&self, text: &str) -> (usize, usize) {
+        if let Ok(mut guard) = self.rules.write() {
+            guard.reload_custom_rules(text)
+        } else {
+            (0, 0)
+        }
     }
 
     pub fn total_rules(&self) -> usize {
-        self.rules.total_rules()
+        if let Ok(guard) = self.rules.read() {
+            guard.total_rules()
+        } else {
+            0
+        }
     }
 }
 

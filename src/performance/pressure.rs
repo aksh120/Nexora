@@ -136,6 +136,57 @@ impl MemoryPressureMonitor {
     }
 }
 
+/// Automated Memory Governor for proactive tab hibernation
+pub struct MemoryGovernor {
+    pub config: crate::app::config::MemoryGovernorConfig,
+}
+
+impl MemoryGovernor {
+    pub fn new(config: crate::app::config::MemoryGovernorConfig) -> Self {
+        Self { config }
+    }
+
+    pub fn check_and_reclaim(&self, tab_manager: &mut crate::tabs::TabManager) -> usize {
+        if !self.config.enabled {
+            return 0;
+        }
+
+        let info = match MemoryPressureMonitor::query_system_memory() {
+            Ok(i) => i,
+            Err(_) => return 0,
+        };
+
+        let free_percent = info.avail_phys_percent();
+        if free_percent >= self.config.pressure_threshold_percent as f64 {
+            return 0;
+        }
+
+        let mut suspended_count = 0;
+        let candidate_ids: Vec<usize> = tab_manager
+            .tabs()
+            .iter()
+            .filter(|t| !t.is_pinned && !t.is_playing_audio && !t.is_suspended())
+            .map(|t| t.id)
+            .collect();
+
+        let active_id = tab_manager.active_tab_id();
+        for id in candidate_ids {
+            if Some(id) == active_id {
+                continue; // Never hibernate the active tab
+            }
+            if tab_manager.suspend_tab(id) {
+                suspended_count += 1;
+            }
+        }
+
+        if suspended_count > 0 && self.config.auto_trim_working_set {
+            let _ = crate::performance::memory::trim_working_set();
+        }
+
+        suspended_count
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -207,19 +207,33 @@ impl SqliteConnection {
             handle: Mutex::new(db_handle),
         };
 
-        // Configure WAL mode, synchronous=NORMAL, foreign_keys=ON, busy_timeout=5000
+        // Configure WAL mode, synchronous=NORMAL, foreign_keys=ON, busy_timeout=5000, cache_size=-8000 (8MB), temp_store=MEMORY
         conn.execute("PRAGMA journal_mode = WAL;")?;
         conn.execute("PRAGMA synchronous = NORMAL;")?;
         conn.execute("PRAGMA foreign_keys = ON;")?;
         conn.execute("PRAGMA busy_timeout = 5000;")?;
+        conn.execute("PRAGMA cache_size = -8000;")?;
+        conn.execute("PRAGMA temp_store = MEMORY;")?;
 
-        log::info!("SQLite connection established to {:?} (WAL mode active)", path);
+        log::info!("SQLite connection established to {:?} (WAL mode & 8MB cache active)", path);
 
         Ok(conn)
     }
 
     pub fn open_in_memory() -> Result<Self> {
         Self::open(Path::new(":memory:"))
+    }
+
+    pub fn begin_transaction(&self) -> Result<()> {
+        self.execute("BEGIN IMMEDIATE TRANSACTION;")
+    }
+
+    pub fn commit(&self) -> Result<()> {
+        self.execute("COMMIT;")
+    }
+
+    pub fn rollback(&self) -> Result<()> {
+        self.execute("ROLLBACK;")
     }
 
     pub fn execute(&self, sql: &str) -> Result<()> {

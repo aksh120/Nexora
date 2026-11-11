@@ -78,6 +78,57 @@ impl HistoryManager {
         Ok(())
     }
 
+    pub fn add_visits_batch(&self, visits: &[(&str, &str)]) -> Result<()> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        self.db.begin_transaction()?;
+        for &(url, title) in visits {
+            let trimmed = url.trim();
+            if trimmed.is_empty() || trimmed == "about:blank" {
+                continue;
+            }
+
+            let existing: Vec<i64> = self.db.query(
+                "SELECT id FROM history WHERE url = ? LIMIT 1;",
+                &[SqliteValue::Text(trimmed.to_string())],
+                |row| Ok(row.get_i64(0)),
+            )?;
+
+            if let Some(&id) = existing.first() {
+                if title.is_empty() {
+                    self.db.execute_with_params(
+                        "UPDATE history SET visit_time = ?, visit_count = visit_count + 1 WHERE id = ?;",
+                        &[SqliteValue::Integer(now), SqliteValue::Integer(id)],
+                    )?;
+                } else {
+                    self.db.execute_with_params(
+                        "UPDATE history SET title = ?, visit_time = ?, visit_count = visit_count + 1 WHERE id = ?;",
+                        &[
+                            SqliteValue::Text(title.to_string()),
+                            SqliteValue::Integer(now),
+                            SqliteValue::Integer(id),
+                        ],
+                    )?;
+                }
+            } else {
+                let display_title = if title.is_empty() { trimmed } else { title };
+                self.db.execute_with_params(
+                    "INSERT INTO history (url, title, visit_time, visit_count, typed_count) VALUES (?, ?, ?, 1, 0);",
+                    &[
+                        SqliteValue::Text(trimmed.to_string()),
+                        SqliteValue::Text(display_title.to_string()),
+                        SqliteValue::Integer(now),
+                    ],
+                )?;
+            }
+        }
+        self.db.commit()?;
+        Ok(())
+    }
+
     pub fn record_typed(&self, url: &str) -> Result<()> {
         let trimmed = url.trim();
         self.db.execute_with_params(

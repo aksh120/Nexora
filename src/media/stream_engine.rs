@@ -48,6 +48,43 @@ impl VideoStreamInfo {
     }
 }
 
+/// InnerTube Client payload specification for hardware stream queries
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InnerTubePayload {
+    pub client_name: &'static str,
+    pub client_version: &'static str,
+    pub client_screen: &'static str,
+}
+
+pub const ANDROID_TV_CLIENT: InnerTubePayload = InnerTubePayload {
+    client_name: "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
+    client_version: "2.0",
+    client_screen: "EMBED",
+};
+
+pub const ANDROID_APP_CLIENT: InnerTubePayload = InnerTubePayload {
+    client_name: "ANDROID",
+    client_version: "19.05.36",
+    client_screen: "WATCH",
+};
+
+pub fn build_innertube_request(video_id: &str, client: &InnerTubePayload) -> serde_json::Value {
+    serde_json::json!({
+        "context": {
+            "client": {
+                "clientName": client.client_name,
+                "clientVersion": client.client_version,
+                "clientScreen": client.client_screen,
+                "hl": "en",
+                "gl": "US"
+            }
+        },
+        "videoId": video_id,
+        "contentCheckOk": true,
+        "racyCheckOk": true
+    })
+}
+
 /// Extracts a YouTube video ID from various URL patterns
 pub fn extract_youtube_video_id(url: &str) -> Option<String> {
     let clean = url.trim();

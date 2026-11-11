@@ -42,37 +42,18 @@ impl GpuCapabilities {
             ];
         }
 
-        let mut switches = vec![
-            "--enable-features=VaapiVideoDecoder,D3D11VideoDecoder,NetworkServiceInProcess",
+        vec![
             "--enable-gpu-rasterization",
-            "--enable-zero-copy",
-            "--ignore-gpu-blocklist",
             "--enable-accelerated-video-decode",
-            "--disable-features=Translate,OptimizationHints,MediaRouter,CalculateNativeWinOcclusion,AudioServiceOutOfProcess,SpareRendererForSitePerProcess",
+            "--disable-features=Translate,OptimizationHints,MediaRouter,CalculateNativeWinOcclusion,AudioServiceOutOfProcess",
             "--disable-background-networking",
             "--disable-sync",
             "--disable-breakpad",
             "--disable-component-update",
             "--disable-domain-reliability",
             "--no-pings",
-            "--renderer-process-limit=1",
-            "--process-per-site",
-            "--enable-low-end-device-mode",
-            "--js-flags=--max-old-space-size=96",
-            "--enable-low-res-tiling",
-            "--num-raster-threads=1",
             "--disable-extensions",
-            "--disable-gpu-shader-disk-cache",
-            "--aggressive-cache-discard",
-        ];
-
-        // Kepler / older GPU compatibility: force D3D11 video decoding
-        if self.vendor == GpuVendor::Nvidia && self.adapter_name.contains("730") {
-            log::info!("[GPU] NVIDIA Kepler GT 730 detected. Prioritizing D3D11 video decode offload.");
-            switches.push("--use-angle=d3d11");
-        }
-
-        switches
+        ]
     }
 
     fn classify_vendor(name: &str) -> GpuVendor {
@@ -102,7 +83,7 @@ mod tests {
     fn test_gpu_capabilities_switches() {
         let caps = GpuCapabilities::detect(true);
         let switches = caps.build_browser_switches();
-        assert!(switches.iter().any(|s| s.contains("D3D11VideoDecoder")));
+        assert!(switches.iter().any(|s| s.contains("enable-accelerated-video-decode")));
         assert!(switches.iter().any(|s| s.contains("enable-gpu-rasterization")));
 
         // Test software fallback

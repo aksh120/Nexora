@@ -39,11 +39,29 @@ impl WebViewEngine {
         let udata_str = user_data_dir.to_string_lossy().to_string();
         let udata_wide = pwstr_from_str(&udata_str);
 
-        // Hardware video acceleration and low-overhead flags via GPU capabilities
-        let gpu_caps = crate::media::GpuCapabilities::detect(true);
+        // Hardware video acceleration and low-overhead flags via GPU capabilities & user config
+        let cfg = crate::app::application::ApplicationPaths::resolve()
+            .map(|p| crate::app::config::NexoraConfig::load_or_default(&p.app_data_dir))
+            .unwrap_or_default();
+
+        let gpu_caps = crate::media::GpuCapabilities::detect(cfg.hardware_acceleration);
         let mut browser_args_vec = gpu_caps.build_browser_switches();
-        browser_args_vec.push("--disk-cache-size=16777216"); // 16 MB disk cache cap
-        browser_args_vec.push("--media-cache-size=8388608"); // 8 MB media cache cap
+        browser_args_vec.push("--disk-cache-size=33554432"); // 32 MB disk cache cap
+
+        match cfg.angle_backend {
+            crate::app::config::AngleBackend::D3D11 => browser_args_vec.push("--use-angle=d3d11"),
+            crate::app::config::AngleBackend::D3D11on12 => browser_args_vec.push("--use-angle=d3d11on12"),
+            crate::app::config::AngleBackend::D3D9 => browser_args_vec.push("--use-angle=d3d9"),
+            crate::app::config::AngleBackend::Vulkan => browser_args_vec.push("--use-angle=vulkan"),
+            crate::app::config::AngleBackend::Warp => browser_args_vec.push("--use-angle=warp"),
+            crate::app::config::AngleBackend::Default => {}
+        }
+
+        let raster_arg = format!("--num-raster-threads={}", cfg.raster_threads);
+        if cfg.raster_threads > 0 {
+            browser_args_vec.push(&raster_arg);
+        }
+
         let browser_args = browser_args_vec.join(" ");
 
         log::info!("Configuring Microsoft WebView2 Environment:");
@@ -159,6 +177,7 @@ impl WebViewEngine {
                     "nexora://diagnostics" => "Diagnostics",
                     "nexora://bookmarks" => "Bookmarks",
                     "nexora://history" => "History",
+                    "nexora://downloads" => "Downloads",
                     _ => "Nexora Home",
                 }.to_string()
             }
@@ -686,6 +705,9 @@ impl WebViewEngine {
                 Vec::new()
             };
             crate::storage::HistoryUi::render_html(&history)
+        } else if clean == "nexora://downloads" {
+            let items = Vec::new();
+            crate::downloads::downloads_ui::DownloadsUi::render_html(&items)
         } else if clean.starts_with("nexora://player") {
             let video_id = crate::media::stream_engine::extract_youtube_video_id(clean).unwrap_or_else(|| "live".to_string());
             let mode_str = if clean.contains("mode=hybrid") { "hybrid_stealth" } else { "native_d3d11" };
@@ -806,9 +828,10 @@ impl WebViewEngine {
                             }
                             let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
 
-                            // Auto-inject Cinema Mode HUD & stealth styling on video watch pages
-                            let is_cinema = url_str.contains("youtube.com/watch") &&
-                                ((*ptr).streaming_engine_mode != crate::app::config::StreamingEngineMode::Standard || url_str.contains("mode=native_d3d11") || url_str.contains("mode=hybrid"));
+                            // Auto-inject Cinema Mode HUD & stealth styling on video watch pages if hardware cinema is active
+                            let is_cinema = url_str.contains("youtube.com/watch")
+                                && !url_str.contains("no_intercept=1")
+                                && ((*ptr).streaming_engine_mode != crate::app::config::StreamingEngineMode::Standard || url_str.contains("mode=native_d3d11") || url_str.contains("mode=hybrid"));
                             if is_cinema {
                                 let is_hybrid = (*ptr).streaming_engine_mode == crate::app::config::StreamingEngineMode::HybridStealth || url_str.contains("mode=hybrid");
                                 let mode_str = if is_hybrid { "hybrid_stealth" } else { "native_d3d11" };
@@ -946,9 +969,10 @@ impl WebViewEngine {
                                 }
                                 let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
 
-                                // Auto-inject Cinema Mode HUD & stealth styling on video watch pages
-                                let is_cinema = url_str.contains("youtube.com/watch") &&
-                                    ((*ptr).streaming_engine_mode != crate::app::config::StreamingEngineMode::Standard || url_str.contains("mode=native_d3d11") || url_str.contains("mode=hybrid"));
+                                // Auto-inject Cinema Mode HUD & stealth styling on video watch pages if hardware cinema is active
+                                let is_cinema = url_str.contains("youtube.com/watch")
+                                    && !url_str.contains("no_intercept=1")
+                                    && ((*ptr).streaming_engine_mode != crate::app::config::StreamingEngineMode::Standard || url_str.contains("mode=native_d3d11") || url_str.contains("mode=hybrid"));
                                 if is_cinema {
                                     let is_hybrid = (*ptr).streaming_engine_mode == crate::app::config::StreamingEngineMode::HybridStealth || url_str.contains("mode=hybrid");
                                     let mode_str = if is_hybrid { "hybrid_stealth" } else { "native_d3d11" };
@@ -956,6 +980,15 @@ impl WebViewEngine {
                                     let script = crate::media::PlayerUi::generate_cinema_script(&vid, mode_str);
                                     let wide_script = pwstr_from_str(&script);
                                     let _ = s.ExecuteScript(PCWSTR(wide_script.0), None);
+                                }
+
+                                // Auto-inject update banner if a new release is available and active
+                                if let Some(ref release) = (*ptr).update_service.cached_update() {
+                                    if !(*ptr).update_service.is_dismissed() {
+                                        let script = crate::updater::UpdateBanner::script_show(release);
+                                        let wide_up = pwstr_from_str(&script);
+                                        let _ = s.ExecuteScript(PCWSTR(wide_up.0), None);
+                                    }
                                 }
                             }
 
@@ -1234,7 +1267,14 @@ impl WebViewEngine {
 
         // 10. WebResourceRequested (High-Speed Ad & Tracker Blocker)
         let env_for_adblock = self.environment.clone();
-        let adblock = std::sync::Arc::new(crate::privacy::AdBlockEngine::new(true, true));
+        let adblock_instance = crate::privacy::AdBlockEngine::new(true, true);
+        if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+            if let Ok(rules_txt) = std::fs::read_to_string(paths.app_data_dir.join("custom_rules.txt")) {
+                let (doms, pths) = adblock_instance.reload_custom_rules(&rules_txt);
+                log::info!("[AdBlock Tab #{}] Loaded {} custom domains and {} custom path rules", tab_id, doms, pths);
+            }
+        }
+        let adblock = std::sync::Arc::new(adblock_instance);
         let adblock_handler = WebResourceRequestedEventHandler::create(Box::new(move |_sender, args| {
             if let Some(args) = args {
                 unsafe {
@@ -1324,6 +1364,8 @@ impl WebViewEngine {
             id: Option<i64>,
             key: Option<String>,
             value: Option<serde_json::Value>,
+            download_url: Option<String>,
+            version: Option<String>,
         }
 
         let parsed: std::result::Result<IpcPayload, _> = serde_json::from_str(msg_str);
@@ -1457,6 +1499,224 @@ impl WebViewEngine {
                         );
                     }
                 }
+                "save_custom_adblock_rules" => {
+                    let rules_str = payload.value.as_ref().and_then(|v| v.as_str()).unwrap_or("");
+                    log::info!("[IPC Action] Saving {} bytes of custom AdBlock rules...", rules_str.len());
+                    if let Ok(paths) = crate::app::application::ApplicationPaths::resolve() {
+                        let _ = std::fs::write(paths.app_data_dir.join("custom_rules.txt"), rules_str);
+                    }
+                    let ptr = unsafe {
+                        windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                            hwnd,
+                            windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                        ) as *mut crate::browser::host_window::WindowContext
+                    };
+                    if !ptr.is_null() {
+                        unsafe {
+                            let (doms, pths) = (*ptr).adblock_engine.reload_custom_rules(rules_str);
+                            log::info!("[IPC Action] Reloaded custom adblock rules into host: {} domains, {} paths", doms, pths);
+                        }
+                    }
+                }
+                "open_file" => {
+                    if let Some(target) = payload.url.or_else(|| payload.value.as_ref().and_then(|v| v.as_str()).map(String::from)) {
+                        log::info!("[IPC Action] Opening file via ShellExecute: {}", target);
+                        let wide_target = pwstr_from_str(&target);
+                        let wide_op = pwstr_from_str("open");
+                        unsafe {
+                            windows::Win32::UI::Shell::ShellExecuteW(
+                                hwnd,
+                                windows::core::PCWSTR(wide_op.0),
+                                windows::core::PCWSTR(wide_target.0),
+                                windows::core::PCWSTR::null(),
+                                windows::core::PCWSTR::null(),
+                                windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL,
+                            );
+                        }
+                    }
+                }
+                "command_palette_action" => {
+                    if let Some(cmd) = payload.value.as_ref().and_then(|v| v.as_str()) {
+                        log::info!("[IPC Action] Command palette triggered: {}", cmd);
+                        let ptr = unsafe {
+                            windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                                hwnd,
+                                windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                            ) as *mut crate::browser::host_window::WindowContext
+                        };
+                        match cmd {
+                            "toggle_theme" => {
+                                if !ptr.is_null() {
+                                    unsafe {
+                                        let is_dark = (*ptr).theme.is_dark;
+                                        let new_theme = if is_dark {
+                                            crate::ui::theme::ThemePalette::light()
+                                        } else {
+                                            crate::ui::theme::ThemePalette::dark()
+                                        };
+                                        (*ptr).theme = new_theme;
+                                        crate::ui::theme::ThemePalette::apply_to_window(hwnd, !is_dark);
+                                        let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd, None, false);
+                                    }
+                                }
+                            }
+                            "toggle_vertical_tabs" => {
+                                if !ptr.is_null() {
+                                    unsafe {
+                                        let new_orient = match (*ptr).layout.orientation {
+                                            crate::ui::layout::TabOrientation::Horizontal => crate::ui::layout::TabOrientation::Vertical { collapsed: false },
+                                            crate::ui::layout::TabOrientation::Vertical { .. } => crate::ui::layout::TabOrientation::Horizontal,
+                                        };
+                                        (*ptr).layout.orientation = new_orient;
+                                        let (x, y, w, h) = (*ptr).current_webview_rect();
+                                        if let Some(ref webview) = (*ptr).webview {
+                                            let _ = webview.set_bounds(x, y, w, h);
+                                        }
+                                        let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd, None, false);
+                                    }
+                                }
+                            }
+                            "suspend_tabs" => {
+                                if !ptr.is_null() {
+                                    unsafe {
+                                        let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                        let _ = (*ptr).suspension_engine.sweep_and_suspend(&mut tabs);
+                                        let _ = crate::performance::memory::trim_working_set();
+                                    }
+                                }
+                            }
+                            "open_settings" => {
+                                if let Some(s) = sender {
+                                    let wide = pwstr_from_str("nexora://settings");
+                                    unsafe { let _ = s.Navigate(windows::core::PCWSTR(wide.0)); }
+                                }
+                            }
+                            "open_bookmarks" => {
+                                if let Some(s) = sender {
+                                    let wide = pwstr_from_str("nexora://bookmarks");
+                                    unsafe { let _ = s.Navigate(windows::core::PCWSTR(wide.0)); }
+                                }
+                            }
+                            "open_history" => {
+                                if let Some(s) = sender {
+                                    let wide = pwstr_from_str("nexora://history");
+                                    unsafe { let _ = s.Navigate(windows::core::PCWSTR(wide.0)); }
+                                }
+                            }
+                            "open_downloads" => {
+                                if let Some(s) = sender {
+                                    let wide = pwstr_from_str("nexora://downloads");
+                                    unsafe { let _ = s.Navigate(windows::core::PCWSTR(wide.0)); }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                "trigger_update" => {
+                    log::info!("[IPC Action] User confirmed update installation. Initiating native in-place self-updater...");
+                    let ptr = unsafe {
+                        windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                            hwnd,
+                            windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                        ) as *mut crate::browser::host_window::WindowContext
+                    };
+                    if !ptr.is_null() {
+                        let update_service = unsafe { (*ptr).update_service.clone() };
+                        let target_url = payload.download_url
+                            .or_else(|| update_service.cached_update().and_then(|r| r.download_url))
+                            .unwrap_or_default();
+
+                        if target_url.is_empty() {
+                            log::error!("[Update IPC] Cannot update: No asset download URL found");
+                            return;
+                        }
+
+                        let hwnd_raw = hwnd.0 as isize;
+                        update_service.apply_update_async(
+                            target_url,
+                            move |percent, status_msg| {
+                                let hwnd_parent = windows::Win32::Foundation::HWND(hwnd_raw as *mut _);
+                                let ptr = unsafe {
+                                    windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                                        hwnd_parent,
+                                        windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                                    ) as *mut crate::browser::host_window::WindowContext
+                                };
+                                if !ptr.is_null() {
+                                    unsafe {
+                                        if let Some(ref webview) = (*ptr).webview {
+                                            let script = crate::updater::UpdateBanner::script_update_progress(percent, &status_msg);
+                                            let _ = webview.execute_script(&script);
+                                        }
+                                    }
+                                }
+                            },
+                            move |err_msg| {
+                                log::error!("[Update IPC] Update error: {}", err_msg);
+                                let hwnd_parent = windows::Win32::Foundation::HWND(hwnd_raw as *mut _);
+                                let ptr = unsafe {
+                                    windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                                        hwnd_parent,
+                                        windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                                    ) as *mut crate::browser::host_window::WindowContext
+                                };
+                                if !ptr.is_null() {
+                                    unsafe {
+                                        if let Some(ref webview) = (*ptr).webview {
+                                            let script = crate::updater::UpdateBanner::script_update_progress(0.0, &format!("Update failed: {}", err_msg));
+                                            let _ = webview.execute_script(&script);
+                                        }
+                                    }
+                                }
+                            },
+                        );
+                    }
+                }
+                "dismiss_update" => {
+                    log::info!("[IPC Action] Update banner dismissed by user.");
+                    let ptr = unsafe {
+                        windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                            hwnd,
+                            windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                        ) as *mut crate::browser::host_window::WindowContext
+                    };
+                    if !ptr.is_null() {
+                        unsafe {
+                            (*ptr).update_service.dismiss();
+                        }
+                    }
+                }
+                "check_for_updates" => {
+                    log::info!("[IPC Action] Manual check for updates requested by user.");
+                    let ptr = unsafe {
+                        windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                            hwnd,
+                            windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                        ) as *mut crate::browser::host_window::WindowContext
+                    };
+                    if !ptr.is_null() {
+                        let update_service = unsafe { (*ptr).update_service.clone() };
+                        let hwnd_raw = hwnd.0 as isize;
+                        update_service.check_in_background(move |release| {
+                            let hwnd_parent = windows::Win32::Foundation::HWND(hwnd_raw as *mut _);
+                            let ptr = unsafe {
+                                windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                                    hwnd_parent,
+                                    windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                                ) as *mut crate::browser::host_window::WindowContext
+                            };
+                            if !ptr.is_null() {
+                                unsafe {
+                                    if let Some(ref webview) = (*ptr).webview {
+                                        let script = crate::updater::UpdateBanner::script_show(&release);
+                                        let _ = webview.execute_script(&script);
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
                 other => {
                     log::warn!("[WebView2 IPC] Unhandled action: {}", other);
                 }
@@ -1543,6 +1803,43 @@ impl WebViewEngine {
                         "hybrid_stealth" | "hybrid" => crate::app::config::StreamingEngineMode::HybridStealth,
                         _ => crate::app::config::StreamingEngineMode::Standard,
                     };
+                }
+            }
+            "vertical_tabs" => {
+                if let Some(b) = val.as_bool() {
+                    config.vertical_tabs = b;
+                }
+            }
+            "angle_backend" => {
+                if let Some(s) = val.as_str() {
+                    config.angle_backend = match s {
+                        "d3d11" => crate::app::config::AngleBackend::D3D11,
+                        "d3d11on12" => crate::app::config::AngleBackend::D3D11on12,
+                        "d3d9" => crate::app::config::AngleBackend::D3D9,
+                        "vulkan" => crate::app::config::AngleBackend::Vulkan,
+                        "warp" => crate::app::config::AngleBackend::Warp,
+                        _ => crate::app::config::AngleBackend::Default,
+                    };
+                }
+            }
+            "raster_threads" => {
+                if let Some(n) = val.as_u64() {
+                    config.raster_threads = (n as u32).clamp(0, 16);
+                }
+            }
+            "memory_governor_enabled" => {
+                if let Some(b) = val.as_bool() {
+                    config.memory_governor.enabled = b;
+                }
+            }
+            "pressure_threshold_percent" => {
+                if let Some(n) = val.as_u64() {
+                    config.memory_governor.pressure_threshold_percent = (n as u32).clamp(5, 50);
+                }
+            }
+            "auto_trim_working_set" => {
+                if let Some(b) = val.as_bool() {
+                    config.memory_governor.auto_trim_working_set = b;
                 }
             }
             unknown => {

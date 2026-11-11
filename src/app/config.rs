@@ -43,6 +43,66 @@ impl Default for StreamingEngineMode {
     }
 }
 
+/// ANGLE Hardware Graphics Backend
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AngleBackend {
+    #[serde(rename = "d3d11")]
+    D3D11,
+    #[serde(rename = "d3d11on12")]
+    D3D11on12,
+    #[serde(rename = "d3d9")]
+    D3D9,
+    #[serde(rename = "vulkan")]
+    Vulkan,
+    #[serde(rename = "warp")]
+    Warp,
+    #[serde(rename = "default")]
+    Default,
+}
+
+impl Default for AngleBackend {
+    fn default() -> Self {
+        Self::D3D11
+    }
+}
+
+impl AngleBackend {
+    pub fn as_chromium_switch(&self) -> Option<&'static str> {
+        match self {
+            Self::D3D11 => Some("--use-angle=d3d11"),
+            Self::D3D11on12 => Some("--use-angle=d3d11on12"),
+            Self::D3D9 => Some("--use-angle=d3d9"),
+            Self::Vulkan => Some("--use-angle=vulkan"),
+            Self::Warp => Some("--use-angle=warp"),
+            Self::Default => None,
+        }
+    }
+}
+
+/// Automated Memory Governor Configuration
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryGovernorConfig {
+    pub enabled: bool,
+    pub pressure_threshold_percent: u32,
+    pub max_tab_idle_seconds: u64,
+    pub auto_trim_working_set: bool,
+}
+
+impl Default for MemoryGovernorConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            pressure_threshold_percent: 15,
+            max_tab_idle_seconds: 300,
+            auto_trim_working_set: true,
+        }
+    }
+}
+
+fn default_raster_threads() -> u32 {
+    1
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NexoraConfig {
     pub homepage: String,
@@ -57,6 +117,16 @@ pub struct NexoraConfig {
     pub tracker_protection_enabled: bool,
     #[serde(default)]
     pub streaming_engine_mode: StreamingEngineMode,
+    #[serde(default)]
+    pub vertical_tabs: bool,
+    #[serde(default)]
+    pub vertical_tabs_collapsed: bool,
+    #[serde(default)]
+    pub memory_governor: MemoryGovernorConfig,
+    #[serde(default)]
+    pub angle_backend: AngleBackend,
+    #[serde(default = "default_raster_threads")]
+    pub raster_threads: u32,
 }
 
 impl Default for NexoraConfig {
@@ -73,6 +143,11 @@ impl Default for NexoraConfig {
             ad_block_enabled: true,
             tracker_protection_enabled: true,
             streaming_engine_mode: StreamingEngineMode::Standard,
+            vertical_tabs: false,
+            vertical_tabs_collapsed: false,
+            memory_governor: MemoryGovernorConfig::default(),
+            angle_backend: AngleBackend::default(),
+            raster_threads: 1,
         }
     }
 }

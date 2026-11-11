@@ -5,6 +5,7 @@ mod app;
 mod browser;
 mod core;
 mod diagnostics;
+mod downloads;
 mod engine;
 mod home;
 mod media;
@@ -15,6 +16,7 @@ mod settings;
 mod storage;
 mod tabs;
 mod ui;
+pub mod updater;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -31,6 +33,9 @@ fn main() {
     unsafe {
         let _ = windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID(windows::core::w!("Nexora.Browser"));
     }
+
+    // Clean up any old update backup binaries from prior in-place updates
+    crate::updater::UpdateInstaller::cleanup_previous_update_backups();
 
     // 1. Initialize core application lifecycle, logging, and directories
     let app = match Application::init() {

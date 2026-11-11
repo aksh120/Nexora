@@ -13,7 +13,7 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::MARGINS;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
-    VK_ADD, VK_CONTROL, VK_ESCAPE, VK_F11, VK_F5, VK_LEFT, VK_MENU, VK_RIGHT, VK_SHIFT, VK_SUBTRACT, VK_TAB,
+    VK_ADD, VK_CONTROL, VK_ESCAPE, VK_F11, VK_F5, VK_F9, VK_LEFT, VK_MENU, VK_RIGHT, VK_SHIFT, VK_SUBTRACT, VK_TAB,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DispatchMessageW,
@@ -31,6 +31,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 pub const WM_MOUSELEAVE: u32 = 0x02A3;
+pub const WM_ENTERSIZEMOVE: u32 = 0x0231;
+pub const WM_EXITSIZEMOVE: u32 = 0x0232;
 pub const EM_SETSEL: u32 = 0x00B1;
 pub const WM_SETICON: u32 = 0x0080;
 pub const ICON_BIG: usize = 1;
@@ -111,6 +113,10 @@ pub struct WindowContext {
     pub hovered_tab_id: Option<usize>,
     pub hover_timer_active: bool,
     pub streaming_engine_mode: crate::app::config::StreamingEngineMode,
+    pub is_interactive_resizing: bool,
+    pub last_resize_time: Option<std::time::Instant>,
+    pub memory_governor: crate::performance::pressure::MemoryGovernor,
+    pub update_service: Arc<crate::updater::UpdateService>,
 }
 
 impl WindowContext {
@@ -315,7 +321,14 @@ impl HostWindow {
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
             );
 
-            let layout = BrowserLayout::new(width, height);
+            let mut layout = BrowserLayout::new(width, height);
+            let app_cfg = crate::app::application::ApplicationPaths::resolve()
+                .map(|p| crate::app::config::NexoraConfig::load_or_default(&p.app_data_dir))
+                .unwrap_or_default();
+            if app_cfg.vertical_tabs {
+                layout.orientation = crate::ui::layout::TabOrientation::Vertical { collapsed: false };
+            }
+            let memory_governor = crate::performance::pressure::MemoryGovernor::new(app_cfg.memory_governor);
             let suspension_engine = SmartSuspensionEngine::new(suspension_timeout_minutes, smart_suspension);
             let omnibox_brush = CreateSolidBrush(theme.omnibox_bg);
 
@@ -341,12 +354,34 @@ impl HostWindow {
                 hovered_tab_id: None,
                 hover_timer_active: false,
                 streaming_engine_mode,
+                is_interactive_resizing: false,
+                last_resize_time: None,
+                memory_governor,
+                update_service: Arc::new(crate::updater::UpdateService::default()),
             });
 
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(context) as isize);
 
             // Start 5-second periodic timer for memory pressure, working set trimming & smart tab suspension
             let _ = SetTimer(hwnd, IDT_SUSPENSION_TIMER, 5_000, None);
+
+            // Asynchronous background check for GitHub releases
+            let hwnd_raw = hwnd.0 as isize;
+            let update_svc = Arc::new(crate::updater::UpdateService::default());
+            update_svc.check_in_background(move |release| {
+                log::info!("[Updater] Update available: v{} ({})", release.version, release.name);
+                let hwnd_parent = windows::Win32::Foundation::HWND(hwnd_raw as *mut _);
+                let ptr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                    hwnd_parent,
+                    windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                ) as *mut WindowContext;
+                if !ptr.is_null() {
+                    if let Some(ref webview) = (*ptr).webview {
+                        let script = crate::updater::UpdateBanner::script_show(&release);
+                        let _ = webview.execute_script(&script);
+                    }
+                }
+            });
 
             log::info!("Native Win32 Host Window created (HWND: {:?}, size: {}x{})", hwnd.0, width, height);
 
@@ -584,6 +619,45 @@ impl HostWindow {
                 let _ = EndPaint(hwnd, &ps);
                 LRESULT(0)
             }
+            WM_ENTERSIZEMOVE => {
+                if !ptr.is_null() {
+                    (*ptr).is_interactive_resizing = true;
+                }
+                DefWindowProcW(hwnd, msg, wparam, lparam)
+            }
+            WM_EXITSIZEMOVE => {
+                if !ptr.is_null() {
+                    (*ptr).is_interactive_resizing = false;
+                    let mut rect = RECT::default();
+                    if GetClientRect(hwnd, &mut rect).is_ok() {
+                        let width = rect.right - rect.left;
+                        let height = rect.bottom - rect.top;
+                        (*ptr).layout = BrowserLayout::new(width, height);
+
+                        let is_fs = (*ptr).fullscreen.is_fullscreen();
+                        let tab_count = (*ptr).tab_manager.borrow().tab_count();
+
+                        if let Some(ref chrome) = (*ptr).chrome {
+                            if !is_fs {
+                                chrome.layout_controls(&(*ptr).layout, tab_count);
+                            }
+                        }
+
+                        if let Some(ref webview) = (*ptr).webview {
+                            if is_fs {
+                                let _ = webview.set_bounds(0, 0, width, height);
+                            } else {
+                                let (wx, wy, ww, wh) = (*ptr).layout.webview_rect();
+                                let _ = webview.set_bounds(wx, wy, ww, wh);
+                            }
+                            webview.notify_parent_position_changed();
+                        }
+
+                        let _ = InvalidateRect(hwnd, None, false);
+                    }
+                }
+                DefWindowProcW(hwnd, msg, wparam, lparam)
+            }
             WM_SIZE => {
                 if !ptr.is_null() {
                     let mut rect = RECT::default();
@@ -604,14 +678,30 @@ impl HostWindow {
                             }
                         }
 
-                        if let Some(ref webview) = (*ptr).webview {
-                            if is_fs {
-                                let _ = webview.set_bounds(0, 0, width, height);
+                        // Throttle webview bounds updates during interactive dragging to prevent GPU swapchain stalls
+                        let should_update_webview = if (*ptr).is_interactive_resizing {
+                            let now = std::time::Instant::now();
+                            let elapsed = (*ptr).last_resize_time.map(|t| now.duration_since(t)).unwrap_or(std::time::Duration::from_millis(50));
+                            if elapsed >= std::time::Duration::from_millis(16) {
+                                (*ptr).last_resize_time = Some(now);
+                                true
                             } else {
-                                let (wx, wy, ww, wh) = (*ptr).layout.webview_rect();
-                                let _ = webview.set_bounds(wx, wy, ww, wh);
+                                false
                             }
-                            webview.notify_parent_position_changed();
+                        } else {
+                            true
+                        };
+
+                        if should_update_webview {
+                            if let Some(ref webview) = (*ptr).webview {
+                                if is_fs {
+                                    let _ = webview.set_bounds(0, 0, width, height);
+                                } else {
+                                    let (wx, wy, ww, wh) = (*ptr).layout.webview_rect();
+                                    let _ = webview.set_bounds(wx, wy, ww, wh);
+                                }
+                                webview.notify_parent_position_changed();
+                            }
                         }
 
                         let _ = InvalidateRect(hwnd, None, false);
@@ -1368,6 +1458,14 @@ impl HostWindow {
                         return LRESULT(0);
                     }
 
+                    // Reader Mode toggle (F9 or Ctrl+Alt+R)
+                    if vk == VK_F9.0 || (ctrl_pressed && alt_pressed && (vk == b'R' as u16 || vk == b'r' as u16)) {
+                        if let Some(ref webview) = (*ptr).webview {
+                            let _ = webview.execute_script(crate::navigation::ReaderMode::EXTRACTOR_SCRIPT);
+                        }
+                        return LRESULT(0);
+                    }
+
                     // 3. F5 Reload
                     if vk == VK_F5.0 {
                         if let Some(ref webview) = (*ptr).webview {
@@ -1462,6 +1560,27 @@ impl HostWindow {
                         }
 
                         match vk as u8 as char {
+                            'K' | 'k' => {
+                                if let Some(ref webview) = (*ptr).webview {
+                                    let _ = webview.execute_script(crate::navigation::CommandPalette::script_open());
+                                }
+                                return LRESULT(0);
+                            }
+                            'J' | 'j' => {
+                                if let Some(ref webview) = (*ptr).webview {
+                                    let _ = webview.navigate("nexora://downloads");
+                                }
+                                if let Some(ref chrome) = (*ptr).chrome {
+                                    chrome.set_omnibox_text("nexora://downloads");
+                                }
+                                let mut tabs = (*ptr).tab_manager.borrow_mut();
+                                if let Some(active) = tabs.get_active_tab_mut() {
+                                    active.url = "nexora://downloads".to_string();
+                                    active.title = "Downloads - Nexora".to_string();
+                                }
+                                let _ = InvalidateRect(hwnd, None, false);
+                                return LRESULT(0);
+                            }
                             'H' | 'h' => {
                                 if let Some(ref webview) = (*ptr).webview {
                                     let _ = webview.navigate("nexora://history");
@@ -1686,6 +1805,11 @@ impl HostWindow {
             WM_TIMER => {
                 if !ptr.is_null() && wparam.0 == IDT_SUSPENSION_TIMER {
                     let mut tabs = (*ptr).tab_manager.borrow_mut();
+                    let reclaimed = (*ptr).memory_governor.check_and_reclaim(&mut tabs);
+                    if reclaimed > 0 {
+                        log::info!("MemoryGovernor: Reclaimed {} background tabs under memory pressure", reclaimed);
+                        let _ = InvalidateRect(hwnd, None, false);
+                    }
                     let suspended = (*ptr).suspension_engine.sweep_and_suspend(&mut tabs);
                     if !suspended.is_empty() {
                         log::info!("SmartSuspension: Suspended {} idle tabs via background sweep", suspended.len());

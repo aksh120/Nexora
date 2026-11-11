@@ -21,10 +21,20 @@ impl SettingsUi {
         let smart_susp_checked = if config.smart_suspension { "checked" } else { "" };
         let adblock_checked = if config.ad_block_enabled { "checked" } else { "" };
         let tracker_checked = if config.tracker_protection_enabled { "checked" } else { "" };
+        let vertical_tabs_checked = if config.vertical_tabs { "checked" } else { "" };
+        let mem_gov_checked = if config.memory_governor.enabled { "checked" } else { "" };
+        let trim_ws_checked = if config.memory_governor.auto_trim_working_set { "checked" } else { "" };
+        let pressure_thresh = config.memory_governor.pressure_threshold_percent;
         let susp_timeout = config.suspension_timeout_minutes;
         let disk_cache = config.disk_cache_limit_mb;
         let media_cache = config.media_cache_limit_mb;
         let version = BrandIdentity::version();
+
+        let custom_rules_content = crate::app::application::ApplicationPaths::resolve()
+            .ok()
+            .and_then(|p| std::fs::read_to_string(p.app_data_dir.join("custom_rules.txt")).ok())
+            .unwrap_or_default();
+        let custom_rules_escaped = html_escape(&custom_rules_content);
 
         let general_icon_svg = LucideIcon::Sliders.to_svg(16, 2.0, "currentColor");
         let perf_icon_svg = LucideIcon::Cpu.to_svg(16, 2.0, "currentColor");
@@ -540,6 +550,17 @@ impl SettingsUi {
 
                         <div class="setting-row">
                             <div class="setting-info">
+                                <div class="setting-title">Vertical Tabs Bar</div>
+                                <div class="setting-desc">Switch from top horizontal tab bar to an Arc/Edge style vertical sidebar</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" {vertical_tabs_checked} onchange="saveSetting('vertical_tabs', this.checked); openRestartModal('Vertical Tabs Layout');" />
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
                                 <div class="setting-title">Bookmarks Manager</div>
                                 <div class="setting-desc">Organize and manage your saved bookmarks</div>
                             </div>
@@ -593,9 +614,73 @@ impl SettingsUi {
                                 <div class="setting-desc">Offload high-resolution video decoding directly to GPU to reduce host CPU load</div>
                             </div>
                             <label class="toggle">
-                                <input type="checkbox" {hw_accel_checked} onchange="saveSetting('hardware_acceleration', this.checked)" />
+                                <input type="checkbox" {hw_accel_checked} onchange="saveSetting('hardware_acceleration', this.checked); openRestartModal('Hardware Acceleration');" />
                                 <span class="toggle-slider"></span>
                             </label>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Automated Memory Governor</div>
+                                <div class="setting-desc">Proactively hibernates idle background tabs when system free RAM drops below threshold</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" {mem_gov_checked} onchange="saveSetting('memory_governor_enabled', this.checked)" />
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Free RAM Headroom Threshold</div>
+                                <div class="setting-desc">Minimum system free RAM percentage before tab hibernation activates</div>
+                            </div>
+                            <select class="select-input" onchange="saveSetting('pressure_threshold_percent', parseInt(this.value))">
+                                <option value="10" {pt10_sel}>10% Free RAM</option>
+                                <option value="15" {pt15_sel}>15% Free RAM (Recommended)</option>
+                                <option value="20" {pt20_sel}>20% Free RAM</option>
+                                <option value="25" {pt25_sel}>25% Free RAM</option>
+                            </select>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Auto Working-Set Trim</div>
+                                <div class="setting-desc">Flush unused physical RAM pages to Windows Memory Manager after tab hibernation</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" {trim_ws_checked} onchange="saveSetting('auto_trim_working_set', this.checked)" />
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">ANGLE Graphics Backend</div>
+                                <div class="setting-desc">DirectX/Vulkan translation layer for hardware accelerated rasterization</div>
+                            </div>
+                            <select class="select-input" onchange="saveSetting('angle_backend', this.value); openRestartModal('ANGLE Backend: ' + this.value);">
+                                <option value="default" {ang_def_sel}>Default (Auto-Detect)</option>
+                                <option value="d3d11" {ang_d3d11_sel}>Direct3D 11 (Recommended)</option>
+                                <option value="d3d11on12" {ang_d3d12_sel}>Direct3D 11on12</option>
+                                <option value="d3d9" {ang_d3d9_sel}>Direct3D 9 (Legacy)</option>
+                                <option value="vulkan" {ang_vulkan_sel}>Vulkan</option>
+                                <option value="warp" {ang_warp_sel}>WARP (Software Fallback)</option>
+                            </select>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Rasterization Threads</div>
+                                <div class="setting-desc">Number of parallel worker threads allocated for GPU tile rasterization</div>
+                            </div>
+                            <select class="select-input" onchange="saveSetting('raster_threads', parseInt(this.value)); openRestartModal('Raster Threads: ' + this.value);">
+                                <option value="0" {rt0_sel}>Auto (Default)</option>
+                                <option value="1" {rt1_sel}>1 Thread (Low Overhead)</option>
+                                <option value="2" {rt2_sel}>2 Threads</option>
+                                <option value="4" {rt4_sel}>4 Threads</option>
+                                <option value="8" {rt8_sel}>8 Threads (High Performance)</option>
+                            </select>
                         </div>
 
                         <div class="setting-row">
@@ -650,6 +735,17 @@ impl SettingsUi {
                                 <div class="setting-desc">Delete all visit records and search queries from local database</div>
                             </div>
                             <button class="btn btn-ghost btn-sm" id="btn-clear-history" onclick="clearHistory()">Clear History</button>
+                        </div>
+
+                        <div class="setting-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                            <div class="setting-info">
+                                <div class="setting-title">Custom AdBlock Filter Rules</div>
+                                <div class="setting-desc">Import custom filter rules using ABP/uBlock syntax (one per line: <code>||domain^</code>, <code>@@||whitelist^</code>, <code>/path/*</code>)</div>
+                            </div>
+                            <textarea id="custom-adblock-rules" class="input-text" style="width: 100%; height: 110px; font-family: Consolas, monospace; font-size: 12px; resize: vertical;" placeholder="||ads.example.com^&#10;@@||safe-site.com^&#10;/tracking/pixel/*">{custom_rules_escaped}</textarea>
+                            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                                <button class="btn btn-primary btn-sm" onclick="saveCustomAdblockRules()">Apply Custom Rules</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -837,6 +933,17 @@ impl SettingsUi {
 
                         <div class="setting-row">
                             <div class="setting-info">
+                                <div class="setting-title">Software Updates</div>
+                                <div class="setting-desc">Check GitHub releases for the latest official build</div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span id="update-status-badge" class="badge">v{version}</span>
+                                <button class="btn btn-primary btn-sm" id="btn-check-updates" onclick="checkForUpdates()">Check for Updates</button>
+                            </div>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
                                 <div class="setting-title">Reset to Defaults</div>
                                 <div class="setting-desc">Restore all preferences and configurations to initial state</div>
                             </div>
@@ -857,14 +964,14 @@ impl SettingsUi {
                 </div>
                 <div class="modal-title-wrap">
                     <div class="modal-title">Restart Required</div>
-                    <div class="modal-subtitle">Streaming Core Architecture Switch</div>
+                    <div class="modal-subtitle">Configuration Change</div>
                 </div>
                 <button class="modal-close-btn" onclick="closeRestartModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <p id="restart-modal-msg">Streaming core switched to <strong>Native D3D11 Video Player Engine</strong>.</p>
+                <p id="restart-modal-msg">Setting updated: <strong>Native D3D11 Video Player Engine</strong>.</p>
                 <div class="modal-info-box">
-                    Please restart Nexora to apply the selected hardware video pipeline and release active GPU swapchains cleanly.
+                    Please restart Nexora for hardware video swapchains, GPU raster thread pools, or UI layouts to take full effect.
                 </div>
             </div>
             <div class="modal-footer">
@@ -927,11 +1034,27 @@ impl SettingsUi {
             const modal = document.getElementById('restart-modal');
             const msg = document.getElementById('restart-modal-msg');
             if (msg) {{
-                msg.innerHTML = "Streaming core switched to <strong>" + label + "</strong>.";
+                msg.innerHTML = "Setting updated: <strong>" + label + "</strong>.";
             }}
             if (modal) {{
                 modal.classList.add('active');
             }}
+        }}
+
+        function checkForUpdates() {{
+            const btn = document.getElementById('btn-check-updates');
+            const badge = document.getElementById('update-status-badge');
+            if (btn) btn.textContent = "Checking...";
+            if (badge) badge.textContent = "Checking GitHub...";
+            if (window.chrome && window.chrome.webview) {{
+                window.chrome.webview.postMessage(JSON.stringify({{
+                    action: "check_for_updates"
+                }}));
+            }}
+            setTimeout(() => {{
+                if (btn) btn.textContent = "Check for Updates";
+                if (badge) badge.textContent = "v{version}";
+            }}, 4000);
         }}
 
         function closeRestartModal() {{
@@ -1025,6 +1148,17 @@ impl SettingsUi {
             }}
         }}
 
+        function saveCustomAdblockRules() {{
+            const text = document.getElementById('custom-adblock-rules').value;
+            if (window.chrome && window.chrome.webview) {{
+                window.chrome.webview.postMessage(JSON.stringify({{
+                    action: "save_custom_adblock_rules",
+                    value: text
+                }}));
+            }}
+            showToast("Custom AdBlock rules applied");
+        }}
+
         function filterSettings(query) {{
             const q = query.toLowerCase().trim();
             const rows = document.querySelectorAll('.setting-row');
@@ -1064,6 +1198,25 @@ impl SettingsUi {
             hw_accel_checked = hw_accel_checked,
             adblock_checked = adblock_checked,
             tracker_checked = tracker_checked,
+            vertical_tabs_checked = vertical_tabs_checked,
+            mem_gov_checked = mem_gov_checked,
+            trim_ws_checked = trim_ws_checked,
+            pt10_sel = if pressure_thresh == 10 { "selected" } else { "" },
+            pt15_sel = if pressure_thresh == 15 { "selected" } else { "" },
+            pt20_sel = if pressure_thresh == 20 { "selected" } else { "" },
+            pt25_sel = if pressure_thresh == 25 { "selected" } else { "" },
+            ang_def_sel = if config.angle_backend == crate::app::config::AngleBackend::Default { "selected" } else { "" },
+            ang_d3d11_sel = if config.angle_backend == crate::app::config::AngleBackend::D3D11 { "selected" } else { "" },
+            ang_d3d12_sel = if config.angle_backend == crate::app::config::AngleBackend::D3D11on12 { "selected" } else { "" },
+            ang_d3d9_sel = if config.angle_backend == crate::app::config::AngleBackend::D3D9 { "selected" } else { "" },
+            ang_vulkan_sel = if config.angle_backend == crate::app::config::AngleBackend::Vulkan { "selected" } else { "" },
+            ang_warp_sel = if config.angle_backend == crate::app::config::AngleBackend::Warp { "selected" } else { "" },
+            rt0_sel = if config.raster_threads == 0 { "selected" } else { "" },
+            rt1_sel = if config.raster_threads == 1 { "selected" } else { "" },
+            rt2_sel = if config.raster_threads == 2 { "selected" } else { "" },
+            rt4_sel = if config.raster_threads == 4 { "selected" } else { "" },
+            rt8_sel = if config.raster_threads == 8 { "selected" } else { "" },
+            custom_rules_escaped = custom_rules_escaped,
             t5_sel = if susp_timeout == 5 { "selected" } else { "" },
             t10_sel = if susp_timeout == 10 { "selected" } else { "" },
             t15_sel = if susp_timeout == 15 { "selected" } else { "" },

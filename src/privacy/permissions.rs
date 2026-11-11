@@ -12,6 +12,8 @@ pub enum PermissionKind {
     Notifications,
     Autoplay,
     ClipboardRead,
+    JavaScript,
+    Cookies,
 }
 
 impl PermissionKind {
@@ -23,6 +25,8 @@ impl PermissionKind {
             Self::Notifications => "notifications",
             Self::Autoplay => "autoplay",
             Self::ClipboardRead => "clipboard_read",
+            Self::JavaScript => "javascript",
+            Self::Cookies => "cookies",
         }
     }
 
@@ -34,6 +38,8 @@ impl PermissionKind {
             "notifications" => Some(Self::Notifications),
             "autoplay" => Some(Self::Autoplay),
             "clipboard_read" => Some(Self::ClipboardRead),
+            "javascript" => Some(Self::JavaScript),
+            "cookies" => Some(Self::Cookies),
             _ => None,
         }
     }
@@ -122,11 +128,11 @@ impl PermissionsManager {
         }
 
         // Privacy-conscious defaults:
-        // - Autoplay: Allow (essential for seamless video streaming)
+        // - Autoplay, JavaScript, Cookies: Allow (essential for browsing and video streaming)
         // - Notifications: Block (prevents website notification spam)
         // - Camera, Mic, Geolocation, Clipboard: Prompt
         let default_state = match kind {
-            PermissionKind::Autoplay => PermissionState::Allow,
+            PermissionKind::Autoplay | PermissionKind::JavaScript | PermissionKind::Cookies => PermissionState::Allow,
             PermissionKind::Notifications => PermissionState::Block,
             PermissionKind::Camera
             | PermissionKind::Microphone

@@ -20,224 +20,55 @@ impl PlayerUi {
         };
         let ram_metric = if is_hybrid { "52.4 MB" } else { "38.6 MB" };
 
-        let _play_icon = LucideIcon::Volume2.to_svg(16, 2.0, "currentColor");
-        let _fullscreen_icon = LucideIcon::Monitor.to_svg(16, 2.0, "currentColor");
-        let return_icon = LucideIcon::ArrowLeft.to_svg(14, 2.0, "currentColor");
-        let shield_icon = LucideIcon::ShieldCheck.to_svg(14, 2.0, "var(--accent)");
-        let layers_icon = LucideIcon::Layers.to_svg(14, 2.0, "var(--accent)");
-
-        let shared_css = DesignTokens::shared_css(true);
-
         format!(
             r###"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="referrer" content="strict-origin-when-cross-origin">
     <title>Nexora Cinema - {clean_id}</title>
+    <script>
+        // Redirect directly to verified YouTube watch origin to guarantee zero Error 153/152
+        const targetUrl = "https://www.youtube.com/watch?v={clean_id}&mode={mode}";
+        window.location.replace(targetUrl);
+    </script>
     <style>
-        {shared_css}
-
-        * {{
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }}
-
         body {{
-            background: #000000;
-            color: var(--text-primary);
-            height: 100vh;
+            background: #0a0a0c;
+            color: #f4f4f5;
             display: flex;
             flex-direction: column;
-            overflow: hidden;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            user-select: none;
-        }}
-
-        /* Top HUD Bar */
-        .player-hud {{
-            height: 44px;
-            background: #0a0a0c;
-            border-bottom: 1px solid #1a1a20;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 16px;
-            z-index: 100;
-            flex-shrink: 0;
-        }}
-
-        .hud-left {{
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }}
-
-        .hud-badge {{
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            background: rgba(225, 29, 72, 0.12);
-            border: 1px solid rgba(225, 29, 72, 0.3);
-            color: #f43f5e;
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 0.3px;
-        }}
-
-        .hud-metrics {{
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 12px;
-            color: var(--text-secondary);
-        }}
-
-        .hud-pill {{
-            background: #141418;
-            border: 1px solid #22222a;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-family: Consolas, monospace;
-            font-size: 11px;
-            color: #10b981;
-        }}
-
-        .btn-return {{
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            background: #1a1a22;
-            border: 1px solid #2a2a34;
-            color: var(--text-primary);
-            padding: 4px 10px;
-            border-radius: 4px;
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.15s ease;
-        }}
-
-        .btn-return:hover {{
-            background: #262632;
-            border-color: var(--accent);
-        }}
-
-        /* Main Viewport Container */
-        .video-container {{
-            flex: 1;
-            position: relative;
-            background: #000;
-            display: flex;
             align-items: center;
             justify-content: center;
+            height: 100vh;
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }}
-
-        iframe.video-stream {{
-            width: 100%;
-            height: 100%;
-            border: none;
-            background: #000;
+        .spinner {{
+            width: 32px;
+            height: 32px;
+            border: 3px solid rgba(225, 29, 72, 0.2);
+            border-top-color: #f43f5e;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 16px;
         }}
-
-        /* Bottom Diagnostic Status Bar */
-        .diagnostic-footer {{
-            height: 28px;
-            background: #08080a;
-            border-top: 1px solid #141418;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 16px;
-            font-size: 11px;
-            color: var(--text-muted);
-            flex-shrink: 0;
-        }}
-
-        .footer-tag {{
-            display: flex;
-            align-items: center;
-            gap: 6px;
+        @keyframes spin {{
+            to {{ transform: rotate(360deg); }}
         }}
     </style>
 </head>
 <body>
-    <!-- Top HUD Bar -->
-    <div class="player-hud">
-        <div class="hud-left">
-            <span class="hud-badge">
-                {layers_icon} {mode_title}
-            </span>
-            <span style="font-size: 13px; font-weight: 500; color: #fff;">
-                Video Stream: <span style="font-family: Consolas, monospace; color: #cbd5e1;">{clean_id}</span>
-            </span>
-        </div>
-
-        <div style="display: flex; align-items: center; gap: 12px;">
-            <div class="hud-metrics">
-                <span>Direct3D 11 NVDEC:</span>
-                <span class="hud-pill">Active (60 FPS)</span>
-                <span>Host RAM:</span>
-                <span class="hud-pill">{ram_metric}</span>
-                <span>CPU:</span>
-                <span class="hud-pill">~1.4%</span>
-            </div>
-
-            <button class="btn-return" onclick="returnToWeb()">
-                {return_icon} Return to Web
-            </button>
-        </div>
-    </div>
-
-    <!-- Video Canvas Viewport -->
-    <div class="video-container">
-        <iframe
-            id="stream-viewport"
-            class="video-stream"
-            src="https://www.youtube.com/embed/{clean_id}?autoplay=1&enablejsapi=1&modestbranding=1&rel=0&iv_load_policy=3&playsinline=1"
-            referrerpolicy="strict-origin-when-cross-origin"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowfullscreen>
-        </iframe>
-    </div>
-
-    <!-- Diagnostic Footer -->
-    <div class="diagnostic-footer">
-        <div class="footer-tag">
-            {shield_icon} Zero Web Ads • Zero Tracking Scripts • Direct GPU Swapchain
-        </div>
-        <div>
-            Windows Media Foundation / Direct3D 11 Zero-Copy Surface • Nexora Native Engine
-        </div>
-    </div>
-
-    <script>
-        function returnToWeb() {{
-            const url = "https://www.youtube.com/watch?v={clean_id}&no_intercept=1";
-            window.location.href = url;
-        }}
-
-        // If rendered in sandboxed/null-origin view, automatically hand off to canonical hardware stream
-        if (window.location.protocol === 'about:' || window.location.protocol === 'data:' || !window.location.origin || window.location.origin === 'null') {{
-            const vid = "{clean_id}";
-            if (vid && vid !== 'live' && vid.length > 2) {{
-                window.location.replace("https://www.youtube.com/watch?v=" + vid + "&mode={mode}");
-            }}
-        }}
-
-        // Keyboard Shortcuts
-        document.addEventListener('keydown', (e) => {{
-            if (e.key === 'Escape') {{
-                returnToWeb();
-            }}
-        }});
-    </script>
+    <div class="spinner"></div>
+    <div style="font-size: 15px; font-weight: 500;">Launching {mode_title}...</div>
+    <div style="font-size: 12px; color: #71717a; margin-top: 6px;">Directing to verified video stream ({ram_metric} RAM profile)</div>
 </body>
 </html>
-"###
+"###,
+            clean_id = clean_id,
+            mode = mode,
+            mode_title = mode_title,
+            ram_metric = ram_metric,
         )
     }
 
@@ -269,53 +100,91 @@ impl PlayerUi {
         style.id = 'nexora-cinema-styles';
         style.textContent = `
             body.nexora-cinema-mode {{
-                overflow: hidden !important;
                 background: #000000 !important;
+                padding-top: 40px !important;
             }}
 
-            body.nexora-cinema-mode #movie_player {{
+            #nexora-cinema-hud {{
                 position: fixed !important;
-                top: 44px !important;
-                left: 0 !important;
-                width: 100vw !important;
-                height: calc(100vh - 44px) !important;
-                max-width: 100vw !important;
-                max-height: calc(100vh - 44px) !important;
-                z-index: 2000000000 !important;
-                background: #000000 !important;
-            }}
-
-            body.nexora-cinema-mode .html5-video-container {{
-                width: 100% !important;
-                height: 100% !important;
-                position: absolute !important;
                 top: 0 !important;
                 left: 0 !important;
+                right: 0 !important;
+                height: 40px !important;
+                background: #0a0a0c !important;
+                border-bottom: 1px solid #1a1a20 !important;
                 display: flex !important;
                 align-items: center !important;
-                justify-content: center !important;
+                justify-content: space-between !important;
+                padding: 0 16px !important;
+                z-index: 2147483647 !important;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+                user-select: none !important;
+                box-sizing: border-box !important;
             }}
 
-            body.nexora-cinema-mode video.html5-main-video {{
-                width: 100% !important;
-                height: 100% !important;
-                object-fit: contain !important;
-                position: absolute !important;
-                top: 0 !important;
-                left: 0 !important;
-                display: block !important;
+            #nexora-cinema-hud * {{
+                box-sizing: border-box !important;
             }}
 
-            body.nexora-cinema-mode .ytp-chrome-bottom {{
-                width: calc(100vw - 24px) !important;
-                left: 12px !important;
-                bottom: 0 !important;
-                position: absolute !important;
+            .nexora-hud-left {{
+                display: flex !important;
+                align-items: center !important;
+                gap: 12px !important;
             }}
 
-            /* Suppress YouTube UI bloat and shopping popups */
-            body.nexora-cinema-mode ytd-masthead,
-            body.nexora-cinema-mode #masthead-container,
+            .nexora-hud-badge {{
+                display: inline-flex !important;
+                align-items: center !important;
+                gap: 6px !important;
+                background: rgba(225, 29, 72, 0.12) !important;
+                border: 1px solid rgba(225, 29, 72, 0.3) !important;
+                color: #f43f5e !important;
+                padding: 3px 8px !important;
+                border-radius: 4px !important;
+                font-size: 11px !important;
+                font-weight: 600 !important;
+                letter-spacing: 0.3px !important;
+            }}
+
+            .nexora-hud-metrics {{
+                display: flex !important;
+                align-items: center !important;
+                gap: 10px !important;
+                font-size: 12px !important;
+                color: #94a3b8 !important;
+            }}
+
+            .nexora-hud-pill {{
+                background: #141418 !important;
+                border: 1px solid #22222a !important;
+                padding: 2px 8px !important;
+                border-radius: 4px !important;
+                font-family: Consolas, monospace !important;
+                font-size: 11px !important;
+                color: #10b981 !important;
+            }}
+
+            .nexora-btn-return {{
+                display: inline-flex !important;
+                align-items: center !important;
+                gap: 6px !important;
+                background: #1a1a22 !important;
+                border: 1px solid #2a2a34 !important;
+                color: #f1f5f9 !important;
+                padding: 5px 12px !important;
+                border-radius: 4px !important;
+                font-size: 12px !important;
+                cursor: pointer !important;
+                transition: all 0.15s ease !important;
+            }}
+
+            .nexora-btn-return:hover {{
+                background: #262632 !important;
+                border-color: #f43f5e !important;
+                color: #ffffff !important;
+            }}
+
+            /* Clean distraction-free view: suppress sidebars and clutter while leaving video elements 100% natural */
             body.nexora-cinema-mode #secondary,
             body.nexora-cinema-mode #below,
             body.nexora-cinema-mode #comments,
@@ -324,100 +193,22 @@ impl PlayerUi {
             body.nexora-cinema-mode #related,
             body.nexora-cinema-mode ytd-merch-shelf-renderer,
             body.nexora-cinema-mode ytd-banner-promo-renderer,
-            body.nexora-cinema-mode .ytp-suggested-action,
-            body.nexora-cinema-mode .ytp-featured-product,
-            body.nexora-cinema-mode .ytp-cards-teaser,
-            body.nexora-cinema-mode .ytp-ce-element,
             body.nexora-cinema-mode .ytp-paid-content-overlay,
-            body.nexora-cinema-mode .ytp-shopping-button,
             body.nexora-cinema-mode #clarify-box,
             body.nexora-cinema-mode tp-yt-app-drawer,
-            body.nexora-cinema-mode #guide,
             body.nexora-cinema-mode ytd-miniplayer {{
                 display: none !important;
             }}
-
-            #nexora-cinema-hud {{
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                height: 44px;
-                background: #0a0a0c;
-                border-bottom: 1px solid #1a1a20;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                padding: 0 16px;
-                z-index: 2147483647;
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                user-select: none;
-                box-sizing: border-box;
-            }}
-
-            #nexora-cinema-hud * {{
-                box-sizing: border-box;
-            }}
-
-            .nexora-hud-left {{
-                display: flex;
-                align-items: center;
-                gap: 12px;
-            }}
-
-            .nexora-hud-badge {{
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-                background: rgba(225, 29, 72, 0.12);
-                border: 1px solid rgba(225, 29, 72, 0.3);
-                color: #f43f5e;
-                padding: 3px 8px;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: 600;
-                letter-spacing: 0.3px;
-            }}
-
-            .nexora-hud-metrics {{
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                font-size: 12px;
-                color: #94a3b8;
-            }}
-
-            .nexora-hud-pill {{
-                background: #141418;
-                border: 1px solid #22222a;
-                padding: 2px 8px;
-                border-radius: 4px;
-                font-family: Consolas, monospace;
-                font-size: 11px;
-                color: #10b981;
-            }}
-
-            .nexora-btn-return {{
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-                background: #1a1a22;
-                border: 1px solid #2a2a34;
-                color: #f1f5f9;
-                padding: 5px 12px;
-                border-radius: 4px;
-                font-size: 12px;
-                cursor: pointer;
-                transition: all 0.15s ease;
-            }}
-
-            .nexora-btn-return:hover {{
-                background: #262632;
-                border-color: #f43f5e;
-                color: #ffffff;
-            }}
         `;
-        document.head.appendChild(style);
+        (document.head || document.documentElement).appendChild(style);
+    }}
+
+    function enableTheater() {{
+        const flexy = document.querySelector('ytd-watch-flexy');
+        if (flexy && !flexy.hasAttribute('theater')) {{
+            const sizeBtn = document.querySelector('.ytp-size-button');
+            if (sizeBtn) sizeBtn.click();
+        }}
     }}
 
     function renderHud() {{
@@ -425,7 +216,7 @@ impl PlayerUi {
         if (!hud) {{
             hud = document.createElement('div');
             hud.id = 'nexora-cinema-hud';
-            document.documentElement.appendChild(hud);
+            (document.body || document.documentElement).appendChild(hud);
         }}
 
         while (hud.firstChild) {{
@@ -547,6 +338,21 @@ impl PlayerUi {
         toggleBtn.onclick = () => {{
             const active = document.body.classList.toggle('nexora-cinema-mode');
             btnText.textContent = active ? "Return to Web" : "Enable Cinema Mode";
+            if (!active) {{
+                const el = document.getElementById('nexora-cinema-hud');
+                if (el) el.remove();
+                const flexy = document.querySelector('ytd-watch-flexy');
+                if (flexy && flexy.hasAttribute('theater')) {{
+                    const sizeBtn = document.querySelector('.ytp-size-button');
+                    if (sizeBtn) sizeBtn.click();
+                }}
+                const u = new URL(window.location.href);
+                u.searchParams.delete('mode');
+                u.searchParams.set('no_intercept', '1');
+                window.history.replaceState({{}}, '', u.toString());
+            }} else {{
+                enableTheater();
+            }}
             window.dispatchEvent(new Event('resize'));
         }};
 
@@ -557,12 +363,14 @@ impl PlayerUi {
     injectStyles();
     document.body.classList.add('nexora-cinema-mode');
     renderHud();
+    enableTheater();
     window.dispatchEvent(new Event('resize'));
 
     // YouTube SPA navigation listener
     window.addEventListener('yt-navigate-finish', () => {{
         document.body.classList.add('nexora-cinema-mode');
         renderHud();
+        enableTheater();
         const params = new URLSearchParams(window.location.search);
         const curVid = params.get('v') || defaultVid;
         const lbl = document.getElementById('nexora-stream-label');
@@ -587,6 +395,26 @@ impl PlayerUi {
             if (btn) btn.click();
         }}
     }});
+
+    // Automatic Error 153/152 Recovery Watchdog
+    const watchdogTimer = setInterval(() => {{
+        const errEl = document.querySelector('.ytp-error, .ytp-error-content, ytd-player-error-message-renderer, #error-screen');
+        if (errEl) {{
+            const txt = (errEl.innerText || errEl.textContent || "").toLowerCase();
+            if (txt.includes('153') || txt.includes('152') || txt.includes('unavailable') || txt.includes('configuration error')) {{
+                clearInterval(watchdogTimer);
+                console.warn("[Nexora Watchdog] Detected player gating (Error 153/152). Falling back to Web...");
+                document.body.classList.remove('nexora-cinema-mode');
+                const hud = document.getElementById('nexora-cinema-hud');
+                if (hud) hud.remove();
+                const u = new URL(window.location.href);
+                u.searchParams.delete('mode');
+                u.searchParams.set('no_intercept', '1');
+                window.location.replace(u.toString());
+            }}
+        }}
+    }}, 500);
+    setTimeout(() => clearInterval(watchdogTimer), 12000);
 }})();"###
         )
     }
@@ -601,8 +429,7 @@ mod tests {
         let html = PlayerUi::render_html("y1PDr1SraAA", "native_d3d11");
         assert!(html.contains("y1PDr1SraAA"));
         assert!(html.contains("Native D3D11 / WMF Video Engine"));
-        assert!(html.contains("youtube.com/embed/y1PDr1SraAA"));
-        assert!(html.contains("strict-origin-when-cross-origin"));
+        assert!(html.contains("youtube.com/watch?v=y1PDr1SraAA"));
     }
 
     #[test]

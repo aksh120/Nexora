@@ -58,6 +58,45 @@ impl BookmarkManager {
         Ok(id)
     }
 
+    pub fn add_bookmarks_batch(&self, bookmarks: &[(&str, &str, Option<i64>)]) -> Result<Vec<i64>> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        self.db.begin_transaction()?;
+        let mut ids = Vec::with_capacity(bookmarks.len());
+
+        for &(title, url, parent_id) in bookmarks {
+            let parent_val = match parent_id {
+                Some(pid) => SqliteValue::Integer(pid),
+                None => SqliteValue::Null,
+            };
+
+            let next_pos = self.get_next_position(parent_id)?;
+
+            self.db.execute_with_params(
+                "INSERT INTO bookmarks (parent_id, title, url, is_folder, position, created_at) VALUES (?, ?, ?, 0, ?, ?);",
+                &[
+                    parent_val,
+                    SqliteValue::Text(title.to_string()),
+                    SqliteValue::Text(url.to_string()),
+                    SqliteValue::Integer(next_pos as i64),
+                    SqliteValue::Integer(now),
+                ],
+            )?;
+
+            let id = self.db.query("SELECT last_insert_rowid();", &[], |row| Ok(row.get_i64(0)))?
+                .first()
+                .copied()
+                .unwrap_or(0);
+            ids.push(id);
+        }
+
+        self.db.commit()?;
+        Ok(ids)
+    }
+
     pub fn add_folder(&self, title: &str, parent_id: Option<i64>) -> Result<i64> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)

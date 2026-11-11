@@ -11,10 +11,24 @@ pub const OMNIBOX_HEIGHT: i32 = 30;
 
 use crate::tabs::Tab;
 
+/// Tab strip orientation: traditional top horizontal or modern left vertical sidebar
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TabOrientation {
+    Horizontal,
+    Vertical { collapsed: bool },
+}
+
+impl Default for TabOrientation {
+    fn default() -> Self {
+        Self::Horizontal
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BrowserLayout {
     pub window_width: i32,
     pub window_height: i32,
+    pub orientation: TabOrientation,
 }
 
 impl BrowserLayout {
@@ -22,20 +36,81 @@ impl BrowserLayout {
         Self {
             window_width: width.max(400),
             window_height: height.max(200),
+            orientation: TabOrientation::Horizontal,
+        }
+    }
+
+    pub fn with_orientation(mut self, orientation: TabOrientation) -> Self {
+        self.orientation = orientation;
+        self
+    }
+
+    pub fn vertical_sidebar_rect(&self) -> Option<(i32, i32, i32, i32)> {
+        match self.orientation {
+            TabOrientation::Horizontal => None,
+            TabOrientation::Vertical { collapsed } => {
+                let w = if collapsed { 48 } else { 240 };
+                let y = TOOLBAR_HEIGHT;
+                let h = (self.window_height - TOOLBAR_HEIGHT).max(0);
+                Some((0, y, w, h))
+            }
         }
     }
 
     pub fn tab_bar_rect(&self) -> (i32, i32, i32, i32) {
-        (0, 0, self.window_width, TAB_BAR_HEIGHT)
+        match self.orientation {
+            TabOrientation::Horizontal => (0, 0, self.window_width, TAB_BAR_HEIGHT),
+            TabOrientation::Vertical { collapsed } => {
+                let w = if collapsed { 48 } else { 240 };
+                (0, 0, w, TOOLBAR_HEIGHT)
+            }
+        }
     }
 
     pub fn toolbar_rect(&self) -> (i32, i32, i32, i32) {
-        (0, TAB_BAR_HEIGHT, self.window_width, TOOLBAR_HEIGHT)
+        match self.orientation {
+            TabOrientation::Horizontal => (0, TAB_BAR_HEIGHT, self.window_width, TOOLBAR_HEIGHT),
+            TabOrientation::Vertical { collapsed } => {
+                let sidebar_w = if collapsed { 48 } else { 240 };
+                (sidebar_w, 0, self.window_width - sidebar_w, TOOLBAR_HEIGHT)
+            }
+        }
     }
 
     pub fn webview_rect(&self) -> (i32, i32, i32, i32) {
-        let h = (self.window_height - TOP_CHROME_HEIGHT).max(0);
-        (0, TOP_CHROME_HEIGHT, self.window_width, h)
+        match self.orientation {
+            TabOrientation::Horizontal => {
+                let h = (self.window_height - TOP_CHROME_HEIGHT).max(0);
+                (0, TOP_CHROME_HEIGHT, self.window_width, h)
+            }
+            TabOrientation::Vertical { collapsed } => {
+                let sidebar_w = if collapsed { 48 } else { 240 };
+                let x = sidebar_w;
+                let y = TOOLBAR_HEIGHT;
+                let w = (self.window_width - sidebar_w).max(0);
+                let h = (self.window_height - TOOLBAR_HEIGHT).max(0);
+                (x, y, w, h)
+            }
+        }
+    }
+
+    pub fn calculate_vertical_tab_rects(&self, tab_count: usize) -> Vec<(i32, i32, i32, i32)> {
+        let sidebar = match self.vertical_sidebar_rect() {
+            Some(s) => s,
+            None => return Vec::new(),
+        };
+
+        let mut rects = Vec::with_capacity(tab_count);
+        let tab_h = 36;
+        let mut curr_y = sidebar.1 + 8;
+        let tab_w = sidebar.2 - 12;
+
+        for _ in 0..tab_count {
+            rects.push((6, curr_y, tab_w, tab_h));
+            curr_y += tab_h + 4;
+        }
+
+        rects
     }
 
     pub fn webview_rect_for(&self, is_fullscreen: bool) -> (i32, i32, i32, i32) {
@@ -208,6 +283,23 @@ mod tests {
         assert_eq!(fs_rect, (0, 0, 1280, 800));
         let normal_rect = layout.webview_rect_for(false);
         assert_eq!(normal_rect, (0, TOP_CHROME_HEIGHT, 1280, 800 - TOP_CHROME_HEIGHT));
+    }
+
+    #[test]
+    fn test_vertical_tabs_layout_rects() {
+        let layout = BrowserLayout::new(1280, 800)
+            .with_orientation(TabOrientation::Vertical { collapsed: false });
+        let sidebar = layout.vertical_sidebar_rect().unwrap();
+        assert_eq!(sidebar, (0, TOOLBAR_HEIGHT, 240, 800 - TOOLBAR_HEIGHT));
+
+        let (x, y, w, h) = layout.webview_rect();
+        assert_eq!(x, 240);
+        assert_eq!(y, TOOLBAR_HEIGHT);
+        assert_eq!(w, 1280 - 240);
+        assert_eq!(h, 800 - TOOLBAR_HEIGHT);
+
+        let vtabs = layout.calculate_vertical_tab_rects(4);
+        assert_eq!(vtabs.len(), 4);
     }
 }
 
