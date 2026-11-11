@@ -81,18 +81,32 @@ impl UpdateDetector {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-        let output = std::process::Command::new("curl.exe")
-            .args([
-                "-s",
-                "-L",
-                "--max-time",
-                "15",
-                "-H",
-                "User-Agent: Nexora-Browser",
-                "-H",
-                "Accept: application/vnd.github.v3+json",
-                url,
-            ])
+        let mut cmd = std::process::Command::new("curl.exe");
+        cmd.args([
+            "-s",
+            "-L",
+            "--max-time",
+            "15",
+            "-H",
+            "User-Agent: Nexora-Browser",
+            "-H",
+            "Accept: application/vnd.github.v3+json",
+        ]);
+
+        // Support private repositories via environment variable or local GitHub CLI
+        if let Ok(token) = std::env::var("GITHUB_TOKEN").or_else(|_| std::env::var("GH_TOKEN")) {
+            cmd.arg("-H").arg(format!("Authorization: Bearer {}", token.trim()));
+        } else if let Ok(out) = std::process::Command::new("gh.exe").args(["auth", "token"]).creation_flags(CREATE_NO_WINDOW).output() {
+            if out.status.success() {
+                let token = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !token.is_empty() {
+                    cmd.arg("-H").arg(format!("Authorization: Bearer {}", token));
+                }
+            }
+        }
+
+        let output = cmd
+            .arg(url)
             .creation_flags(CREATE_NO_WINDOW)
             .output()
             .map_err(|e| NexoraError::Other(format!("Failed to execute curl.exe: {}", e)))?;
