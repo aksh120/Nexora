@@ -148,18 +148,12 @@ pub fn extract_youtube_video_id(url: &str) -> Option<String> {
 
 /// Determines whether a navigation target should be redirected to the Native Stream Player
 /// according to the active `StreamingEngineMode`.
-pub fn should_intercept_video_stream(url: &str, mode: StreamingEngineMode) -> Option<String> {
-    if url.contains("no_intercept=1") || url.contains("mode=") || url.starts_with("nexora://player") {
-        return None;
-    }
-
-    let video_id = extract_youtube_video_id(url)?;
-
-    match mode {
-        StreamingEngineMode::Standard => None,
-        StreamingEngineMode::NativeD3D11 => Some(format!("nexora://player?v={}&mode=native_d3d11", video_id)),
-        StreamingEngineMode::HybridStealth => Some(format!("nexora://player?v={}&mode=hybrid_stealth", video_id)),
-    }
+///
+/// NOTE: Video stream URL hijacking has been decommissioned in favor of
+/// modular engine runtimes (Ultralight & Servo). Standard browsing
+/// and media playback run directly in their respective engines.
+pub fn should_intercept_video_stream(_url: &str, _mode: StreamingEngineMode) -> Option<String> {
+    None
 }
 
 #[cfg(test)]
@@ -198,27 +192,11 @@ mod tests {
     #[test]
     fn test_stream_interception_rules() {
         let yt_url = "https://www.youtube.com/watch?v=y1PDr1SraAA";
-        // Standard mode does not intercept
+        // Standard mode does not hijack URLs
         assert_eq!(should_intercept_video_stream(yt_url, StreamingEngineMode::Standard), None);
-        // Native D3D11 intercepts to native player
-        assert_eq!(
-            should_intercept_video_stream(yt_url, StreamingEngineMode::NativeD3D11),
-            Some("nexora://player?v=y1PDr1SraAA&mode=native_d3d11".to_string())
-        );
-        // Hybrid Stealth intercepts with hybrid mode flag
-        assert_eq!(
-            should_intercept_video_stream(yt_url, StreamingEngineMode::HybridStealth),
-            Some("nexora://player?v=y1PDr1SraAA&mode=hybrid_stealth".to_string())
-        );
-        // Bypassed if no_intercept=1 present
-        assert_eq!(
-            should_intercept_video_stream("https://www.youtube.com/watch?v=y1PDr1SraAA&no_intercept=1", StreamingEngineMode::HybridStealth),
-            None
-        );
-        // Bypassed if already in cinema mode flag
-        assert_eq!(
-            should_intercept_video_stream("https://www.youtube.com/watch?v=y1PDr1SraAA&mode=native_d3d11", StreamingEngineMode::NativeD3D11),
-            None
-        );
+        // Ultralight mode does not hijack URLs
+        assert_eq!(should_intercept_video_stream(yt_url, StreamingEngineMode::Ultralight), None);
+        // Servo mode does not hijack URLs
+        assert_eq!(should_intercept_video_stream(yt_url, StreamingEngineMode::Servo), None);
     }
 }

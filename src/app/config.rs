@@ -16,30 +16,58 @@ impl Default for ThemeMode {
     }
 }
 
-/// Video Streaming Engine Architecture Option
+/// Browser & Streaming Engine Architecture Option
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StreamingEngineMode {
-    /// Standard Multi-Controller Engine (Default):
+    /// Option 0: Standard Multi-Controller Engine (Default):
     /// WebView2 Evergreen + Direct3D 11 NVDEC GPU decode offload + Widevine DRM.
-    /// Full web functionality (comments, live chat, recommendations, account features).
+    /// Full web functionality (comments, live chat, recommendations, Google account login).
+    /// Base footprint: ~120 – 220 MB RAM (< 1 MB when suspended).
     #[serde(rename = "standard")]
     Standard,
-    /// Option 1: Native D3D11/WMF Video Player Engine (< 60 MB RAM):
-    /// Stream extraction (InnerTube/DASH) feeds directly into Windows Media Foundation (WMF)
-    /// and Direct3D 11 NVDEC swapchain. Zero Chromium DOM, zero V8 JavaScript engine.
-    /// ~35–55 MB total host RAM, ~1–3% CPU on 1080p60.
-    #[serde(rename = "native_d3d11")]
-    NativeD3D11,
-    /// Option 2: Hybrid Stealth Core (Dual Engine):
-    /// Standard web browsing with seamless intercept to Native D3D11 player on YouTube video playback,
-    /// placing the heavy webview tab into dormant suspension (~50–65 MB playback RAM).
-    #[serde(rename = "hybrid_stealth")]
-    HybridStealth,
+    /// Option 1: Ultralight (Lightweight WebKit):
+    /// Pure C++ lightweight WebKit fork with Direct3D 11 / OpenGL render surface.
+    /// Base footprint: ~15 – 35 MB RAM (+35 – 50 MB binary footprint).
+    /// Web Compatibility: ~65% (Basic HTML5/CSS, zero DRM, breaks heavy Google/Discord SPAs).
+    #[serde(rename = "ultralight")]
+    Ultralight,
+    /// Option 2: Servo (Pure Rust Web Engine):
+    /// Highly parallel browser engine written in pure Rust with WebRender.
+    /// Base footprint: ~25 – 45 MB RAM (+40 – 60 MB binary footprint).
+    /// Web Compatibility: ~45% (Experimental CSS/DOM, pure memory-safe Rust core).
+    #[serde(rename = "servo")]
+    Servo,
 }
 
 impl Default for StreamingEngineMode {
     fn default() -> Self {
         Self::Standard
+    }
+}
+
+impl StreamingEngineMode {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Standard => "Standard Multi-Controller Engine (Default)",
+            Self::Ultralight => "Option 1: Ultralight (Lightweight WebKit)",
+            Self::Servo => "Option 2: Servo (Pure Rust Web Engine)",
+        }
+    }
+
+    pub fn ram_estimate(&self) -> &'static str {
+        match self {
+            Self::Standard => "~120 – 220 MB RAM",
+            Self::Ultralight => "~15 – 35 MB RAM",
+            Self::Servo => "~25 – 45 MB RAM",
+        }
+    }
+
+    pub fn compatibility_summary(&self) -> &'static str {
+        match self {
+            Self::Standard => "100% (Full Web, V8, Widevine DRM, Direct3D 11 NVDEC)",
+            Self::Ultralight => "~65% (Basic HTML5/CSS, No DRM, lightweight reading)",
+            Self::Servo => "~45% (Experimental CSS/DOM, WebRender, pure Rust core)",
+        }
     }
 }
 
@@ -207,12 +235,18 @@ mod tests {
     #[test]
     fn test_config_serialization() {
         let mut config = NexoraConfig::default();
-        config.streaming_engine_mode = StreamingEngineMode::NativeD3D11;
+        config.streaming_engine_mode = StreamingEngineMode::Ultralight;
         let json = serde_json::to_string(&config).expect("serialize config");
         let deserialized: NexoraConfig = serde_json::from_str(&json).expect("deserialize config");
         assert_eq!(config.homepage, deserialized.homepage);
         assert_eq!(config.theme, deserialized.theme);
-        assert_eq!(deserialized.streaming_engine_mode, StreamingEngineMode::NativeD3D11);
+        assert_eq!(deserialized.streaming_engine_mode, StreamingEngineMode::Ultralight);
+
+        let mut config_servo = NexoraConfig::default();
+        config_servo.streaming_engine_mode = StreamingEngineMode::Servo;
+        let json_servo = serde_json::to_string(&config_servo).expect("serialize config servo");
+        let deserialized_servo: NexoraConfig = serde_json::from_str(&json_servo).expect("deserialize config servo");
+        assert_eq!(deserialized_servo.streaming_engine_mode, StreamingEngineMode::Servo);
     }
 }
 

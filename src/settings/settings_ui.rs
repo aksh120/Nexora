@@ -50,15 +50,15 @@ impl SettingsUi {
 
         let streaming_mode = config.streaming_engine_mode;
         let std_selected = streaming_mode == crate::app::config::StreamingEngineMode::Standard;
-        let native_selected = streaming_mode == crate::app::config::StreamingEngineMode::NativeD3D11;
-        let hybrid_selected = streaming_mode == crate::app::config::StreamingEngineMode::HybridStealth;
+        let ultra_selected = streaming_mode == crate::app::config::StreamingEngineMode::Ultralight;
+        let servo_selected = streaming_mode == crate::app::config::StreamingEngineMode::Servo;
 
         let std_card_cls = if std_selected { "selected" } else { "" };
         let std_radio_cls = if std_selected { "selected" } else { "" };
-        let native_card_cls = if native_selected { "selected" } else { "" };
-        let native_radio_cls = if native_selected { "selected" } else { "" };
-        let hybrid_card_cls = if hybrid_selected { "selected" } else { "" };
-        let hybrid_radio_cls = if hybrid_selected { "selected" } else { "" };
+        let ultra_card_cls = if ultra_selected { "selected" } else { "" };
+        let ultra_radio_cls = if ultra_selected { "selected" } else { "" };
+        let servo_card_cls = if servo_selected { "selected" } else { "" };
+        let servo_radio_cls = if servo_selected { "selected" } else { "" };
 
         format!(
             r###"<!DOCTYPE html>
@@ -753,7 +753,7 @@ impl SettingsUi {
                 <!-- 4. STREAMING CORE ARCHITECTURE -->
                 <div id="streaming_core" class="category-pane">
                     <h2 class="category-title">Streaming Core Architecture</h2>
-                    <p class="category-desc">Configure your preferred video playback engine. Choose between full web compatibility, dedicated hardware player, or hybrid dual-engine mode.</p>
+                    <p class="category-desc">Configure your preferred browser engine architecture. Choose between full web compatibility, lightweight WebKit, or pure Rust rendering.</p>
 
                     <!-- Option 0: Standard Multi-Controller (Default) -->
                     <div id="card-engine-standard" class="engine-card {std_card_cls}" onclick="selectEngine('standard')">
@@ -762,7 +762,7 @@ impl SettingsUi {
                                 <div class="radio-circle {std_radio_cls}"></div>
                                 <div>
                                     <div class="engine-name">Standard Multi-Controller Engine <span class="badge badge-success">Default</span></div>
-                                    <div class="engine-sub">Direct3D 11 & NVDEC GPU decode offload via WebView2 Evergreen</div>
+                                    <div class="engine-sub">Direct3D 11 &amp; NVDEC GPU decode offload via WebView2 Evergreen</div>
                                 </div>
                             </div>
                             <div class="engine-stat">~120 – 220 MB RAM</div>
@@ -773,56 +773,58 @@ impl SettingsUi {
                         <div class="engine-specs">
                             <span class="spec-tag">Direct3D 11 NVDEC</span>
                             <span class="spec-tag">Widevine CDM Certified</span>
-                            <span class="spec-tag">Full Web Comments & Live Chat</span>
+                            <span class="spec-tag">Full Web Comments &amp; Live Chat</span>
                             <span class="spec-tag">Multi-Controller Architecture</span>
                         </div>
                     </div>
 
-                    <!-- Option 1: Native D3D11/WMF Video Player Engine -->
-                    <div id="card-engine-native_d3d11" class="engine-card {native_card_cls}" onclick="selectEngine('native_d3d11')">
+                    <!-- Option 1: Ultralight (Lightweight WebKit) -->
+                    <div id="card-engine-ultralight" class="engine-card {ultra_card_cls}" onclick="selectEngine('ultralight')">
                         <div class="engine-header">
                             <div class="engine-title-wrap">
-                                <div class="radio-circle {native_radio_cls}"></div>
+                                <div class="radio-circle {ultra_radio_cls}"></div>
                                 <div>
-                                    <div class="engine-name">Option 1: Native D3D11 / WMF Video Player Engine <span class="badge-accent">&lt; 60 MB RAM</span></div>
-                                    <div class="engine-sub">Direct stream extraction to Windows Media Foundation & NVDEC hardware decoder</div>
+                                    <div class="engine-name">Option 1: Ultralight (Lightweight WebKit) <span class="badge-accent">~15 – 35 MB RAM</span></div>
+                                    <div class="engine-sub">+35 – 50 MB binary • ~65% Compatibility • Basic HTML5/CSS • Game UI Engine</div>
                                 </div>
                             </div>
-                            <div class="engine-stat">~35 – 55 MB RAM</div>
+                            <div class="engine-stat">~15 – 35 MB RAM</div>
                         </div>
                         <p class="engine-desc">
-                            Bypasses the bloated website DOM and JavaScript execution engine entirely. Queries YouTube streaming endpoints to feed raw video/audio DASH streams directly to Windows Media Foundation (WMF) and your GPU's Direct3D 11 NVDEC hardware decoder. Zero web ads, instant playback launch, and zero frame drops.
+                            Built for ultra-lightweight game user interfaces (EA, Unreal Engine). Minimal RAM footprint and rapid initialization for low-spec systems. Renders basic HTML5/CSS and article reading, but lacks DRM support (cannot play protected YouTube/Netflix video) and heavy SPAs (Google Docs, Discord) may glitch or crash.
                         </p>
                         <div class="engine-specs">
-                            <span class="spec-tag">Zero Chromium DOM</span>
-                            <span class="spec-tag">Zero V8 JS Overhead</span>
-                            <span class="spec-tag">~1 – 3% CPU @ 1080p60</span>
-                            <span class="spec-tag">Clean Native Player UI</span>
-                            <span class="spec-tag">Zero Web Ads</span>
+                            <span class="spec-tag">WebKit C++ Core</span>
+                            <span class="spec-tag">~15 – 35 MB Host RAM</span>
+                            <span class="spec-tag">+35 – 50 MB Binary Size</span>
+                            <span class="spec-tag">~65% Web Compatibility</span>
+                            <span class="spec-tag">Basic HTML5 &amp; CSS</span>
+                            <span class="spec-tag">Zero DRM Support</span>
                         </div>
                     </div>
 
-                    <!-- Option 2: Hybrid Stealth Core -->
-                    <div id="card-engine-hybrid_stealth" class="engine-card {hybrid_card_cls}" onclick="selectEngine('hybrid_stealth')">
+                    <!-- Option 2: Servo (Pure Rust Web Engine) -->
+                    <div id="card-engine-servo" class="engine-card {servo_card_cls}" onclick="selectEngine('servo')">
                         <div class="engine-header">
                             <div class="engine-title-wrap">
-                                <div class="radio-circle {hybrid_radio_cls}"></div>
+                                <div class="radio-circle {servo_radio_cls}"></div>
                                 <div>
-                                    <div class="engine-name">Option 2: Hybrid Stealth Core <span class="badge badge-success">Smart Dual Mode</span></div>
-                                    <div class="engine-sub">Intelligent coordinator: web browsing in WebView2, cinema playback in Native D3D11</div>
+                                    <div class="engine-name">Option 2: Servo (Pure Rust Web Engine) <span class="badge badge-success">~25 – 45 MB RAM</span></div>
+                                    <div class="engine-sub">+40 – 60 MB binary • ~45% Compatibility • WebRender GPU Compositor • Pure Rust</div>
                                 </div>
                             </div>
-                            <div class="engine-stat">~50 – 65 MB RAM</div>
+                            <div class="engine-stat">~25 – 45 MB RAM</div>
                         </div>
                         <p class="engine-desc">
-                            Operates in dual coordinated modes: general browsing and YouTube channel browsing stay in the fast multi-controller WebView2 engine. When you navigate to a video, Nexora intercepts the stream, hands off playback to the Native D3D11 hardware player, and places the heavy webview tab into dormant suspension.
+                            Written completely in Rust with parallel WebRender GPU compositor and memory-safe DOM execution. Highly optimized memory footprint without Chromium baggage. Experimental CSS and DOM engine under active development; not yet daily-driver ready (cannot authenticate Google accounts or render modern dynamic web apps reliably).
                         </p>
                         <div class="engine-specs">
-                            <span class="spec-tag">Dual-Engine Coordinator</span>
-                            <span class="spec-tag">Dormant Tab Suspension</span>
-                            <span class="spec-tag">Browse YouTube Normally</span>
-                            <span class="spec-tag">One-Click Return to Web</span>
-                            <span class="spec-tag">Drops RAM by ~80%</span>
+                            <span class="spec-tag">Pure Rust Core</span>
+                            <span class="spec-tag">WebRender Pipeline</span>
+                            <span class="spec-tag">~25 – 45 MB Host RAM</span>
+                            <span class="spec-tag">+40 – 60 MB Binary Size</span>
+                            <span class="spec-tag">~45% Web Compatibility</span>
+                            <span class="spec-tag">Experimental CSS / DOM</span>
                         </div>
                     </div>
                 </div>
@@ -920,15 +922,15 @@ impl SettingsUi {
                                 <div class="setting-title">Nexora Desktop Browser</div>
                                 <div class="setting-desc">Version {version} • Windows x86_64</div>
                             </div>
-                            <span class="badge">Up to date</span>
+                            <span class="badge">v{version}</span>
                         </div>
 
                         <div class="setting-row">
                             <div class="setting-info">
-                                <div class="setting-title">Rendering Engine</div>
-                                <div class="setting-desc">Microsoft WebView2 Evergreen with Direct3D 11 NVDEC Acceleration</div>
+                                <div class="setting-title">Rendering Engine Core</div>
+                                <div class="setting-desc">Multi-Controller Architecture with Direct3D 11 NVDEC &amp; Modular Engine Support</div>
                             </div>
-                            <span class="badge">Hardware Accelerated</span>
+                            <span class="badge badge-success">Hardware Accelerated</span>
                         </div>
 
                         <div class="setting-row">
@@ -939,6 +941,45 @@ impl SettingsUi {
                             <div style="display: flex; align-items: center; gap: 10px;">
                                 <span id="update-status-badge" class="badge">v{version}</span>
                                 <button class="btn btn-primary btn-sm" id="btn-check-updates" onclick="checkForUpdates()">Check for Updates</button>
+                            </div>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Official GitHub Repository</div>
+                                <div class="setting-desc">Source code, release notes, bug tracker, and roadmap</div>
+                            </div>
+                            <a href="https://github.com/aksh120/Nexora" target="_blank" class="btn btn-ghost btn-sm" style="color:var(--text-main); text-decoration:none; border:1px solid var(--border-color); display:inline-flex; align-items:center; gap:6px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
+                                github.com/aksh120/Nexora
+                            </a>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <div class="setting-title">Created &amp; Maintained By</div>
+                                <div class="setting-desc">Akshat Apoorv • Lead Systems &amp; Browser Architecture</div>
+                            </div>
+                            <a href="https://github.com/aksh120" target="_blank" class="btn btn-ghost btn-sm" style="color:var(--accent-color); text-decoration:none; border:1px solid var(--border-color); display:inline-flex; align-items:center; gap:6px;">
+                                github.com/aksh120
+                            </a>
+                        </div>
+
+                        <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 10px;">
+                            <div class="setting-info">
+                                <div class="setting-title">Support &amp; Assistance Inquiries</div>
+                                <div class="setting-desc">For technical support, reporting issues, or any inquiries, contact directly:</div>
+                            </div>
+                            <div style="display: flex; flex-wrap: wrap; gap: 8px; width: 100%;">
+                                <a href="mailto:hi@akshatcodes.xyz" class="badge" style="text-decoration:none; color:var(--text-main); font-family:var(--font-mono); font-size:12px; padding:6px 12px; background:var(--bg-tertiary); border:1px solid var(--border-color);">
+                                    ✉ hi@akshatcodes.xyz
+                                </a>
+                                <a href="mailto:hi@akimbolabs.site" class="badge" style="text-decoration:none; color:var(--text-main); font-family:var(--font-mono); font-size:12px; padding:6px 12px; background:var(--bg-tertiary); border:1px solid var(--border-color);">
+                                    ✉ hi@akimbolabs.site
+                                </a>
+                                <a href="mailto:main.akimbo@gmail.com" class="badge" style="text-decoration:none; color:var(--text-main); font-family:var(--font-mono); font-size:12px; padding:6px 12px; background:var(--bg-tertiary); border:1px solid var(--border-color);">
+                                    ✉ main.akimbo@gmail.com
+                                </a>
                             </div>
                         </div>
 
@@ -1085,8 +1126,8 @@ impl SettingsUi {
                 if (radio) radio.classList.add('selected');
             }}
             let label = "Standard Multi-Controller (Default)";
-            if (mode === 'native_d3d11' || mode === 'native') label = "Native D3D11 Video Player Engine (< 60 MB)";
-            if (mode === 'hybrid_stealth' || mode === 'hybrid') label = "Hybrid Stealth Core (Dual Engine)";
+            if (mode === 'ultralight' || mode === 'ultra') label = "Option 1: Ultralight - Lightweight WebKit (~15 – 35 MB)";
+            if (mode === 'servo') label = "Option 2: Servo - Pure Rust Web Engine (~25 – 45 MB)";
             showToast("Streaming Core switched to: " + label);
             openRestartModal(label);
         }}
@@ -1259,6 +1300,13 @@ mod tests {
         assert!(html.contains("Storage & Cache Limits"));
         assert!(html.contains("Streaming Core"));
         assert!(html.contains("About Nexora"));
+        assert!(html.contains("Ultralight (Lightweight WebKit)"));
+        assert!(html.contains("Servo (Pure Rust Web Engine)"));
+        assert!(html.contains("https://github.com/aksh120/Nexora"));
+        assert!(html.contains("Akshat Apoorv"));
+        assert!(html.contains("hi@akshatcodes.xyz"));
+        assert!(html.contains("hi@akimbolabs.site"));
+        assert!(html.contains("main.akimbo@gmail.com"));
         assert!(html.contains("search-bar-wrap"));
         assert!(html.contains("restart-modal"));
     }

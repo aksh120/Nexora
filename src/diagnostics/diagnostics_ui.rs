@@ -36,6 +36,7 @@ pub struct DiagnosticsSnapshot {
     pub db_schema_version: i32,
     pub db_wal_active: bool,
     pub cache_limit_mb: usize,
+    pub streaming_engine_mode: String,
 }
 
 impl DiagnosticsSnapshot {
@@ -63,6 +64,16 @@ impl DiagnosticsSnapshot {
         let monitor = MemoryPressureMonitor::default();
         let pressure_level = monitor.evaluate_pressure(&system_memory);
 
+        let cfg = crate::app::application::ApplicationPaths::resolve()
+            .map(|p| crate::app::config::NexoraConfig::load_or_default(&p.app_data_dir))
+            .unwrap_or_default();
+
+        let engine_str = match cfg.streaming_engine_mode {
+            crate::app::config::StreamingEngineMode::Standard => "Standard Multi-Controller (WebView2)",
+            crate::app::config::StreamingEngineMode::Ultralight => "Option 1: Ultralight (Lightweight WebKit)",
+            crate::app::config::StreamingEngineMode::Servo => "Option 2: Servo (Pure Rust Engine)",
+        }.to_string();
+
         Self {
             host_memory_bytes: if host_ws > 0 { host_ws } else { host_info.working_set_bytes },
             host_peak_ws_bytes: host_info.peak_working_set_bytes,
@@ -85,6 +96,7 @@ impl DiagnosticsSnapshot {
             db_schema_version: 2,
             db_wal_active: true,
             cache_limit_mb: 256,
+            streaming_engine_mode: engine_str,
         }
     }
 }
@@ -446,6 +458,10 @@ impl DiagnosticsUi {
             </div>
             <div class="diag-card-body">
                 <div class="diag-row">
+                    <span class="diag-label">Engine Architecture</span>
+                    <span class="diag-value"><span class="badge badge-success">{streaming_engine_mode}</span></span>
+                </div>
+                <div class="diag-row">
                     <span class="diag-label">GPU Adapter</span>
                     <span class="diag-value">{gpu_adapter}</span>
                 </div>
@@ -536,6 +552,7 @@ impl DiagnosticsUi {
                 active_tab_url: "{active_url_escaped}"
             }},
             hardware: {{
+                engine_architecture: "{streaming_engine_mode}",
                 gpu_adapter: "{gpu_adapter}",
                 d3d11_hardware_decode: true,
                 drm_certified: "Widevine CDM & PlayReady"
@@ -618,6 +635,7 @@ impl DiagnosticsUi {
             total_blocked = total_blocked,
             db_schema_version = snapshot.db_schema_version,
             cache_limit_mb = snapshot.cache_limit_mb,
+            streaming_engine_mode = snapshot.streaming_engine_mode.as_str(),
         )
     }
 }
@@ -665,6 +683,7 @@ mod tests {
         assert!(html.contains("Memory Overview"));
         assert!(html.contains("Tab and Process State"));
         assert!(html.contains("Media and Hardware Acceleration"));
+        assert!(html.contains("Engine Architecture"));
         assert!(html.contains("Privacy and Local Storage"));
         assert!(html.contains("Copy JSON"));
         assert!(html.contains("Export Report"));

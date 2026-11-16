@@ -428,15 +428,11 @@ impl HostWindow {
                     let ptr = GetWindowLongPtrW(hwnd_parent, GWLP_USERDATA) as *mut WindowContext;
                     if !ptr.is_null() {
                         let target = Omnibox::parse_input(&text, &(*ptr).default_search_engine);
-                        let mut dest_url = match target {
+                        let dest_url = match target {
                             crate::navigation::NavigationTarget::Url(u) => u,
                             crate::navigation::NavigationTarget::Search { url, .. } => url,
                             crate::navigation::NavigationTarget::Internal(u) => u,
                         };
-
-                        if let Some(intercepted) = crate::media::stream_engine::should_intercept_video_stream(&dest_url, (*ptr).streaming_engine_mode) {
-                            dest_url = intercepted;
-                        }
 
                         let active_id = (*ptr).tab_manager.borrow().active_tab_id().unwrap_or(1);
                         if !dest_url.starts_with("nexora://") {

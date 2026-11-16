@@ -161,6 +161,7 @@ impl WebViewEngine {
                 let _ = settings.SetAreDefaultScriptDialogsEnabled(true);
                 let _ = settings.SetIsStatusBarEnabled(false);
                 let _ = settings.SetAreDevToolsEnabled(cfg!(debug_assertions));
+                let _ = settings.SetIsBuiltInErrorPageEnabled(false);
             }
         }
 
@@ -169,18 +170,14 @@ impl WebViewEngine {
 
         let is_internal = initial_url.starts_with("nexora://") || initial_url.is_empty() || initial_url == "about:blank";
         let initial_title = if is_internal {
-            if initial_url.starts_with("nexora://player") {
-                "Native Hardware Player".to_string()
-            } else {
-                match initial_url {
-                    "nexora://settings" => "Settings",
-                    "nexora://diagnostics" => "Diagnostics",
-                    "nexora://bookmarks" => "Bookmarks",
-                    "nexora://history" => "History",
-                    "nexora://downloads" => "Downloads",
-                    _ => "Nexora Home",
-                }.to_string()
-            }
+            match initial_url {
+                "nexora://settings" => "Settings",
+                "nexora://diagnostics" => "Diagnostics",
+                "nexora://bookmarks" => "Bookmarks",
+                "nexora://history" => "History",
+                "nexora://downloads" => "Downloads",
+                _ => "Nexora Home",
+            }.to_string()
         } else {
             "New Tab".to_string()
         };
@@ -340,15 +337,6 @@ impl WebViewEngine {
 
     pub fn navigate_tab(&self, tab_id: usize, target_url: &str) -> Result<()> {
         let clean_url = target_url.trim_end_matches('/');
-
-        // Intercept nexora://player directly to genuine YouTube origin to prevent iframe embed blocks
-        if clean_url.starts_with("nexora://player") {
-            let video_id = crate::media::stream_engine::extract_youtube_video_id(clean_url).unwrap_or_else(|| "dQw4w9WgXcQ".to_string());
-            let mode_str = if clean_url.contains("mode=hybrid") { "hybrid_stealth" } else { "native_d3d11" };
-            let yt_target = format!("https://www.youtube.com/watch?v={}&mode={}", video_id, mode_str);
-            log::info!("[Streaming Core] Directing nexora://player to native hardware stream: {}", yt_target);
-            return self.navigate_tab(tab_id, &yt_target);
-        }
 
         let is_internal = clean_url == "nexora://home"
             || clean_url == "nexora://newtab"
@@ -708,13 +696,213 @@ impl WebViewEngine {
         } else if clean == "nexora://downloads" {
             let items = Vec::new();
             crate::downloads::downloads_ui::DownloadsUi::render_html(&items)
-        } else if clean.starts_with("nexora://player") {
-            let video_id = crate::media::stream_engine::extract_youtube_video_id(clean).unwrap_or_else(|| "live".to_string());
-            let mode_str = if clean.contains("mode=hybrid") { "hybrid_stealth" } else { "native_d3d11" };
-            crate::media::player_ui::PlayerUi::render_html(&video_id, mode_str)
         } else {
-            format!("<html><body style='background:#121214;color:#f4f4f5;'>Page not found: {}</body></html>", clean)
+            format!("<html><body style='background:#121214;color:#f4f4f5;padding:40px;font-family:sans-serif;'>Page not found: {}</body></html>", clean)
         }
+    }
+
+    /// Renders a native, dark-themed Nexora error page for network/DNS failures,
+    /// completely replacing Microsoft Edge's default error UI.
+    pub fn render_error_page(failed_url: &str, error_code: &str) -> String {
+        let clean_url = failed_url.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+        let clean_code = if error_code.is_empty() { "ERR_CONNECTION_FAILED" } else { error_code };
+
+        format!(
+            r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unable to Connect - Nexora</title>
+    <style>
+        :root {{
+            --bg-base: #0b0c10;
+            --bg-card: #14151b;
+            --border: #232530;
+            --text-primary: #f4f4f5;
+            --text-secondary: #9ca3af;
+            --accent-crimson: #e11d48;
+            --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            --font-mono: "JetBrains Mono", Consolas, monospace;
+        }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            background: var(--bg-base);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            user-select: none;
+        }}
+        .error-card {{
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 40px;
+            max-width: 580px;
+            width: 100%;
+            box-shadow: 0 16px 40px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }}
+        .icon-wrap {{
+            width: 56px;
+            height: 56px;
+            border-radius: 12px;
+            background: rgba(225, 29, 72, 0.12);
+            border: 1px solid rgba(225, 29, 72, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-crimson);
+        }}
+        .title {{
+            font-size: 22px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: #ffffff;
+        }}
+        .url-box {{
+            background: #0f1015;
+            border: 1px solid #1f2029;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            color: #d1d5db;
+            word-break: break-all;
+        }}
+        .code-pill {{
+            display: inline-block;
+            align-self: flex-start;
+            padding: 3px 10px;
+            border-radius: 6px;
+            background: #1f2029;
+            border: 1px solid #2d2f3d;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: #a1a1aa;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }}
+        .checklist {{
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            padding-left: 4px;
+        }}
+        .checklist-item {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }}
+        .bullet {{
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--accent-crimson);
+            flex-shrink: 0;
+        }}
+        .actions {{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 8px;
+        }}
+        .btn {{
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.15s ease;
+            border: none;
+        }}
+        .btn-primary {{
+            background: var(--accent-crimson);
+            color: #ffffff;
+        }}
+        .btn-primary:hover {{
+            background: #be123c;
+        }}
+        .btn-secondary {{
+            background: #1f2029;
+            color: var(--text-primary);
+            border: 1px solid #2d2f3d;
+        }}
+        .btn-secondary:hover {{
+            background: #2a2c3a;
+        }}
+        .footer {{
+            margin-top: 4px;
+            font-size: 11px;
+            color: #6b7280;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #1a1b24;
+            padding-top: 14px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="error-card">
+        <div class="icon-wrap">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+            </svg>
+        </div>
+        <div>
+            <div class="title">Unable to Connect</div>
+            <div class="code-pill" style="margin-top: 6px;">{clean_code}</div>
+        </div>
+        <div class="url-box">{clean_url}</div>
+        <div class="checklist">
+            <div class="checklist-item">
+                <div class="bullet"></div>
+                <div>Check your Wi-Fi, Ethernet, or mobile network connection.</div>
+            </div>
+            <div class="checklist-item">
+                <div class="bullet"></div>
+                <div>Verify the server address for typos or DNS configuration issues.</div>
+            </div>
+            <div class="checklist-item">
+                <div class="bullet"></div>
+                <div>Ensure your local firewall or proxy allows outbound browser traffic.</div>
+            </div>
+        </div>
+        <div class="actions">
+            <button class="btn btn-primary" onclick="window.location.reload()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                Try Again
+            </button>
+            <button class="btn btn-secondary" onclick="window.location.href='nexora://home'">
+                Nexora Home
+            </button>
+            <button class="btn btn-secondary" onclick="window.location.href='nexora://diagnostics'">
+                Diagnostics
+            </button>
+        </div>
+        <div class="footer">
+            <span>Nexora Browser Engine</span>
+            <span>Zero Microsoft Edge Branding</span>
+        </div>
+    </div>
+</body>
+</html>"#
+        )
     }
 
     fn setup_tab_event_handlers(&self, tab_id: usize, controller: &ICoreWebView2Controller, webview: &ICoreWebView2, hwnd: HWND) -> Result<()> {
@@ -739,31 +927,16 @@ impl WebViewEngine {
                             windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
                         ) as *mut crate::browser::host_window::WindowContext;
                         if !ptr.is_null() {
-                            // Intercept video streams if NativeD3D11 or HybridStealth mode is active
-                            if let Some(intercept_url) = crate::media::stream_engine::should_intercept_video_stream(&url_str, (*ptr).streaming_engine_mode) {
-                                log::info!("[Streaming Core] Intercepting video navigation to player: {} -> {}", url_str, intercept_url);
-                                let _ = args.SetCancel(windows::Win32::Foundation::BOOL(1));
-                                if let Some(ref webview_eng) = (*ptr).webview {
-                                    let _ = webview_eng.navigate_tab(tab_id, &intercept_url);
-                                }
-                                return Ok(());
-                            }
-
                             let is_active = (*ptr).tab_manager.borrow().active_tab_id() == Some(tab_id);
                             let mut tabs = (*ptr).tab_manager.borrow_mut();
                             tabs.set_loading(tab_id, true);
                             if let Some(tab) = tabs.get_tab_mut(tab_id) {
                                 if !tab.url.starts_with("nexora://") {
-                                    let display_url = if url_str.contains("&mode=native_d3d11") || url_str.contains("&mode=hybrid_stealth") {
-                                        url_str.replace("&mode=native_d3d11", "").replace("&mode=hybrid_stealth", "")
-                                    } else {
-                                        url_str.clone()
-                                    };
-                                    tab.url = display_url.clone();
-                                    tab.push_history(&display_url);
+                                    tab.url = url_str.clone();
+                                    tab.push_history(&url_str);
                                     if is_active {
                                         if let Some(ref chrome) = (*ptr).chrome {
-                                            chrome.set_omnibox_text(&display_url);
+                                            chrome.set_omnibox_text(&url_str);
                                         }
                                     }
                                 }
@@ -808,16 +981,11 @@ impl WebViewEngine {
                             tabs.set_loading(tab_id, false);
                             if let Some(tab) = tabs.get_tab_mut(tab_id) {
                                 if !tab.url.starts_with("nexora://") {
-                                    let display_url = if url_str.contains("&mode=native_d3d11") || url_str.contains("&mode=hybrid_stealth") {
-                                        url_str.replace("&mode=native_d3d11", "").replace("&mode=hybrid_stealth", "")
-                                    } else {
-                                        url_str.clone()
-                                    };
-                                    tab.url = display_url.clone();
-                                    tab.push_history(&display_url);
+                                    tab.url = url_str.clone();
+                                    tab.push_history(&url_str);
                                     if is_active {
                                         if let Some(ref chrome) = (*ptr).chrome {
-                                            chrome.set_omnibox_text(&display_url);
+                                            chrome.set_omnibox_text(&url_str);
                                         }
                                     }
                                 }
@@ -827,19 +995,6 @@ impl WebViewEngine {
                                 (*ptr).stop_loader_timer(hwnd_parent);
                             }
                             let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
-
-                            // Auto-inject Cinema Mode HUD & stealth styling on video watch pages if hardware cinema is active
-                            let is_cinema = url_str.contains("youtube.com/watch")
-                                && !url_str.contains("no_intercept=1")
-                                && ((*ptr).streaming_engine_mode != crate::app::config::StreamingEngineMode::Standard || url_str.contains("mode=native_d3d11") || url_str.contains("mode=hybrid"));
-                            if is_cinema {
-                                let is_hybrid = (*ptr).streaming_engine_mode == crate::app::config::StreamingEngineMode::HybridStealth || url_str.contains("mode=hybrid");
-                                let mode_str = if is_hybrid { "hybrid_stealth" } else { "native_d3d11" };
-                                let vid = crate::media::stream_engine::extract_youtube_video_id(&url_str).unwrap_or_else(|| "dQw4w9WgXcQ".to_string());
-                                let script = crate::media::PlayerUi::generate_cinema_script(&vid, mode_str);
-                                let wide_script = pwstr_from_str(&script);
-                                let _ = sender.ExecuteScript(PCWSTR(wide_script.0), None);
-                            }
                         }
                     }
                 }
@@ -878,13 +1033,7 @@ impl WebViewEngine {
                             drop(tabs);
 
                             if is_active {
-                                let is_cinema = (*ptr).streaming_engine_mode != crate::app::config::StreamingEngineMode::Standard
-                                    && (title_str.to_lowercase().contains("youtube") || title_str.contains("Nexora Cinema"));
-                                let full_title = if is_cinema && !title_str.contains("Nexora Cinema") {
-                                    format!("Nexora Cinema - {}", title_str)
-                                } else {
-                                    format!("{} - Nexora", title_str)
-                                };
+                                let full_title = format!("{} - Nexora", title_str);
                                 let wide_title: Vec<u16> = full_title.encode_utf16().chain(std::iter::once(0)).collect();
                                 let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowTextW(
                                     hwnd_parent,
@@ -904,7 +1053,7 @@ impl WebViewEngine {
         }
 
         // 4. NavigationCompleted
-        let completed_handler = NavigationCompletedEventHandler::create(Box::new(move |sender, _args| {
+        let completed_handler = NavigationCompletedEventHandler::create(Box::new(move |sender, args| {
             if let Some(s) = sender {
                 unsafe {
                     let mut uri = PWSTR::null();
@@ -916,6 +1065,39 @@ impl WebViewEngine {
                         } else {
                             String::new()
                         };
+
+                        // Check navigation status: if failed and not canceled by user, render custom dark error page
+                        let mut is_success = BOOL(1);
+                        let mut web_status = COREWEBVIEW2_WEB_ERROR_STATUS(0);
+                        if let Some(ref args) = args {
+                            let _ = args.IsSuccess(&mut is_success);
+                            let _ = args.WebErrorStatus(&mut web_status);
+                        }
+
+                        if !is_success.as_bool() && web_status.0 != 1 && !url_str.starts_with("nexora://") && !url_str.is_empty() && url_str != "about:blank" {
+                            let err_name = match web_status.0 {
+                                1 => "OPERATION_CANCELED",
+                                2 => "ERR_CERTIFICATE_COMMON_NAME_INVALID",
+                                3 => "ERR_CERTIFICATE_DATE_INVALID",
+                                4 => "ERR_CERTIFICATE_AUTHORITY_INVALID",
+                                5 => "ERR_CERTIFICATE_INVALID",
+                                6 => "ERR_CONNECTION_ABORTED",
+                                7 => "ERR_CONNECTION_RESET",
+                                8 => "ERR_DISCONNECTED",
+                                9 => "ERR_CONNECTION_TIMED_OUT",
+                                10 => "ERR_CONNECTION_FAILED",
+                                11 => "ERR_NAME_NOT_RESOLVED",
+                                12 => "ERR_INTERNET_DISCONNECTED",
+                                13 => "ERR_SSL_PROTOCOL_ERROR",
+                                14 => "ERR_HTTP_INVALID_SERVER_RESPONSE",
+                                15 => "ERR_CONNECTION_REFUSED",
+                                _ => "ERR_NAME_NOT_RESOLVED",
+                            };
+                            log::warn!("[WebView2 Tab #{}] Navigation failed: {} ({})", tab_id, url_str, err_name);
+                            let error_html = WebViewEngine::render_error_page(&url_str, err_name);
+                            let wide_err = pwstr_from_str(&error_html);
+                            let _ = s.NavigateToString(PCWSTR(wide_err.0));
+                        }
 
                         // Guard: Never record or sync about:blank or data: URIs
                         if !url_str.is_empty() && url_str != "about:blank" && !url_str.starts_with("data:") {
@@ -929,19 +1111,14 @@ impl WebViewEngine {
                                 tabs.set_loading(tab_id, false);
                                 if let Some(tab) = tabs.get_tab_mut(tab_id) {
                                     if !tab.url.starts_with("nexora://") {
-                                        let display_url = if url_str.contains("&mode=native_d3d11") || url_str.contains("&mode=hybrid_stealth") {
-                                            url_str.replace("&mode=native_d3d11", "").replace("&mode=hybrid_stealth", "")
-                                        } else {
-                                            url_str.clone()
-                                        };
-                                        tab.url = display_url.clone();
-                                        tab.push_history(&display_url);
+                                        tab.url = url_str.clone();
+                                        tab.push_history(&url_str);
                                         if !title_str.trim().is_empty() && title_str != "about:blank" && !title_str.starts_with("data:") {
                                             tab.title = title_str.clone();
                                         }
                                         if is_active {
                                             if let Some(ref chrome) = (*ptr).chrome {
-                                                chrome.set_omnibox_text(&display_url);
+                                                chrome.set_omnibox_text(&url_str);
                                             }
                                         }
                                     }
@@ -968,19 +1145,6 @@ impl WebViewEngine {
                                     (*ptr).stop_loader_timer(hwnd_parent);
                                 }
                                 let _ = windows::Win32::Graphics::Gdi::InvalidateRect(hwnd_parent, None, false);
-
-                                // Auto-inject Cinema Mode HUD & stealth styling on video watch pages if hardware cinema is active
-                                let is_cinema = url_str.contains("youtube.com/watch")
-                                    && !url_str.contains("no_intercept=1")
-                                    && ((*ptr).streaming_engine_mode != crate::app::config::StreamingEngineMode::Standard || url_str.contains("mode=native_d3d11") || url_str.contains("mode=hybrid"));
-                                if is_cinema {
-                                    let is_hybrid = (*ptr).streaming_engine_mode == crate::app::config::StreamingEngineMode::HybridStealth || url_str.contains("mode=hybrid");
-                                    let mode_str = if is_hybrid { "hybrid_stealth" } else { "native_d3d11" };
-                                    let vid = crate::media::stream_engine::extract_youtube_video_id(&url_str).unwrap_or_else(|| "dQw4w9WgXcQ".to_string());
-                                    let script = crate::media::PlayerUi::generate_cinema_script(&vid, mode_str);
-                                    let wide_script = pwstr_from_str(&script);
-                                    let _ = s.ExecuteScript(PCWSTR(wide_script.0), None);
-                                }
 
                                 // Auto-inject update banner if a new release is available and active
                                 if let Some(ref release) = (*ptr).update_service.cached_update() {
@@ -1799,8 +1963,8 @@ impl WebViewEngine {
                     config.streaming_engine_mode = mode;
                 } else if let Some(s) = val.as_str() {
                     config.streaming_engine_mode = match s {
-                        "native_d3d11" | "native" => crate::app::config::StreamingEngineMode::NativeD3D11,
-                        "hybrid_stealth" | "hybrid" => crate::app::config::StreamingEngineMode::HybridStealth,
+                        "ultralight" | "ultra" => crate::app::config::StreamingEngineMode::Ultralight,
+                        "servo" => crate::app::config::StreamingEngineMode::Servo,
                         _ => crate::app::config::StreamingEngineMode::Standard,
                     };
                 }
@@ -1964,17 +2128,17 @@ mod tests {
         let config3 = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
         assert_eq!(config3.suspension_timeout_minutes, 25);
 
-        // Test streaming_engine_mode setting with native_d3d11
-        let msg_streaming = r#"{"action":"save_setting","key":"streaming_engine_mode","value":"native_d3d11"}"#;
+        // Test streaming_engine_mode setting with ultralight
+        let msg_streaming = r#"{"action":"save_setting","key":"streaming_engine_mode","value":"ultralight"}"#;
         WebViewEngine::handle_ipc_message(dummy_hwnd, 1, None, msg_streaming);
         let config4 = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
-        assert_eq!(config4.streaming_engine_mode, crate::app::config::StreamingEngineMode::NativeD3D11);
+        assert_eq!(config4.streaming_engine_mode, crate::app::config::StreamingEngineMode::Ultralight);
 
-        // Test streaming_engine_mode setting with hybrid_stealth
-        let msg_hybrid = r#"{"action":"save_setting","key":"streaming_engine_mode","value":"hybrid_stealth"}"#;
-        WebViewEngine::handle_ipc_message(dummy_hwnd, 1, None, msg_hybrid);
+        // Test streaming_engine_mode setting with servo
+        let msg_servo = r#"{"action":"save_setting","key":"streaming_engine_mode","value":"servo"}"#;
+        WebViewEngine::handle_ipc_message(dummy_hwnd, 1, None, msg_servo);
         let config5 = crate::app::config::NexoraConfig::load_or_default(&paths.app_data_dir);
-        assert_eq!(config5.streaming_engine_mode, crate::app::config::StreamingEngineMode::HybridStealth);
+        assert_eq!(config5.streaming_engine_mode, crate::app::config::StreamingEngineMode::Servo);
 
         // Test streaming_engine_mode setting back to standard
         let msg_std = r#"{"action":"save_setting","key":"streaming_engine_mode","value":"standard"}"#;

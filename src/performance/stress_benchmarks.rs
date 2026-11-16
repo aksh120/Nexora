@@ -383,7 +383,7 @@ impl StressBenchmarkRunner {
             if extract_youtube_video_id(url).is_some() {
                 extracted_count += 1;
             }
-            if should_intercept_video_stream(url, StreamingEngineMode::NativeD3D11).is_some() {
+            if should_intercept_video_stream(url, StreamingEngineMode::Ultralight).is_some() {
                 intercepted_count += 1;
             }
         }
